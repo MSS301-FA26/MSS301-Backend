@@ -1,0 +1,188 @@
+{
+  "project": "CinemaAI",
+  "updatedAt": "2026-07-23T02:16:00+07:00",
+  "source": "phase_mapping_srs_vs_docx_refund_role_updated.md",
+  "statusValues": ["done", "pending", "blocked"],
+  "features": [
+    {
+      "id": "PHASE-0",
+      "name": "Shared Foundation",
+      "status": "done",
+      "scope": ["API envelope", "exception handling", "JWT security", "OpenAPI", "logging filters", "auditing"],
+      "outOfScope": ["Production monitoring backend"],
+      "verification": ["FoundationIntegrationTests", "GlobalExceptionHandlerTests"],
+      "evidence": ["Both suites passed on 2026-06-25", "Build passed"],
+      "nextAction": "Add richer OpenAPI error examples and production metrics"
+    },
+    {
+      "id": "PHASE-1",
+      "name": "PostgreSQL Database Migration",
+      "status": "blocked",
+      "scope": ["Flyway V1-V5", "seed data", "PostgreSQL schema source of truth"],
+      "outOfScope": ["Production data migration without backup and approval"],
+      "verification": [".\\init.ps1 -Migrate"],
+      "evidence": ["Migration files and seeders exist", "Flyway disabled/missing", "Migration SQL uses SQL Server dialect", "ddl-auto=update active"],
+      "nextAction": "Rewrite migrations for PostgreSQL, enable Flyway, validate on disposable PostgreSQL"
+    },
+    {
+      "id": "PHASE-2",
+      "name": "Auth, Customer and Security",
+      "status": "done",
+      "scope": ["Auth flows", "CUSTOMER profile", "STAFF account provisioning", "ADMIN user management", "JWT RBAC"],
+      "outOfScope": ["MFA", "First-login staff password policy"],
+      "verification": ["AuthEndpointInventoryTests", "AuthIntegrationTests"],
+      "evidence": ["Both suites passed on 2026-06-25"],
+      "nextAction": "Resolve RBAC mismatch: role flow says STAFF-only check-in but code also permits ADMIN"
+    },
+    {
+      "id": "PHASE-3",
+      "name": "Movie, Genre and Actor Management",
+      "status": "done",
+      "scope": ["Public catalog", "Admin CRUD", "Movie-genre-actor relationships"],
+      "outOfScope": ["External metadata ingestion"],
+      "verification": ["MovieCatalogEndpointInventoryTests", "MovieIntegrationTests", "ActorIntegrationTests"],
+      "evidence": ["All listed suites passed on 2026-06-25"],
+      "nextAction": "Maintain contract tests when catalog APIs change"
+    },
+    {
+      "id": "PHASE-4",
+      "name": "Cinema, Room, Seat and Showtime",
+      "status": "pending",
+      "scope": ["Single cinema", "room/seat layout", "showtime CRUD/bulk", "overlap checks", "seat map", "status scheduler"],
+      "outOfScope": ["Cinema incident entity and workflow"],
+      "verification": ["CinemaShowtimeIntegrationTests", "CinemaShowtimeEndpointInventoryTests"],
+      "evidence": ["Integration test passed", "Scheduler exists", "Endpoint inventory has one stale mapping assertion"],
+      "nextAction": "Resolve cinema CREATE/DELETE contract mismatch and fix inventory assertion"
+    },
+    {
+      "id": "PHASE-5",
+      "name": "Booking, Seat Locking, F&B and Ticket QR",
+      "status": "pending",
+      "scope": ["Hold", "booking", "ticket pricing", "booking-linked food", "standalone concessions", "QR", "check-in", "expired-hold cleanup"],
+      "outOfScope": ["Cinema incident refund"],
+      "verification": ["BookingFoodQrEndpointInventoryTests", "BookingIntegrationTests", "AdminTicketPricingIntegrationTests"],
+      "evidence": ["All listed suites passed on 2026-06-25", "Showtime-level pessimistic locking now serializes hold creation", "Focused one-active-checkout integration test passed on 2026-07-23", "Standalone food order creation, payment, loyalty earning, listing and cancellation integration tests passed on 2026-07-23", "Standalone checkout uses a backend-owned 15-minute expiry synchronized with VNPay and supports retry after gateway cancellation", "Customer order history now has separate ticket and standalone-concession tabs", "PostgreSQL startup compatibility relaxes legacy booking constraints while Flyway is disabled", "Frontend concessions production build passed on 2026-07-23", "No database active-seat unique constraint found"],
+      "nextAction": "Add a database-level active-seat constraint where supported, signed QR and STAFF-only RBAC tests"
+    },
+    {
+      "id": "PHASE-6-PAYMENT",
+      "name": "Payment Core",
+      "status": "done",
+      "scope": ["VNPay create", "return/IPN", "mock payment", "payment lookup", "callback validation/idempotency basics"],
+      "outOfScope": ["Provider refund API", "Cinema incident workflow"],
+      "verification": ["PaymentEndpointInventoryTests", "PaymentIntegrationTests"],
+      "evidence": ["Both suites passed on 2026-06-25"],
+      "nextAction": "Protect mock payment in production and add stronger callback replay tests"
+    },
+    {
+      "id": "PHASE-6-CUSTOMER-REFUND",
+      "name": "Customer Policy and Manual Refund",
+      "status": "pending",
+      "scope": ["Customer refund request", "Admin refund request", "Admin mark refunded", "Booking state transition"],
+      "outOfScope": ["Cinema incident refund", "VNPay Refund API"],
+      "verification": ["Dedicated refund state-machine tests"],
+      "evidence": ["Endpoints and BookingService flow exist", "No dedicated refund tests", "Payment status is not updated when booking is marked refunded"],
+      "nextAction": "Enforce PAID/time policy, update Payment atomically, add refund tests and provider refund adapter"
+    },
+    {
+      "id": "PHASE-6-INCIDENT-REFUND",
+      "name": "Cinema Incident Refund, Claim, Proof and History",
+      "status": "blocked",
+      "scope": ["CinemaIncident", "Refund", "RefundClaim", "gateway refund", "proof/history", "claim review", "notifications", "audit"],
+      "outOfScope": ["Customer self-cancellation policy"],
+      "verification": ["Refund QA checklist from mapping document"],
+      "evidence": ["No incident/refund/claim entities, enums, repositories, services or APIs found"],
+      "nextAction": "Confirm ADMIN-only versus STAFF authorization, then implement schema/entity/repository phase"
+    },
+    {
+      "id": "PHASE-7",
+      "name": "Loyalty and Notification",
+      "status": "pending",
+      "scope": ["Earn/redeem/revoke points", "notification persistence", "unread/read-all", "payment/cancellation notifications"],
+      "outOfScope": ["Realtime WebSocket notification"],
+      "verification": ["Dedicated loyalty/notification integration tests"],
+      "evidence": ["Core services and APIs exist", "Mark-all-read exists", "No detailed ledger or refund-claim notifications"],
+      "nextAction": "Add transaction ledger and incident-refund notification types/tests"
+    },
+    {
+      "id": "PHASE-8",
+      "name": "Review",
+      "status": "pending",
+      "scope": ["Customer CRUD", "USED eligibility", "one review per movie", "public rating", "admin moderation"],
+      "outOfScope": ["Incident-refunded USED booking policy until decided"],
+      "verification": ["Dedicated review integration tests"],
+      "evidence": ["Controller/service/repository implementation exists", "No dedicated integration suite found", "Reviews default to VISIBLE"],
+      "nextAction": "Add tests and decide whether moderation is pre-publication or post-publication"
+    },
+    {
+      "id": "PHASE-9",
+      "name": "Staff Operations, Audit and Reports",
+      "status": "pending",
+      "scope": ["STAFF check-in", "audit model", "revenue/top-movie/occupancy reports"],
+      "outOfScope": ["HR, payroll and shifts"],
+      "verification": ["Dedicated staff RBAC, audit and report tests"],
+      "evidence": ["QR check-in and admin reports exist", "Audit entity/repository exists but operational writes were not found"],
+      "nextAction": "Add manual booking lookup/combo pickup, wire audit logging and test reports/RBAC"
+    },
+    {
+      "id": "PHASE-10",
+      "name": "Storage, Email, WebSocket and Scheduler",
+      "status": "pending",
+      "scope": ["Cloudinary upload", "OTP email", "hold cleanup", "showtime status scheduler"],
+      "outOfScope": ["Optional realtime refund push"],
+      "verification": ["CloudinaryUploadServiceTest", "Scheduler integration tests"],
+      "evidence": ["Cloudinary test passed", "Both schedulers exist", "No ticket email or WebSocket implementation found"],
+      "nextAction": "Add scheduler tests, ticket email and realtime seat/notification channels"
+    },
+    {
+      "id": "PHASE-11",
+      "name": "Recommendation and AI Analysis",
+      "status": "pending",
+      "scope": ["Hybrid recommendation", "signals", "preference profile", "favorite actors", "admin debug"],
+      "outOfScope": ["Refund MVP ranking adjustment"],
+      "verification": ["RecommendationIntegrationTests"],
+      "evidence": ["Recommendation test passed", "No separate AI content-analysis workflow found"],
+      "nextAction": "Define and implement AI movie-content analysis if still required by SRS"
+    },
+    {
+      "id": "PHASE-12",
+      "name": "Integration and QA",
+      "status": "pending",
+      "scope": ["Build", "integration tests", "inventory tests", "Postman", "RBAC", "negative and concurrency tests"],
+      "outOfScope": ["Ignoring failing tests"],
+      "verification": [".\\mvnw.cmd test"],
+      "evidence": ["Build passed", "17 of 18 reported test classes passed", "CinemaShowtimeEndpointInventoryTests has one stale assertion"],
+      "nextAction": "Fix the remaining inventory test and add concurrency/refund/review/report/RBAC suites"
+    },
+    {
+      "id": "FOOD-PICKUP-QR-001",
+      "name": "One-time Standalone Concession Pickup QR",
+      "status": "done",
+      "scope": ["Paid standalone food-order QR", "Staff lookup", "One-time pickup confirmation", "Customer pickup history"],
+      "outOfScope": ["Kitchen preparation queue", "Booking-linked food QR replacement", "Loyalty redemption on food orders"],
+      "verification": [".\\mvnw.cmd -DskipTests compile", ".\\mvnw.cmd -Dtest=PaymentIntegrationTests test", "npm run build"],
+      "evidence": ["PAID orders expose CINEAI:FOOD QR", "Pickup records PICKED_UP/pickedUpAt", "Duplicate pickup returns HTTP 409", "Frontend production build passed on 2026-07-23"],
+      "nextAction": "Optional kitchen preparation and staff fulfillment queue"
+    },
+    {
+      "id": "CONFIG-001",
+      "name": "Environment Configuration Externalization",
+      "status": "done",
+      "scope": ["Application properties placeholders", "Provider credentials/settings", "CORS/frontend URLs", "Schedulers", "Seed account values", "Upload provider folders", "Test config placeholders"],
+      "outOfScope": ["Domain/business constants", "State machines", "Enums", "Database schema changes", "Authentication or authorization policy changes"],
+      "verification": [".\\mvnw.cmd -DskipTests package", ".\\mvnw.cmd -Dtest=PaymentIntegrationTests test", ".\\mvnw.cmd -Dtest=StorageUploadServiceTest test", ".\\mvnw.cmd test"],
+      "evidence": ["Package build passed on 2026-06-27", "PaymentIntegrationTests passed: 3 tests", "StorageUploadServiceTest passed: 2 tests", "Full test run still fails only in cinema baseline tests unrelated to config externalization"],
+      "nextAction": "Keep new deployment/provider settings in application.properties placeholders and placeholder-only .env.example entries"
+    },
+    {
+      "id": "HARNESS-001",
+      "name": "Repository Harness Engineering",
+      "status": "done",
+      "scope": ["AGENTS.md", "architecture.md", "api-contract.md", "domain-rules.md", "init.ps1", "progress.md", "feature_list.json"],
+      "outOfScope": ["Product feature implementation"],
+      "verification": ["JSON parse", "PowerShell syntax", "Maven package"],
+      "evidence": ["Harness exists and progress was reconfirmed against current HEAD on 2026-06-25"],
+      "nextAction": "Keep state synchronized after every phase change"
+    }
+  ]
+}

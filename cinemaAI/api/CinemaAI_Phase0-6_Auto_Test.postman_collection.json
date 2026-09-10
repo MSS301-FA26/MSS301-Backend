@@ -1,0 +1,1155 @@
+{
+  "info": {
+    "_postman_id": "8d0c20d0-0a06-46a7-8c94-cinemaai-phase0-6",
+    "name": "CinemaAI Phase 0-6 Auto Test",
+    "description": "Auto-test collection generated from api phase 0-6 docs. Run against local backend. Configure seed admin credentials through .env and collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('runSuffix')) { pm.collectionVariables.set('runSuffix', Date.now().toString()); }",
+          "const future = new Date(Date.now() + 9 * 24 * 60 * 60 * 1000);",
+          "future.setHours(19, 30, 0, 0);",
+          "pm.collectionVariables.set('futureShowtimeAt', future.toISOString().slice(0, 19));",
+          "pm.collectionVariables.set('longDescription', 'CinemaAI automated test description '.repeat(8).trim());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let body = {};",
+          "try { body = pm.response.json(); } catch (error) { body = {}; }",
+          "pm.collectionVariables.set('lastStatus', pm.response.code);",
+          "if (body.message) pm.collectionVariables.set('lastMessage', body.message);",
+          "if (body.success !== undefined) pm.collectionVariables.set('lastSuccess', body.success);",
+          "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);",
+          "if (body.data?.refreshToken) pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+          "if (body.data?.qrCode) pm.collectionVariables.set('qrCode', body.data.qrCode);",
+          "if (body.data?.bookingCode) pm.collectionVariables.set('bookingCode', body.data.bookingCode);",
+          "if (body.data?.paymentUrl) { pm.collectionVariables.set('paymentUrl', body.data.paymentUrl); try { const u = new URL(body.data.paymentUrl); pm.collectionVariables.set('vnpTxnRef', u.searchParams.get('vnp_TxnRef') || ''); } catch (e) {} }"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@cinemaai.com"
+    },
+    {
+      "key": "adminPassword",
+      "value": "change-me-admin-password"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "runSuffix",
+      "value": ""
+    },
+    {
+      "key": "genreId",
+      "value": ""
+    },
+    {
+      "key": "actorId",
+      "value": ""
+    },
+    {
+      "key": "movieId",
+      "value": ""
+    },
+    {
+      "key": "roomId",
+      "value": ""
+    },
+    {
+      "key": "seatId",
+      "value": ""
+    },
+    {
+      "key": "showtimeId",
+      "value": ""
+    },
+    {
+      "key": "foodItemId",
+      "value": ""
+    },
+    {
+      "key": "holdBookingId",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "qrCode",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Phase 0 - Shared Foundation",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('health up', () => pm.expect(pm.response.text()).to.include('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/actuator/health"
+          }
+        },
+        {
+          "name": "OpenAPI Docs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('openapi returned', () => pm.expect(pm.response.text()).to.include('openapi'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/v3/api-docs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 2 - Auth User Security",
+      "item": [
+        {
+          "name": "Login Admin Seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('login success', () => pm.expect(body.data.accessToken).to.exist);",
+                  "pm.collectionVariables.set('adminToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', body.data.refreshToken || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('profile ok', () => pm.expect(body.success).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/me"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Admin List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/users?page=0&size=10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 1 - Database Smoke",
+      "item": [
+        {
+          "name": "List Genres",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/genres"
+          }
+        },
+        {
+          "name": "List Movies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/movies?size=10"
+          }
+        },
+        {
+          "name": "List Cinema Rooms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/cinema/rooms"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 3 - Movie Genre Actor",
+      "item": [
+        {
+          "name": "Create Genre",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('genreId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/genres",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Auto Genre {{runSuffix}}\",\n  \"description\": \"{{longDescription}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Actor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('actorId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/actors",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Actor {{runSuffix}}\",\n  \"biography\": \"Actor generated by Postman auto test.\",\n  \"avatarUrl\": \"https://example.com/actor.jpg\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Movie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('movieId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/movies",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Auto Movie {{runSuffix}}\",\n  \"description\": \"Movie generated by Postman auto test.\",\n  \"trailerUrl\": \"https://example.com/trailer.mp4\",\n  \"posterUrl\": \"https://example.com/poster.jpg\",\n  \"avatarUrl\": \"https://example.com/avatar.jpg\",\n  \"durationMinutes\": 110,\n  \"releaseDate\": \"2026-07-01\",\n  \"language\": \"English\",\n  \"subtitleLanguage\": \"Vietnamese\",\n  \"status\": \"NOW_SHOWING\",\n  \"ageRating\": \"13+\",\n  \"director\": \"Auto Director\",\n  \"genreIds\": [\n    \"{{genreId}}\"\n  ],\n  \"actorIds\": [\n    \"{{actorId}}\"\n  ],\n  \"mainActorIds\": [\n    \"{{actorId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Public Movie Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/movies/{{movieId}}"
+          }
+        },
+        {
+          "name": "Admin Movie Search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/movies?keyword=Auto%20Movie&page=0&size=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 4 - Cinema Room Seat Showtime",
+      "item": [
+        {
+          "name": "Get Admin Cinema",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "if (body.data?.id) pm.collectionVariables.set('cinemaId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/cinema"
+          }
+        },
+        {
+          "name": "Update Cinema",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "if (body.data?.id) pm.collectionVariables.set('cinemaId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/cinema",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"CineAI Central Auto\",\n  \"address\": \"1 Nguyen Hue, District 1\",\n  \"city\": \"Ho Chi Minh City\",\n  \"phone\": \"0900000000\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('roomId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/rooms",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Auto Room {{runSuffix}}\",\n  \"roomType\": \"TWO_D\",\n  \"rowCount\": 3,\n  \"columnCount\": 5,\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Generate Seats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "const seats = body.data?.seats || body.data || [];",
+                  "let seatId = '';",
+                  "if (Array.isArray(seats) && seats.length) seatId = seats[0].seatId || seats[0].id;",
+                  "if (seatId !== undefined && seatId !== null) pm.collectionVariables.set('seatId', String(seatId));",
+                  "pm.test('seat id saved', () => pm.expect(String(pm.collectionVariables.get('seatId') || '')).to.not.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/rooms/{{roomId}}/seats/generate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"defaultSeatType\": \"NORMAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Showtime",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('showtimeId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/showtimes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movieId\": \"{{movieId}}\",\n  \"roomId\": \"{{roomId}}\",\n  \"startTime\": \"{{futureShowtimeAt}}\",\n  \"basePrice\": 95000,\n  \"vipPrice\": 120000,\n  \"couplePrice\": 180000,\n  \"status\": \"OPEN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Showtime Seat Map",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "const seats = body.data?.seats || [];",
+                  "if (seats.length) pm.collectionVariables.set('seatId', seats[0].seatId || seats[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/showtimes/{{showtimeId}}/seat-map"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 5 - Booking Food QR",
+      "item": [
+        {
+          "name": "Create Food Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('has data id', () => pm.expect(body.data && body.data.id).to.exist);",
+                  "pm.collectionVariables.set('foodItemId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/foods/items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Popcorn {{runSuffix}}\",\n  \"description\": \"Auto popcorn\",\n  \"price\": 30000,\n  \"imageUrl\": \"https://example.com/popcorn.jpg\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Validate Ticket Price",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('validate price success', () => pm.expect(pm.response.code).to.eql(200));",
+                  "if (body.data?.finalAmount) pm.collectionVariables.set('ticketFinalAmount', body.data.finalAmount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/ticket-pricing/validate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"comboId\": null,\n  \"holiday\": false,\n  \"tickets\": [\n    {\n      \"seatId\": \"{{seatId}}\",\n      \"ticketType\": \"ADULT\",\n      \"seatType\": \"STANDARD\",\n      \"viewerAge\": 22,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Hold Seat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('holding', () => pm.expect(body.data.status).to.eql('HOLDING'));",
+                  "pm.collectionVariables.set('holdBookingId', body.data.id);",
+                  "pm.collectionVariables.set('bookingCode', body.data.bookingCode);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/bookings/hold",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"seatIds\": [\n    \"{{seatId}}\"\n  ],\n  \"holiday\": false,\n  \"tickets\": [\n    {\n      \"seatId\": \"{{seatId}}\",\n      \"ticketType\": \"ADULT\",\n      \"seatType\": \"STANDARD\",\n      \"viewerAge\": 22,\n      \"quantity\": 1\n    }\n  ],\n  \"foods\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Booking From Hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('pending payment', () => pm.expect(body.data.status).to.eql('PENDING_PAYMENT'));",
+                  "pm.collectionVariables.set('bookingId', body.data.id);",
+                  "pm.collectionVariables.set('bookingCode', body.data.bookingCode);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/bookings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holdBookingId\": \"{{holdBookingId}}\",\n  \"foods\": [\n    {\n      \"foodItemId\": \"{{foodItemId}}\",\n      \"foodComboId\": null,\n      \"quantity\": 1\n    }\n  ],\n  \"comboId\": null,\n  \"holiday\": false,\n  \"tickets\": [\n    {\n      \"seatId\": \"{{seatId}}\",\n      \"ticketType\": \"ADULT\",\n      \"seatType\": \"STANDARD\",\n      \"viewerAge\": 22,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "My Bookings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/bookings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Phase 6 - Payment",
+      "item": [
+        {
+          "name": "Create VNPay URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('vnpay pending or conflict on rerun', () => pm.expect([200,409]).to.include(pm.response.code));",
+                  "if (body.data?.id) pm.collectionVariables.set('paymentId', body.data.id);",
+                  "if (body.data?.paymentUrl) pm.collectionVariables.set('paymentUrl', body.data.paymentUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/payments/vnpay/create?bookingId={{bookingId}}"
+          }
+        },
+        {
+          "name": "Mock Payment Confirm",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('mock payment success', () => pm.expect(body.data.status).to.eql('SUCCESS'));",
+                  "pm.collectionVariables.set('paymentId', body.data.id);",
+                  "pm.collectionVariables.set('paymentStatus', body.data.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/payments/mock?bookingId={{bookingId}}"
+          }
+        },
+        {
+          "name": "Get Payment By Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('payment belongs to booking', () => pm.expect(String(body.data.bookingId)).to.eql(String(pm.collectionVariables.get('bookingId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/payments/booking/{{bookingId}}"
+          }
+        },
+        {
+          "name": "Get Booking QR After Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('paid and qr', () => { pm.expect(body.data.status).to.eql('PAID'); pm.expect(body.data.qrCode).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('qrCode', body.data.qrCode);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/bookings/{{bookingId}}"
+          }
+        },
+        {
+          "name": "Admin Check In QR",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "pm.test('HTTP 2xx/3xx or expected', () => pm.expect(pm.response.code).to.be.below(500));",
+                  "pm.test('used after check-in', () => pm.expect(body.data.status).to.eql('USED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/check-in",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qrCode\": \"{{qrCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

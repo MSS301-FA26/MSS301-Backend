@@ -1,0 +1,86 @@
+{
+  "dataset": "CinemaAI Synthetic Research Dataset v1 (synthetic_flag=true)",
+  "protocol": {
+    "fit_on": "train.csv only",
+    "top_k": 10,
+    "cf_neighbors": 20,
+    "candidates": "all movies minus user's train items"
+  },
+  "ranking": {
+    "liked==1": [
+      {
+        "model": "Popularity",
+        "users_evaluated": 363,
+        "precision@10": 0.0036,
+        "recall@10": 0.0195,
+        "ndcg@10": 0.0124,
+        "map@10": 0.0084,
+        "coverage@10": 0.0133
+      },
+      {
+        "model": "User-based CF k=20",
+        "users_evaluated": 363,
+        "precision@10": 0.0039,
+        "recall@10": 0.0233,
+        "ndcg@10": 0.0121,
+        "map@10": 0.0067,
+        "coverage@10": 0.5317
+      },
+      {
+        "model": "Content-based SBERT",
+        "users_evaluated": 363,
+        "precision@10": 0.0127,
+        "recall@10": 0.0787,
+        "ndcg@10": 0.0417,
+        "map@10": 0.0245,
+        "coverage@10": 0.3942
+      }
+    ],
+    "rating>=3.5": [
+      {
+        "model": "Popularity",
+        "users_evaluated": 524,
+        "precision@10": 0.0053,
+        "recall@10": 0.0209,
+        "ndcg@10": 0.015,
+        "map@10": 0.0087,
+        "coverage@10": 0.0133
+      },
+      {
+        "model": "User-based CF k=20",
+        "users_evaluated": 524,
+        "precision@10": 0.0053,
+        "recall@10": 0.0212,
+        "ndcg@10": 0.0127,
+        "map@10": 0.0063,
+        "coverage@10": 0.5508
+      },
+      {
+        "model": "Content-based SBERT",
+        "users_evaluated": 524,
+        "precision@10": 0.0116,
+        "recall@10": 0.0523,
+        "ndcg@10": 0.0286,
+        "map@10": 0.0143,
+        "coverage@10": 0.45
+      }
+    ]
+  },
+  "rating_prediction": [
+    {
+      "model": "Global mean",
+      "rmse": 0.8404,
+      "mae": 0.6795
+    },
+    {
+      "model": "Item mean",
+      "rmse": 0.8221,
+      "mae": 0.6641
+    },
+    {
+      "model": "User-based CF k=20",
+      "rmse": 0.9532,
+      "mae": 0.7543
+    }
+  ]
+}

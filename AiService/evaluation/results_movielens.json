@@ -1,0 +1,56 @@
+{
+  "dataset": "MovieLens 1M (official GroupLens release)",
+  "protocol": {
+    "fit_on": "train.csv only (per-user temporal 80/10/10 split)",
+    "top_k": 10,
+    "cf_neighbors": 20,
+    "relevance": "test rating >= 4",
+    "candidates": "full catalog minus user's train items"
+  },
+  "ranking": [
+    {
+      "model": "Popularity",
+      "users_evaluated": 5827,
+      "precision@10": 0.0394,
+      "recall@10": 0.0446,
+      "ndcg@10": 0.0506,
+      "map@10": 0.0227,
+      "coverage@10": 0.0301
+    },
+    {
+      "model": "User-based CF k=20",
+      "users_evaluated": 5827,
+      "precision@10": 0.0067,
+      "recall@10": 0.0096,
+      "ndcg@10": 0.01,
+      "map@10": 0.0043,
+      "coverage@10": 0.7005
+    },
+    {
+      "model": "Content-based SBERT",
+      "users_evaluated": 5827,
+      "precision@10": 0.006,
+      "recall@10": 0.0113,
+      "ndcg@10": 0.0093,
+      "map@10": 0.004,
+      "coverage@10": 0.2856
+    }
+  ],
+  "rating_prediction": [
+    {
+      "model": "Global mean",
+      "rmse": 1.1634,
+      "mae": 0.9575
+    },
+    {
+      "model": "Item mean",
+      "rmse": 0.9925,
+      "mae": 0.7893
+    },
+    {
+      "model": "User-based CF k=20",
+      "rmse": 1.0807,
+      "mae": 0.8421
+    }
+  ]
+}

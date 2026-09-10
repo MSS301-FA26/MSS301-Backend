@@ -1,0 +1,76 @@
+# ===============================
+# OS & Office lock files
+# ===============================
+.DS_Store
+Thumbs.db
+~$*
+*.tmp
+
+# ===============================
+# IDE & Editors
+# ===============================
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ===============================
+# Environment & Secrets
+# ===============================
+.env
+.env.*
+!.env.example
+
+# ===============================
+# Logs
+# ===============================
+*.log
+
+# ===============================
+# Java / Maven
+# ===============================
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+model/*.pkl

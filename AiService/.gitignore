@@ -1,0 +1,23 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Model files (quá lớn)
+model/*.pkl
+
+# Data (nếu chứa thông tin nhạy cảm)
+# data/
+
+# Env
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
