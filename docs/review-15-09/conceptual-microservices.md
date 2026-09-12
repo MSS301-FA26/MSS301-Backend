@@ -1,14 +1,14 @@
 # CinemaAI Microservices - Conceptual Design
 
-## 1. Muc tieu
+## 1. Mục tiêu
 
-Chuyen CinemaAI tu Spring Boot monolith sang cac bounded context co quyen so huu du lieu ro rang, trong khi van giu nguyen cac nghiep vu cot loi: xem phim, chon suat chieu, giu ghe, mua ve/do an, thanh toan, check-in va goi y phim.
+Chuyển CinemaAI từ Spring Boot monolith sang các bounded context có quyền sở hữu dữ liệu rõ ràng, trong khi vẫn giữ nguyên các nghiệp vụ cốt lõi: xem phim, chọn suất chiếu, giữ ghế, mua vé/đồ ăn, thanh toán, check-in và gợi ý phim.
 
-Ba nguyen tac chinh:
+Ba nguyên tắc chính:
 
-1. Moi service so huu du lieu cua minh; service khac khong truy cap truc tiep database do.
-2. Quan he xuyen service duoc giu bang logical ID, khong dung physical foreign key.
-3. Booking luu transaction snapshot de bao toan lich su va khong phai goi Catalog khi doc lai ve/hoa don.
+1. Mỗi service sở hữu dữ liệu của mình; service khác không truy cập trực tiếp database đó.
+2. Quan hệ xuyên service được giữ bằng logical ID, không dùng physical foreign key.
+3. Booking lưu transaction snapshot để bảo toàn lịch sử và không phải gọi Catalog khi đọc lại vé/hóa đơn.
 
 ## 2. System context
 
@@ -35,13 +35,13 @@ flowchart LR
     Broker -.-> Recommendation
 ```
 
-Gateway/BFF la diem vao chung cua Web va Flutter. Gateway phu trach routing, authentication va cac concern dung chung; business rule van nam trong service so huu nghiep vu.
+Gateway/BFF là điểm vào chung của Web và Flutter. Gateway phụ trách routing, authentication và các concern dùng chung; business rule vẫn nằm trong service sở hữu nghiệp vụ.
 
 ## 3. Service ownership
 
 ### 3.1 Identity Service
 
-So huu danh tinh va quyen truy cap:
+Sở hữu danh tính và quyền truy cập:
 
 - User
 - UserProfile
@@ -49,54 +49,54 @@ So huu danh tinh va quyen truy cap:
 - RefreshToken
 - Email/phone verification token
 - Password reset token
-- StaffProfile va thong tin nhan vien lien quan den danh tinh
+- StaffProfile và thông tin nhân viên liên quan đến danh tính
 
-Khong so huu Booking. Booking Service chi luu `userId` va snapshot thong tin khach khi nghiep vu hoa don/ve yeu cau.
+Không sở hữu Booking. Booking Service chỉ lưu `userId` và snapshot thông tin khách khi nghiệp vụ hóa đơn/vé yêu cầu.
 
 ### 3.2 Catalog Service
 
-So huu thong tin co the thay doi theo thoi gian:
+Sở hữu thông tin có thể thay đổi theo thời gian:
 
 - Movie, Genre, Actor, MovieGenre, MovieActor
 - Cinema, Room, SeatRow, Seat
 - Showtime
 - TicketPricingRule, TicketCombo
 - FoodItem, FoodCombo
-- Dinh nghia promotion neu promotion la mot phan cua pricing
+- Định nghĩa promotion nếu promotion là một phần của pricing
 
-Catalog la nguon co tham quyen cho trang thai phim, suat chieu, ghe vat ly, do an va gia tai thoi diem checkout.
+Catalog là nguồn có thẩm quyền cho trạng thái phim, suất chiếu, ghế vật lý, đồ ăn và giá tại thời điểm checkout.
 
 ### 3.3 Booking Service
 
-So huu giao dich dat cho:
+Sở hữu giao dịch đặt chỗ:
 
 - Booking
 - BookingSeat
 - BookingTicket
 - BookingFoodItem
-- FoodOrder doc lap
+- FoodOrder độc lập
 - Seat hold runtime
-- Promotion da ap dung vao booking
+- Promotion đã áp dụng vào booking
 - QR/pickup entitlement
 
-Booking khong so huu Movie, Showtime, Seat hoac FoodItem goc. Service nay luu logical ID va snapshot can thiet cho giao dich.
+Booking không sở hữu Movie, Showtime, Seat hoặc FoodItem gốc. Service này lưu logical ID và snapshot cần thiết cho giao dịch.
 
 ### 3.4 Payment Service
 
-So huu dong tien va ket qua giao dich:
+Sở hữu dòng tiền và kết quả giao dịch:
 
 - Payment
 - PaymentAttempt
 - Refund
 - ProviderTransaction
-- CineWallet, WalletTransaction, WithdrawalRequest neu nhom giu tinh nang wallet
-- Loyalty ledger co the duoc giu trong service nay o giai doan dau
+- CineWallet, WalletTransaction, WithdrawalRequest nếu nhóm giữ tính năng wallet
+- Loyalty ledger có thể được giữ trong service này ở giai đoạn đầu
 
-Payment chi luu `bookingId`, `foodOrderId`, `userId` dang logical reference. Payment khong update truc tiep database Booking.
+Payment chỉ lưu `bookingId`, `foodOrderId`, `userId` dạng logical reference. Payment không update trực tiếp database Booking.
 
 ### 3.5 Recommendation Service
 
-So huu du lieu va ket qua goi y:
+Sở hữu dữ liệu và kết quả gợi ý:
 
 - UserInteraction
 - MovieFeatureReadModel
@@ -105,15 +105,15 @@ So huu du lieu va ket qua goi y:
 - ModelVersion
 - ExperimentMetric
 
-Wishlist, watch history, trailer interaction va rating/review la cac signal dau vao. O target architecture, Recommendation nhan signal qua API/event hoac mot interaction endpoint; khong query truc tiep database cua Catalog hay Booking.
+Wishlist, watch history, trailer interaction và rating/review là các signal đầu vào. Ở target architecture, Recommendation nhận signal qua API/event hoặc một interaction endpoint; không query trực tiếp database của Catalog hay Booking.
 
 ### 3.6 Supporting concerns
 
-Notification va Audit co the tam thoi la module dung chung trong giai doan migration. Chi tach thanh service rieng neu con thoi gian; khong can them service chi de dat muc tieu so luong.
+Notification và Audit có thể tạm thời là module dùng chung trong giai đoạn migration. Chỉ tách thành service riêng nếu còn thời gian; không cần thêm service chỉ để đạt mục tiêu số lượng.
 
 ## 4. Conceptual data model theo service
 
-Day la conceptual model, khong phai physical schema. ID xuyen service khong mang rang buoc foreign key o database.
+Đây là conceptual model, không phải physical schema. ID xuyên service không mang ràng buộc foreign key ở database.
 
 ```mermaid
 erDiagram
@@ -141,7 +141,7 @@ erDiagram
     REC_MODEL_VERSION ||--o{ REC_RESULT : produces
 ```
 
-## 5. Logical reference va snapshot
+## 5. Logical reference và snapshot
 
 ### 5.1 Booking
 
@@ -157,15 +157,15 @@ Booking
 - subtotal
 - discountAmount
 - totalAmount
-- customerNameSnapshot           optional, neu ve/hoa don can
-- customerEmailSnapshot          optional, neu ve/hoa don can
+- customerNameSnapshot           optional, nếu vé/hóa đơn cần
+- customerEmailSnapshot          optional, nếu vé/hóa đơn cần
 - movieTitleSnapshot
 - showtimeStartSnapshot
 - cinemaNameSnapshot
 - roomNameSnapshot
 ```
 
-Thoi gian giu ghe duoc chot la **3 phut**. `holdExpiresAt` duoc tinh tu thoi diem luot giu ghe duoc tao hoac gia han. Khi het han, booking chuyen sang `EXPIRED` va cac ghe duoc giai phong.
+Thời gian giữ ghế được chốt là **3 phút**. `holdExpiresAt` được tính từ thời điểm lượt giữ ghế được tạo hoặc gia hạn. Khi hết hạn, booking chuyển sang `EXPIRED` và các ghế được giải phóng.
 
 ### 5.2 BookingSeat
 
@@ -208,14 +208,14 @@ BookingFoodItem
 - lineTotal
 ```
 
-`productNameSnapshot` va `unitPriceSnapshot` khong duoc dong bo lai khi Catalog thay doi. Day la thong tin tai thoi diem mua, giong cach `order_detail` luu ten va gia san pham.
+`productNameSnapshot` và `unitPriceSnapshot` không được đồng bộ lại khi Catalog thay đổi. Đây là thông tin tại thời điểm mua, giống cách `order_detail` lưu tên và giá sản phẩm.
 
 ### 5.5 Payment
 
 ```text
 Payment
 - paymentId
-- bookingId hoac foodOrderId     logical reference -> Booking
+- bookingId hoặc foodOrderId     logical reference -> Booking
 - userId                         logical reference -> Identity
 - bookingCodeSnapshot
 - provider
@@ -226,9 +226,9 @@ Payment
 - paidAt
 ```
 
-## 6. Quy tac checkout
+## 6. Quy tắc checkout
 
-Frontend chi gui ID va lua chon cua nguoi dung:
+Frontend chỉ gửi ID và lựa chọn của người dùng:
 
 ```json
 {
@@ -243,9 +243,9 @@ Frontend chi gui ID va lua chon cua nguoi dung:
 }
 ```
 
-Frontend khong phai nguon tin cay cho ten san pham, don gia, giam gia hoac tong tien.
+Frontend không phải nguồn tin cậy cho tên sản phẩm, đơn giá, giảm giá hoặc tổng tiền.
 
-Booking goi Catalog/Pricing mot lan theo batch:
+Booking gọi Catalog/Pricing một lần theo batch:
 
 ```text
 POST /internal/checkout-quotes
@@ -268,9 +268,9 @@ Response conceptual:
 }
 ```
 
-Khong goi Catalog rieng tung lan cho tung ghe/do an vi se tao N+1 network calls.
+Không gọi Catalog riêng từng lần cho từng ghế/đồ ăn vì sẽ tạo N+1 network calls.
 
-## 7. Booking va payment flow
+## 7. Booking và payment flow
 
 ```mermaid
 sequenceDiagram
@@ -283,44 +283,44 @@ sequenceDiagram
     participant V as Payment Provider
     participant E as Event Broker
 
-    U->>C: Chon showtime, ghe, ve va do an
-    C->>G: Gui ID va quantity
+    U->>C: Chọn showtime, ghế, vé và đồ ăn
+    C->>G: Gửi ID và quantity
     G->>B: Create hold/checkout
     B->>K: Batch checkout quote
     K-->>B: Valid data + authoritative price
-    B->>B: Kiem tra ghe, tao hold, luu snapshot
+    B->>B: Kiểm tra ghế, tạo hold, lưu snapshot
     B-->>C: Booking HOLDING + expiresAt
-    C->>P: Khoi tao payment cho bookingId
-    P->>B: Xac nhan booking con payable
-    P->>V: Tao giao dich
-    V-->>P: Callback da xac minh
-    P->>P: Luu Payment SUCCESS mot cach idempotent
+    C->>P: Khởi tạo payment cho bookingId
+    P->>B: Xác nhận booking còn payable
+    P->>V: Tạo giao dịch
+    V-->>P: Callback đã xác minh
+    P->>P: Lưu Payment SUCCESS một cách idempotent
     P-->>E: PaymentSucceeded
     E-->>B: PaymentSucceeded
     B->>B: Booking PAID, Seat BOOKED, sinh QR
     B-->>E: BookingPaid
 ```
 
-Trong target microservice, Payment khong sua truc tiep bang Booking. Consumer phai idempotent vi event co the duoc giao lai.
+Trong target microservice, Payment không sửa trực tiếp bảng Booking. Consumer phải idempotent vì event có thể được giao lại.
 
 ## 8. Domain events
 
-| Producer | Event | Consumer chinh | Muc dich |
+| Producer | Event | Consumer chính | Mục đích |
 |---|---|---|---|
-| Catalog | `MoviePublished`, `MovieUpdated` | Recommendation | Cap nhat movie feature read model |
-| Catalog | `ShowtimeCancelled` | Booking | Huy/hoan cac booking bi anh huong |
-| Catalog | `FoodPriceChanged` | Read models | Cap nhat thong tin moi; khong sua snapshot cu |
-| Booking | `BookingHeld` | Analytics/Notification | Ghi nhan hold |
-| Booking | `BookingPaid` | Recommendation/Loyalty/Notification | Signal manh, cong diem, gui ve |
-| Booking | `BookingExpired` | Analytics | Ghi nhan het hold |
-| Booking | `BookingCancelled` | Payment/Recommendation | Xu ly nghiep vu lien quan |
-| Booking | `TicketCheckedIn` | Recommendation | Xac nhan user thuc su da xem |
-| Payment | `PaymentSucceeded` | Booking | Chuyen booking sang PAID |
-| Payment | `PaymentFailed` | Booking/Notification | Hien thi retry/thong bao |
-| Payment | `RefundCompleted` | Booking/Loyalty | Chuyen REFUNDED va dao diem |
+| Catalog | `MoviePublished`, `MovieUpdated` | Recommendation | Cập nhật movie feature read model |
+| Catalog | `ShowtimeCancelled` | Booking | Hủy/hoàn các booking bị ảnh hưởng |
+| Catalog | `FoodPriceChanged` | Read models | Cập nhật thông tin mới; không sửa snapshot cũ |
+| Booking | `BookingHeld` | Analytics/Notification | Ghi nhận hold |
+| Booking | `BookingPaid` | Recommendation/Loyalty/Notification | Signal mạnh, cộng điểm, gửi vé |
+| Booking | `BookingExpired` | Analytics | Ghi nhận hết hold |
+| Booking | `BookingCancelled` | Payment/Recommendation | Xử lý nghiệp vụ liên quan |
+| Booking | `TicketCheckedIn` | Recommendation | Xác nhận user thực sự đã xem |
+| Payment | `PaymentSucceeded` | Booking | Chuyển booking sang PAID |
+| Payment | `PaymentFailed` | Booking/Notification | Hiển thị retry/thông báo |
+| Payment | `RefundCompleted` | Booking/Loyalty | Chuyển REFUNDED và đảo điểm |
 | Interaction API | `MovieViewed`, `WishlistAdded`, `ReviewCreated` | Recommendation | Implicit/explicit feedback |
 
-Event toi thieu co `eventId`, `eventType`, `version`, `occurredAt`, `aggregateId`, `correlationId` va payload. Event quan trong duoc phat bang Transactional Outbox; consumer deduplicate bang `eventId`.
+Event tối thiểu có `eventId`, `eventType`, `version`, `occurredAt`, `aggregateId`, `correlationId` và payload. Event quan trọng được phát bằng Transactional Outbox; consumer deduplicate bằng `eventId`.
 
 ## 9. Recommendation conceptual
 
@@ -338,14 +338,14 @@ flowchart LR
     API --> Clients[Web / Flutter]
 ```
 
-Diem implicit feedback khoi dau de thu nghiem:
+Điểm implicit feedback khởi đầu để thử nghiệm:
 
 ```text
 MovieViewed       = 1
 WishlistAdded     = 3
 BookingPaid       = 5
 TicketCheckedIn   = 6
-ReviewCreated     = explicit rating hoac signal bo sung
+ReviewCreated     = explicit rating hoặc signal bổ sung
 ```
 
 Hybrid score:
@@ -355,9 +355,9 @@ S(u,i) = alpha(u) * S_CF(u,i) + (1 - alpha(u)) * S_CB(u,i)
 alpha(u) = min(0.8, n(u) / (n(u) + k))
 ```
 
-User it tuong tac duoc uu tien content-based; user co nhieu interaction tang trong so collaborative filtering. Cac trong so la gia thuyet nghien cuu, phai danh gia bang Precision@K, Recall@K, NDCG@K, MAP@K, Coverage va Diversity.
+User ít tương tác được ưu tiên content-based; user có nhiều interaction tăng trọng số collaborative filtering. Các trọng số là giả thuyết nghiên cứu, phải đánh giá bằng Precision@K, Recall@K, NDCG@K, MAP@K, Coverage và Diversity.
 
-## 10. State machine can dong bo voi Stitch
+## 10. State machine cần đồng bộ với Stitch
 
 Booking:
 
@@ -380,10 +380,10 @@ Seat runtime:
 HOLDING | BOOKED | RELEASED | CHECKED_IN
 ```
 
-Stitch can toi thieu cac trang thai: ghe available/selected/holding/booked, hold countdown, payment success/failed, booking expired, refund pending/completed va ticket da check-in.
+Stitch cần tối thiểu các trạng thái: ghế available/selected/holding/booked, hold countdown, payment success/failed, booking expired, refund pending/completed và ticket đã check-in.
 
-## 11. Diem can giang vien xac nhan
+## 11. Điểm cần giảng viên xác nhận
 
-1. Loyalty/Wallet se nam trong Payment Service o giai doan dau hay tach thanh service rieng neu con thoi gian.
-2. Review/Wishlist thuoc Recommendation/Engagement hay giu trong Catalog trong dot migration dau.
-3. Target hien tai la mot cinema; conceptual van giu Cinema de quan ly Room/Seat dung nghiep vu.
+1. Loyalty/Wallet sẽ nằm trong Payment Service ở giai đoạn đầu hay tách thành service riêng nếu còn thời gian.
+2. Review/Wishlist thuộc Recommendation/Engagement hay giữ trong Catalog trong đợt migration đầu.
+3. Target hiện tại là một cinema; conceptual vẫn giữ Cinema để quản lý Room/Seat đúng nghiệp vụ.

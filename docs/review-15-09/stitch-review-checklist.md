@@ -1,25 +1,25 @@
 # Stitch Review Checklist - 15/09
 
-## 1. Design system dung chung
+## 1. Design system dùng chung
 
-- [ ] Web va mobile dung cung color palette, typography va icon style.
-- [ ] Co button default/pressed/disabled/loading.
-- [ ] Co input default/focus/error/disabled.
-- [ ] Co Movie Card, Showtime Chip, Food Card va Status Badge.
-- [ ] Co seat states: available, selected, holding, booked, unavailable, couple/VIP neu co.
-- [ ] Ten trang thai khop voi conceptual.
+- [ ] Web và mobile dùng cùng color palette, typography và icon style.
+- [ ] Có button default/pressed/disabled/loading.
+- [ ] Có input default/focus/error/disabled.
+- [ ] Có Movie Card, Showtime Chip, Food Card và Status Badge.
+- [ ] Có seat states: available, selected, holding, booked, unavailable, couple/VIP nếu có.
+- [ ] Tên trạng thái khớp với conceptual.
 
 ## 2. Web core flow
 
 - [ ] Home.
 - [ ] Movie list/search/filter.
 - [ ] Movie detail.
-- [ ] Chon ngay va showtime.
-- [ ] Chon ghe, co legend va countdown.
-- [ ] Chon ticket type.
-- [ ] Chon food/combo.
-- [ ] Checkout co subtotal, discount va total.
-- [ ] Payment success va failed.
+- [ ] Chọn ngày và showtime.
+- [ ] Chọn ghế, có legend và countdown.
+- [ ] Chọn ticket type.
+- [ ] Chọn food/combo.
+- [ ] Checkout có subtotal, discount và total.
+- [ ] Payment success và failed.
 - [ ] Booking history.
 - [ ] Booking detail/QR ticket.
 
@@ -30,31 +30,30 @@
 - [ ] Movie list/search.
 - [ ] Movie detail.
 - [ ] Showtime selection.
-- [ ] Seat selection phu hop man hinh nho.
+- [ ] Seat selection phù hợp màn hình nhỏ.
 - [ ] Food selection.
 - [ ] Checkout.
 - [ ] Payment result.
 - [ ] My bookings.
 - [ ] Booking detail/QR ticket.
-- [ ] Bottom navigation va back navigation ro rang.
+- [ ] Bottom navigation và back navigation rõ ràng.
 
-## 4. Kiem tra nghiep vu
+## 4. Kiểm tra nghiệp vụ
 
-- [ ] Frontend khong the hien rang no tu quyet dinh gia; gia/tong tien la ket qua backend.
-- [ ] Checkout hien thong tin snapshot ma booking history se su dung.
-- [ ] Co trang thai hold het han.
-- [ ] Co trang thai ghe da bi nguoi khac giu/dat.
-- [ ] Co retry khi payment failed.
-- [ ] Booking PAID moi co QR check-in.
-- [ ] Recommendation co tren Home hoac Movie Detail.
-- [ ] Empty/loading/error states co cho cac man hinh quan trong.
+- [ ] Frontend không thể hiện rằng nó tự quyết định giá; giá/tổng tiền là kết quả backend.
+- [ ] Checkout hiện thông tin snapshot mà booking history sẽ sử dụng.
+- [ ] Có trạng thái hold hết hạn.
+- [ ] Có trạng thái ghế đã bị người khác giữ/đặt.
+- [ ] Có retry khi payment failed.
+- [ ] Booking PAID mới có QR check-in.
+- [ ] Recommendation có trên Home hoặc Movie Detail.
+- [ ] Empty/loading/error states có cho các màn hình quan trọng.
 
-## 5. Kiem tra truoc khi gui giang vien
+## 5. Kiểm tra trước khi gửi giảng viên
 
-- [ ] Dat section/page ro rang: `Web`, `Mobile`, `Design System`.
-- [ ] Khong con placeholder hoac man hinh dang do trong core flow.
-- [ ] Cac man hinh co kich thuoc/frame thong nhat.
-- [ ] Mo link bang cua so an danh thanh cong.
-- [ ] Dan link Web va Mobile vao `README.md` cua thu muc review.
-- [ ] Export anh/PDF du phong neu Stitch gap loi mang.
-
+- [ ] Đặt section/page rõ ràng: `Web`, `Mobile`, `Design System`.
+- [ ] Không còn placeholder hoặc màn hình dang dở trong core flow.
+- [ ] Các màn hình có kích thước/frame thống nhất.
+- [ ] Mở link bằng cửa sổ ẩn danh thành công.
+- [ ] Dán link Web và Mobile vào `README.md` của thư mục review.
+- [ ] Export ảnh/PDF dự phòng nếu Stitch gặp lỗi mạng.
