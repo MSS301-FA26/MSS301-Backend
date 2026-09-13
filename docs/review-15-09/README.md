@@ -7,6 +7,7 @@
 1. [Bản conceptual chính để review](./conceptual-review.md)
 2. [Checklist đối chiếu Stitch](./stitch-review-checklist.md)
 3. [Task của leader cho ngày 15/09](./leader-task-15-09.md)
+4. [Phân công chi tiết của nhóm](./team-tasks-15-09.md)
 
 ## Link Stitch
 
