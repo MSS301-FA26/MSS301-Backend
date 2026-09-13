@@ -2,11 +2,11 @@
 
 Đây là bộ tài liệu để leader mở trực tiếp cho giảng viên kiểm tra.
 
-## Noi dung
+## Nội dung
 
 1. [Bản conceptual chính để review](./conceptual-review.md)
-2. [Bản conceptual kỹ thuật chi tiết](./conceptual-microservices.md)
-3. [Checklist đối chiếu Stitch](./stitch-review-checklist.md)
+2. [Checklist đối chiếu Stitch](./stitch-review-checklist.md)
+3. [Task của leader cho ngày 15/09](./leader-task-15-09.md)
 
 ## Link Stitch
 
@@ -22,4 +22,3 @@ Trước ngày review, mở hai link bằng cửa sổ ẩn danh để kiểm tr
 - Luồng booking, payment và recommendation.
 - Stitch cho core customer journey trên web và mobile.
 - Đây chưa phải physical database design và chưa có nghĩa tất cả service đã được tách thành code.
-
