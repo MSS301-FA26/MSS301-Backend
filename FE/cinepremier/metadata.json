@@ -1,6 +1,0 @@
-{
-  "name": "CINEPREMIER",
-  "description": "Premium cinema platform with smart seat mapping and cyber-noir styling.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
