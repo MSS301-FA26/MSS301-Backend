@@ -1,0 +1,43 @@
+{
+  "hash": "15443f29",
+  "configHash": "c942a979",
+  "lockfileHash": "9f92b8f9",
+  "browserHash": "24143f0c",
+  "optimized": {
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "7824340a",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "e37a0e0c",
+      "needsInterop": true
+    },
+    "motion/react": {
+      "src": "../../node_modules/motion/dist/es/react.mjs",
+      "file": "motion_react.js",
+      "fileHash": "53219283",
+      "needsInterop": false
+    },
+    "lucide-react": {
+      "src": "../../node_modules/lucide-react/dist/esm/lucide-react.js",
+      "file": "lucide-react.js",
+      "fileHash": "3e8f5a3c",
+      "needsInterop": false
+    },
+    "react-snowfall": {
+      "src": "../../node_modules/react-snowfall/lib/index.js",
+      "file": "react-snowfall.js",
+      "fileHash": "108ebbc0",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-LX74GOTH": {
+      "file": "chunk-LX74GOTH.js"
+    }
+  }
+}

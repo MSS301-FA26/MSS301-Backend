@@ -1,0 +1,150 @@
+services:
+  # ============================================================================
+  # 1. IDENTITY DATABASE (Port 5431)
+  # ============================================================================
+  identity-db:
+    image: postgres:16-alpine
+    container_name: cinema-identity-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: identity_db
+      POSTGRES_USER: identity_user
+      POSTGRES_PASSWORD: identity_pass_123
+    ports:
+      - "5431:5432"
+    volumes:
+      - identity_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity_user -d identity_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+  # ============================================================================
+  # 2. CATALOG DATABASE (Port 5432)
+  # ============================================================================
+  catalog-db:
+    image: postgres:16-alpine
+    container_name: cinema-catalog-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: catalog_db
+      POSTGRES_USER: catalog_user
+      POSTGRES_PASSWORD: catalog_pass_123
+    ports:
+      - "5432:5432"
+    volumes:
+      - catalog_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalog_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+  # ============================================================================
+  # 3. BOOKING DATABASE (Port 5433)
+  # ============================================================================
+  booking-db:
+    image: postgres:16-alpine
+    container_name: cinema-booking-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: booking_db
+      POSTGRES_USER: booking_user
+      POSTGRES_PASSWORD: booking_pass_123
+    ports:
+      - "5433:5432"
+    volumes:
+      - booking_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking_user -d booking_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+  # ============================================================================
+  # 4. PAYMENT DATABASE (Port 5434)
+  # ============================================================================
+  payment-db:
+    image: postgres:16-alpine
+    container_name: cinema-payment-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: payment_user
+      POSTGRES_PASSWORD: payment_pass_123
+    ports:
+      - "5434:5432"
+    volumes:
+      - payment_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment_user -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+  # ============================================================================
+  # 5. RECOMMENDATION DATABASE (Port 5435)
+  # ============================================================================
+  recommendation-db:
+    image: postgres:16-alpine
+    container_name: cinema-recommendation-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: recommendation_db
+      POSTGRES_USER: rec_user
+      POSTGRES_PASSWORD: rec_pass_123
+    ports:
+      - "5435:5432"
+    volumes:
+      - recommendation_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rec_user -d recommendation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+  # ============================================================================
+  # 6. ASYNCHRONOUS EVENT BROKER: RABBITMQ (AMQP 5672, Management 15672)
+  # ============================================================================
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: cinema-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"     # AMQP transport
+      - "15672:15672"   # Management Web UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-network
+
+networks:
+  cinema-network:
+    driver: bridge
+
+volumes:
+  identity_data:
+  catalog_data:
+  booking_data:
+  payment_data:
+  recommendation_data:
+  rabbitmq_data:

@@ -1,0 +1,11 @@
+{
+  "name": "CinePremier Studios",
+  "short_name": "CinePremier",
+  "description": "Cinema booking and administration dashboard",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#f59e0b",
+  "icons": []
+}

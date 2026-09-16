@@ -1,0 +1,1629 @@
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  Camera,
+  CameraOff,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Clock3,
+  Printer,
+  QrCode,
+  RefreshCw,
+  ScanLine,
+  Search,
+  ShieldCheck,
+  Ticket,
+  XCircle,
+} from 'lucide-react';
+import jsQR from 'jsqr';
+import { motion } from 'motion/react';
+import { getStoredAuth } from '../../services/authService';
+import { staffService } from '../../services/staffService';
+import { useAuthStore } from '../../stores/useAuthStore';
+
+const FOOD_PAGE_SIZE = 10;
+const BOOKINGS_PAGE_SIZE = 8;
+const RECENT_BOOKINGS_LIMIT = 50;
+const CHECK_IN_LEAD_MINUTES = 30;
+
+const FOOD_STATUS_META = {
+  ACTIVE: { label: 'Mß╗ƒ b├ín', className: 'bg-emerald-400/10 text-emerald-300' },
+  LOW_STOCK: { label: 'Sß║»p hß║┐t', className: 'bg-purple-500/10 text-purple-300' },
+  OUT_OF_STOCK: { label: 'Hß║┐t', className: 'bg-rose-500/10 text-rose-300' },
+  INACTIVE: { label: 'Hß║┐t', className: 'bg-rose-500/10 text-rose-300' },
+};
+
+const getFoodStatusMeta = (status) => FOOD_STATUS_META[status] || FOOD_STATUS_META.OUT_OF_STOCK;
+
+const normalizeSearchText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/─æ/g, 'd')
+  .replace(/─É/g, 'D')
+  .toLowerCase()
+  .trim();
+
+const formatDateTime = (value) => {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('vi-VN');
+};
+
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}d`;
+
+const formatSeats = (booking) => {
+  const seats = booking?.seats || [];
+  if (!seats.length) return 'Ch╞░a c├│ ghß║┐';
+  return seats.map((seat) => `${seat.rowLabel}${seat.seatNumber}`).join(', ');
+};
+
+const getCheckInOpenAt = (booking) => {
+  if (!booking?.showtimeStart) return null;
+  const showtimeStart = new Date(booking.showtimeStart);
+  if (Number.isNaN(showtimeStart.getTime())) return null;
+  return new Date(showtimeStart.getTime() - CHECK_IN_LEAD_MINUTES * 60 * 1000);
+};
+
+const isBookingCheckInOpen = (booking) => {
+  if (String(booking?.status || '').toUpperCase() !== 'PAID') return false;
+  const checkInOpenAt = getCheckInOpenAt(booking);
+  return !checkInOpenAt || Date.now() >= checkInOpenAt.getTime();
+};
+
+const getCheckInWindowMessage = (booking) => {
+  const checkInOpenAt = getCheckInOpenAt(booking);
+  if (!checkInOpenAt) return 'Check-in chß╗ë mß╗ƒ trong v├▓ng 30 ph├║t tr╞░ß╗¢c giß╗¥ chiß║┐u.';
+  return `Check-in chß╗ë mß╗ƒ tß╗½ ${checkInOpenAt.toLocaleString('vi-VN')} (30 ph├║t tr╞░ß╗¢c giß╗¥ chiß║┐u).`;
+};
+
+const parseQrOrBookingCode = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return { qrCode: '', bookingCode: '' };
+  if (trimmed.toUpperCase().startsWith('CINEAI:')) return { qrCode: trimmed, bookingCode: '' };
+  return { qrCode: '', bookingCode: trimmed };
+};
+
+const getBookingStatusMeta = (status = '') => {
+  const normalized = String(status).toUpperCase();
+  if (normalized === 'PAID') {
+    return {
+      label: 'Sß║╡n s├áng check-in',
+      className: 'border-purple-400/40 bg-purple-400/10 text-purple-300',
+    };
+  }
+  if (normalized === 'USED') {
+    return {
+      label: '─É├ú check-in',
+      className: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300',
+    };
+  }
+  return {
+    label: normalized || 'Kh├┤ng hß╗úp lß╗ç',
+    className: 'border-rose-400/40 bg-rose-500/10 text-rose-300',
+  };
+};
+
+function StatusBadge({ status }) {
+  const meta = getBookingStatusMeta(status);
+  return (
+    <span className={`inline-flex items-center gap-1.5 border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${meta.className}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {meta.label}
+    </span>
+  );
+}
+
+const TICKET_TYPE_BADGES = {
+  STUDENT: { label: 'SINH VI├èN ΓÇö KIß╗éM TRA THß║║', className: 'border-amber-400/50 bg-amber-400/10 text-amber-300' },
+  CHILD: { label: 'TRß║║ EM', className: 'border-sky-400/40 bg-sky-400/10 text-sky-300' },
+  ADULT: { label: 'NG╞»ß╗£I Lß╗ÜN', className: 'border-neutral-700 bg-neutral-900 text-neutral-300' },
+};
+
+const getTicketTypeBadge = (ticketType) => TICKET_TYPE_BADGES[String(ticketType || 'ADULT').toUpperCase()] || TICKET_TYPE_BADGES.ADULT;
+
+function ResultCard({ result, selectedTicketCodes = [], onToggleSeat, onConfirmSeats, isCheckingIn, onOpenCounterSale }) {
+  if (!result) {
+    return (
+      <div className="flex min-h-[260px] flex-col items-center justify-center border border-dashed border-neutral-800 bg-[#070707] p-6 text-center">
+        <ShieldCheck className="h-10 w-10 text-emerald-400/60" />
+        <p className="mt-4 text-xs font-black uppercase tracking-widest text-neutral-400">Ch╞░a c├│ kß║┐t quß║ú</p>
+        <p className="mt-2 max-w-sm text-xs leading-6 text-neutral-500">
+          Nhß║¡p m├ú QR hoß║╖c m├ú booking ─æß╗â hß╗ç thß╗æng kiß╗âm tra dß╗» liß╗çu thß║¡t tß╗½ backend.
+        </p>
+      </div>
+    );
+  }
+
+  const Icon = result.type === 'success' ? CheckCircle2 : result.type === 'warning' ? AlertCircle : XCircle;
+  const color = result.type === 'success' ? 'text-emerald-300' : result.type === 'warning' ? 'text-purple-300' : 'text-rose-300';
+  const booking = result.booking;
+  const seats = Array.isArray(booking?.seats) ? booking.seats : [];
+  const hasSeatTickets = seats.some((seat) => seat.ticketCode);
+  const canPartialCheckIn = booking && booking.status === 'PAID' && isBookingCheckInOpen(booking) && hasSeatTickets;
+  const canSellFood = booking && ['PAID', 'USED'].includes(booking.status)
+    && (!booking.showtimeEnd || new Date(booking.showtimeEnd).getTime() > Date.now());
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="border border-neutral-800 bg-[#070707] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-start gap-3">
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center border border-neutral-800 bg-black ${color}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-black uppercase tracking-wider text-white">{result.title}</h3>
+          <p className="mt-1 text-xs leading-6 text-neutral-400">{result.message}</p>
+        </div>
+      </div>
+
+      {booking && (
+        <div className="mt-5 space-y-3 border border-neutral-800 bg-black p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-sm font-black text-white">{booking.bookingCode}</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-neutral-500">Booking #{booking.id}</p>
+            </div>
+            <StatusBadge status={booking.status} />
+          </div>
+          <div className="grid gap-3 text-xs text-neutral-400 sm:grid-cols-2">
+            <div><span className="font-black text-white">Kh├ích:</span> {booking.customerName || 'ΓÇö'}</div>
+            <div><span className="font-black text-white">S─ÉT:</span> {booking.customerPhone || 'ΓÇö'}</div>
+            <div><span className="font-black text-white">Phim:</span> {booking.movieTitle}</div>
+            <div><span className="font-black text-white">Ph├▓ng:</span> {booking.roomName}</div>
+            <div><span className="font-black text-white">Suß║Ñt:</span> {formatDateTime(booking.showtimeStart)}</div>
+            <div><span className="font-black text-white">Tß╗òng tiß╗ün:</span> {Number(booking.totalAmount || 0).toLocaleString('vi-VN')}─æ</div>
+          </div>
+
+          {/* Food & Concessions ordered with this booking */}
+          {Array.isArray(booking?.foods) && booking.foods.length > 0 && (
+            <div className="border-t border-neutral-800 pt-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-400">≡ƒì┐ Bß║»p n╞░ß╗¢c ─æ├ú ─æß║╖t</p>
+              <div className="mt-2 space-y-1.5">
+                {booking.foods.map((food, idx) => (
+                  <div
+                    key={`food-${food.foodItemId ?? food.foodComboId ?? idx}`}
+                    className="flex items-center justify-between gap-3 border border-neutral-800 bg-[#070707] px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-amber-400 font-black text-xs shrink-0">├ù{food.quantity}</span>
+                      <span className="text-white text-xs font-bold truncate">{food.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-[10px] text-neutral-500 font-mono">
+                        {Number(food.unitPrice || 0).toLocaleString('vi-VN')}─æ/c
+                      </span>
+                      <span className="text-amber-300 font-black text-[11px] font-mono">
+                        {Number(food.totalPrice || 0).toLocaleString('vi-VN')}─æ
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between border border-amber-500/20 bg-amber-950/10 px-3 py-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Tß╗òng bß║»p n╞░ß╗¢c</span>
+                <span className="font-mono text-sm font-black text-amber-300">
+                  {booking.foods.reduce((sum, f) => sum + Number(f.totalPrice || 0), 0).toLocaleString('vi-VN')}─æ
+                </span>
+              </div>
+            </div>
+          )}
+
+          {seats.length > 0 && (
+            <div className="border-t border-neutral-800 pt-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">Check-in tß╗½ng ghß║┐</p>
+              <div className="mt-2 space-y-1.5">
+                {seats.map((seat) => {
+                  const badge = getTicketTypeBadge(seat.ticketType);
+                  const isCheckedIn = seat.status === 'CHECKED_IN';
+                  const selectable = canPartialCheckIn && !isCheckedIn && seat.ticketCode;
+                  return (
+                    <label
+                      key={seat.ticketCode || seat.seatId}
+                      className={`flex items-center gap-3 border border-neutral-800 bg-[#070707] px-3 py-2 ${selectable ? 'cursor-pointer hover:border-emerald-400/50' : 'opacity-80'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTicketCodes.includes(seat.ticketCode)}
+                        disabled={!selectable}
+                        onChange={() => onToggleSeat?.(seat.ticketCode)}
+                        className="h-3.5 w-3.5 accent-emerald-400"
+                      />
+                      <span className="w-9 font-mono text-xs font-black text-white">{seat.rowLabel}{seat.seatNumber}</span>
+                      <span className={`border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider ${badge.className}`}>{badge.label}</span>
+                      <span className="ml-auto text-[9px] font-black uppercase tracking-wider">
+                        {isCheckedIn
+                          ? <span className="text-emerald-300">Γ£ô ─É├ú v├áo {seat.checkedInAt ? new Date(seat.checkedInAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          : <span className="text-neutral-500">Ch╞░a v├áo</span>}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {canPartialCheckIn && (
+                <button
+                  type="button"
+                  onClick={onConfirmSeats}
+                  disabled={isCheckingIn || selectedTicketCodes.length === 0}
+                  className="mt-3 flex w-full items-center justify-center gap-2 bg-emerald-400 px-4 py-3 text-[9px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-300 disabled:opacity-40"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Check-in ghß║┐ ─æ├ú chß╗ìn ({selectedTicketCodes.length})
+                </button>
+              )}
+            </div>
+          )}
+
+          {canSellFood && (
+            <button
+              type="button"
+              onClick={onOpenCounterSale}
+              className="flex w-full items-center justify-center gap-2 border border-purple-400/40 bg-purple-500/10 px-4 py-3 text-[9px] font-black uppercase tracking-widest text-purple-300 transition hover:bg-purple-400 hover:text-black"
+            >
+              ≡ƒì┐ B├ín th├¬m bß║»p n╞░ß╗¢c cho booking n├áy
+            </button>
+          )}
+        </div>
+      )}
+
+      {result.type === 'success' && (
+        <button type="button" className="mt-5 flex w-full items-center justify-center gap-2 border border-emerald-400/40 bg-emerald-400 px-4 py-3 text-[9px] font-black uppercase tracking-widest text-black transition hover:bg-emerald-300">
+          <Printer className="h-3.5 w-3.5" /> In v├⌐ v├áo cß╗¡a
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+export default function StaffCheckInPage() {
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const [qrCode, setQrCode] = useState('');
+  const [bookingCode, setBookingCode] = useState('');
+  const [result, setResult] = useState(null);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerMessage, setScannerMessage] = useState('');
+  const [showtimeId, setShowtimeId] = useState('');
+  const [isLoadingShowtime, setIsLoadingShowtime] = useState(false);
+  const [showtimeError, setShowtimeError] = useState('');
+  const [showtimeBookings, setShowtimeBookings] = useState([]);
+  const [recentBookings, setRecentBookings] = useState([]);
+  const [isLoadingRecentBookings, setIsLoadingRecentBookings] = useState(false);
+  const [recentBookingsError, setRecentBookingsError] = useState('');
+  const [staffFoodItems, setStaffFoodItems] = useState([]);
+  const [staffFoodCombos, setStaffFoodCombos] = useState([]);
+  const [staffFoodError, setStaffFoodError] = useState('');
+  const [isLoadingStaffFoods, setIsLoadingStaffFoods] = useState(false);
+  const [savingStaffFoodKey, setSavingStaffFoodKey] = useState('');
+  const [staffFoodPage, setStaffFoodPage] = useState(1);
+  const [staffFoodSearch, setStaffFoodSearch] = useState('');
+  const [failedRefunds, setFailedRefunds] = useState([]);
+  const [failedRefundPage, setFailedRefundPage] = useState(0);
+  const [failedRefundTotalPages, setFailedRefundTotalPages] = useState(1);
+  const [isLoadingFailedRefunds, setIsLoadingFailedRefunds] = useState(false);
+  const [failedRefundError, setFailedRefundError] = useState('');
+  const [manualRefundModal, setManualRefundModal] = useState(null);
+  const [manualRefundForm, setManualRefundForm] = useState({ refundMethod: 'MANUAL_BANK_TRANSFER', notes: '' });
+  const [isSavingManualRefund, setIsSavingManualRefund] = useState(false);
+  const [selectedTicketCodes, setSelectedTicketCodes] = useState([]);
+  const [counterSaleBooking, setCounterSaleBooking] = useState(null);
+  const [counterSaleQuantities, setCounterSaleQuantities] = useState({});
+  const [isSavingCounterSale, setIsSavingCounterSale] = useState(false);
+  const [counterSaleMessage, setCounterSaleMessage] = useState('');
+  const [cashGiven, setCashGiven] = useState(''); // tiß╗ün kh├ích ─æ╞░a (trß╗æng = thu ─æ├║ng sß╗æ)
+  const [counterSaleReceipt, setCounterSaleReceipt] = useState(null); // bi├¬n lai sau khi thu
+  const qrVideoRef = useRef(null);
+  const qrCanvasRef = useRef(null);
+  const qrStreamRef = useRef(null);
+  const qrScanTimerRef = useRef(null);
+  const lastScannedQrRef = useRef('');
+
+  const visibleBookings = showtimeBookings.length > 0 ? showtimeBookings : recentBookings;
+  const isShowingShowtimeBookings = showtimeBookings.length > 0;
+
+  // Ph├ón trang client-side cho bß║úng booking (c├╣ng pattern vß╗¢i danh s├ích bß║»p n╞░ß╗¢c)
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const bookingsTotalPages = Math.max(1, Math.ceil(visibleBookings.length / BOOKINGS_PAGE_SIZE));
+  const safeBookingsPage = Math.min(bookingsPage, bookingsTotalPages);
+  const bookingsStartIndex = (safeBookingsPage - 1) * BOOKINGS_PAGE_SIZE;
+  const paginatedBookings = visibleBookings.slice(bookingsStartIndex, bookingsStartIndex + BOOKINGS_PAGE_SIZE);
+  const bookingsDisplayStart = visibleBookings.length === 0 ? 0 : bookingsStartIndex + 1;
+  const bookingsDisplayEnd = Math.min(bookingsStartIndex + BOOKINGS_PAGE_SIZE, visibleBookings.length);
+
+  useEffect(() => {
+    setBookingsPage((page) => Math.min(page, bookingsTotalPages));
+  }, [bookingsTotalPages]);
+
+  useEffect(() => {
+    setBookingsPage(1);
+  }, [isShowingShowtimeBookings]);
+  const staffFoods = useMemo(() => [
+    ...staffFoodCombos.map((item) => ({ ...item, kind: 'combo' })),
+    ...staffFoodItems.map((item) => ({ ...item, kind: 'item' })),
+  ], [staffFoodCombos, staffFoodItems]);
+  const filteredStaffFoods = useMemo(() => {
+    const keyword = normalizeSearchText(staffFoodSearch);
+    if (!keyword) return staffFoods;
+    return staffFoods.filter((food) => normalizeSearchText(food.name).includes(keyword));
+  }, [staffFoodSearch, staffFoods]);
+
+  const foodStats = useMemo(() => {
+    const outOfStock = staffFoods.filter((item) => item.status === 'OUT_OF_STOCK' || item.status === 'INACTIVE').length;
+    const lowStock = staffFoods.filter((item) => item.status === 'LOW_STOCK').length;
+    const active = staffFoods.filter((item) => item.status === 'ACTIVE').length;
+    return { active, lowStock, outOfStock, total: staffFoods.length };
+  }, [staffFoods]);
+  const staffFoodTotalPages = Math.max(1, Math.ceil(filteredStaffFoods.length / FOOD_PAGE_SIZE));
+  const safeStaffFoodPage = Math.min(staffFoodPage, staffFoodTotalPages);
+  const staffFoodStartIndex = (safeStaffFoodPage - 1) * FOOD_PAGE_SIZE;
+  const paginatedStaffFoods = filteredStaffFoods.slice(staffFoodStartIndex, staffFoodStartIndex + FOOD_PAGE_SIZE);
+  const staffFoodDisplayStart = filteredStaffFoods.length === 0 ? 0 : staffFoodStartIndex + 1;
+  const staffFoodDisplayEnd = Math.min(staffFoodStartIndex + FOOD_PAGE_SIZE, filteredStaffFoods.length);
+
+  useEffect(() => {
+    setStaffFoodPage((page) => Math.min(page, staffFoodTotalPages));
+  }, [staffFoodTotalPages]);
+
+  useEffect(() => {
+    setStaffFoodPage(1);
+  }, [staffFoodSearch]);
+
+  const stats = useMemo(() => {
+    const checked = visibleBookings.filter((booking) => booking.status === 'USED').length;
+    const paid = visibleBookings.filter((booking) => booking.status === 'PAID').length;
+    return { checked, paid, total: visibleBookings.length };
+  }, [visibleBookings]);
+
+  const getToken = () => {
+    const { accessToken } = getStoredAuth();
+    return accessToken;
+  };
+
+  const stopQrScanner = () => {
+    if (qrScanTimerRef.current) {
+      window.clearInterval(qrScanTimerRef.current);
+      qrScanTimerRef.current = null;
+    }
+    if (qrStreamRef.current) {
+      qrStreamRef.current.getTracks().forEach((track) => track.stop());
+      qrStreamRef.current = null;
+    }
+    if (qrVideoRef.current) {
+      qrVideoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  const startQrScanner = async () => {
+    setScannerError('');
+    setScannerMessage('');
+    lastScannedQrRef.current = '';
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerError('Tr├¼nh duyß╗çt kh├┤ng hß╗ù trß╗ú mß╗ƒ camera. H├úy d├ín m├ú QR thß╗º c├┤ng.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      qrStreamRef.current = stream;
+      setIsCameraOpen(true);
+      setScannerMessage('─É╞░a QR cß╗ºa kh├ích v├áo khung camera ─æß╗â hß╗ç thß╗æng tß╗▒ ─æß╗ìc.');
+
+      window.requestAnimationFrame(async () => {
+        const video = qrVideoRef.current;
+        if (!video || qrStreamRef.current !== stream) return;
+        video.srcObject = stream;
+        await video.play();
+
+        qrScanTimerRef.current = window.setInterval(async () => {
+          if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+          try {
+            const canvas = qrCanvasRef.current;
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+            if (!canvas || !width || !height) return;
+
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            if (!context) return;
+
+            context.drawImage(video, 0, 0, width, height);
+            const imageData = context.getImageData(0, 0, width, height);
+            const detected = jsQR(imageData.data, width, height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            const rawValue = detected?.data?.trim();
+            if (!rawValue || rawValue === lastScannedQrRef.current) return;
+
+            lastScannedQrRef.current = rawValue;
+            setQrCode(rawValue);
+            setScannerMessage('─É├ú qu├⌐t QR. ─Éang tra cß╗⌐u booking...');
+            stopQrScanner();
+            void lookupBooking({ preferQr: true, qrValue: rawValue });
+          } catch (error) {
+            setScannerError(error.message || 'Kh├┤ng thß╗â ─æß╗ìc QR tß╗½ camera.');
+          }
+        }, 350);
+      });
+    } catch (error) {
+      stopQrScanner();
+      setScannerError(error.name === 'NotAllowedError'
+        ? 'Bß║ín cß║ºn cß║Ñp quyß╗ün camera ─æß╗â qu├⌐t QR.'
+        : error.message || 'Kh├┤ng thß╗â mß╗ƒ camera ─æß╗â qu├⌐t QR.');
+    }
+  };
+
+  const rememberBooking = (booking) => {
+    if (!booking?.id) return;
+    setShowtimeBookings((current) => current.map((item) => (
+      String(item.id) === String(booking.id) ? booking : item
+    )));
+    setRecentBookings((current) => [
+      booking,
+      ...current.filter((item) => String(item.id) !== String(booking.id)),
+    ].slice(0, RECENT_BOOKINGS_LIMIT));
+  };
+
+  const loadRecentBookings = async (seedBooking = null) => {
+    const token = getToken();
+    if (!token) {
+      setRecentBookingsError('Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.');
+      return;
+    }
+
+    setIsLoadingRecentBookings(true);
+    setRecentBookingsError('');
+    try {
+      const bookings = await staffService.getRecentStaffCheckInBookings(token, RECENT_BOOKINGS_LIMIT);
+      const source = Array.isArray(bookings) ? bookings : [];
+      const merged = seedBooking
+        ? [seedBooking, ...source.filter((item) => String(item.id) !== String(seedBooking.id))]
+        : source;
+      setRecentBookings(merged.slice(0, RECENT_BOOKINGS_LIMIT));
+    } catch (error) {
+      if (seedBooking) rememberBooking(seedBooking);
+      setRecentBookingsError(error.message || 'Kh├┤ng thß╗â tß║úi booking vß╗½a tra cß╗⌐u/check-in tß╗½ API.');
+    } finally {
+      setIsLoadingRecentBookings(false);
+    }
+  };
+
+  const loadStaffFoods = async () => {
+    const token = getToken();
+    if (!token) {
+      setStaffFoodError('Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.');
+      return;
+    }
+
+    setIsLoadingStaffFoods(true);
+    setStaffFoodError('');
+    try {
+      const [items, combos] = await Promise.all([
+        staffService.getStaffFoodItems(token),
+        staffService.getStaffFoodCombos(token),
+      ]);
+      setStaffFoodItems(Array.isArray(items) ? items : []);
+      setStaffFoodCombos(Array.isArray(combos) ? combos : []);
+    } catch (error) {
+      setStaffFoodError(error.message || 'Kh├┤ng thß╗â tß║úi danh s├ích bß║»p n╞░ß╗¢c.');
+    } finally {
+      setIsLoadingStaffFoods(false);
+    }
+  };
+
+  const loadFailedRefunds = async (page = 0) => {
+    const token = getToken();
+    if (!token) {
+      setFailedRefundError('Vui long dang nhap bang tai khoan STAFF.');
+      return;
+    }
+
+    setIsLoadingFailedRefunds(true);
+    setFailedRefundError('');
+    try {
+      const data = await staffService.getFailedBulkRefunds(token, { page, size: 8 });
+      const items = data?.items || data?.content || (Array.isArray(data) ? data : []);
+      setFailedRefunds(items);
+      setFailedRefundTotalPages(data?.totalPages || 1);
+      setFailedRefundPage(page);
+    } catch (error) {
+      setFailedRefundError(error.message || 'Khong the tai danh sach refund loi.');
+    } finally {
+      setIsLoadingFailedRefunds(false);
+    }
+  };
+
+  const openManualRefundModal = async (refund) => {
+    const token = getToken();
+    if (!token) return;
+    setFailedRefundError('');
+    try {
+      const detail = await staffService.getBulkRefundDetail(token, refund.bookingId);
+      setManualRefundModal(detail);
+      setManualRefundForm({ refundMethod: 'MANUAL_BANK_TRANSFER', notes: '' });
+    } catch (error) {
+      setFailedRefundError(error.message || 'Khong the tai chi tiet refund.');
+    }
+  };
+
+  const confirmManualRefund = async () => {
+    const token = getToken();
+    if (!token || !manualRefundModal?.bookingId) return;
+    setIsSavingManualRefund(true);
+    setFailedRefundError('');
+    try {
+      await staffService.confirmManualBulkRefund(token, manualRefundModal.bookingId, manualRefundForm);
+      setManualRefundModal(null);
+      await loadFailedRefunds(failedRefundPage);
+    } catch (error) {
+      setFailedRefundError(error.message || 'Khong the xac nhan hoan tien ngoai.');
+    } finally {
+      setIsSavingManualRefund(false);
+    }
+  };
+
+  const updateStaffFoodStatus = async (food, nextStatus) => {
+    const token = getToken();
+    if (!token) {
+      setStaffFoodError('Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.');
+      return;
+    }
+
+    const foodKey = `${food.kind}-${food.id}`;
+    setSavingStaffFoodKey(foodKey);
+    setStaffFoodError('');
+    try {
+      const saved = food.kind === 'combo'
+        ? await staffService.updateStaffFoodComboStatus(token, food.id, nextStatus)
+        : await staffService.updateStaffFoodItemStatus(token, food.id, nextStatus);
+
+      if (food.kind === 'combo') {
+        setStaffFoodCombos((current) => current.map((item) => (item.id === food.id ? saved : item)));
+      } else {
+        setStaffFoodItems((current) => current.map((item) => (item.id === food.id ? saved : item)));
+      }
+    } catch (error) {
+      setStaffFoodError(error.message || 'Kh├┤ng thß╗â ─æß╗òi trß║íng th├íi m├│n.');
+    } finally {
+      setSavingStaffFoodKey('');
+    }
+  };
+
+  useEffect(() => {
+    loadRecentBookings();
+    loadStaffFoods();
+    loadFailedRefunds();
+  }, []);
+
+  useEffect(() => () => stopQrScanner(), []);
+
+  const lookupBooking = async ({ preferQr = false, qrValue = '', bookingValue = '' } = {}) => {
+    const token = getToken();
+    const trimmedQr = String(qrValue || qrCode).trim();
+    const trimmedCode = String(bookingValue || bookingCode).trim();
+    if (!token) {
+      setResult({ type: 'error', title: 'Phi├¬n ─æ─âng nhß║¡p kh├┤ng hß╗úp lß╗ç.', message: 'Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.' });
+      return null;
+    }
+    if (!trimmedQr && !trimmedCode) {
+      setResult({ type: 'warning', title: 'Thiß║┐u dß╗» liß╗çu tra cß╗⌐u.', message: 'Nhß║¡p m├ú QR hoß║╖c m├ú booking tr╞░ß╗¢c khi tra cß╗⌐u.' });
+      return null;
+    }
+
+    setIsLookingUp(true);
+    try {
+      const parsedQrInput = parseQrOrBookingCode(trimmedQr);
+      const booking = await staffService.lookupStaffCheckInBooking(token, {
+        qrCode: preferQr ? parsedQrInput.qrCode : '',
+        bookingCode: preferQr ? parsedQrInput.bookingCode : trimmedCode,
+      });
+      rememberBooking(booking);
+      // Qu├⌐t QR cß╗ºa mß╗Öt ghß║┐ cß╗Ñ thß╗â ΓåÆ tß╗▒ tick ghß║┐ ─æ├│ ─æß╗â staff x├íc nhß║¡n nhanh
+      const seatQrMatch = String(parsedQrInput.qrCode || '').match(/^CINEAI:SEAT:([^:]+):/i);
+      const scannedTicketCode = seatQrMatch ? seatQrMatch[1] : null;
+      setSelectedTicketCodes(
+        scannedTicketCode && (booking.seats || []).some((seat) => seat.ticketCode === scannedTicketCode && seat.status !== 'CHECKED_IN')
+          ? [scannedTicketCode]
+          : []
+      );
+      const canCheckIn = isBookingCheckInOpen(booking);
+      const isPaid = booking.status === 'PAID';
+      setResult({
+        type: isPaid ? 'warning' : booking.status === 'USED' ? 'success' : 'error',
+        title: isPaid
+          ? canCheckIn ? 'Booking hß╗úp lß╗ç, chß╗¥ check-in.' : 'Ch╞░a ─æß║┐n giß╗¥ check-in.'
+          : booking.status === 'USED' ? 'Booking ─æ├ú check-in.' : 'Booking ch╞░a ─æß╗º ─æiß╗üu kiß╗çn.',
+        message: isPaid
+          ? canCheckIn ? 'C├│ thß╗â x├íc nhß║¡n check-in bß║▒ng m├ú QR cß╗ºa booking n├áy.' : getCheckInWindowMessage(booking)
+          : `Trß║íng th├íi hiß╗çn tß║íi: ${booking.status}.`,
+        booking,
+      });
+      void loadRecentBookings(booking);
+      return booking;
+    } catch (error) {
+      setResult({ type: 'error', title: 'Kh├┤ng t├¼m thß║Ñy booking.', message: error.message || 'Kh├┤ng thß╗â tra cß╗⌐u booking tß╗½ hß╗ç thß╗æng.' });
+      return null;
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  const toggleSeatSelection = (ticketCode) => {
+    if (!ticketCode) return;
+    setSelectedTicketCodes((current) => (
+      current.includes(ticketCode)
+        ? current.filter((code) => code !== ticketCode)
+        : [...current, ticketCode]
+    ));
+  };
+
+  const checkInSelectedSeats = async () => {
+    const token = getToken();
+    const booking = result?.booking;
+    if (!token || !booking?.bookingCode || selectedTicketCodes.length === 0) return;
+
+    setIsCheckingIn(true);
+    try {
+      const updated = await staffService.checkInStaffSeats(token, {
+        bookingCode: booking.bookingCode,
+        ticketCodes: selectedTicketCodes,
+      });
+      rememberBooking(updated);
+      setSelectedTicketCodes([]);
+      const remaining = (updated.seats || []).filter((seat) => seat.status !== 'CHECKED_IN').length;
+      setResult({
+        type: 'success',
+        title: remaining === 0 ? '─É├ú check-in to├án bß╗Ö ghß║┐.' : `─É├ú check-in ${selectedTicketCodes.length} ghß║┐.`,
+        message: remaining === 0
+          ? 'To├án bß╗Ö ghß║┐ cß╗ºa booking ─æ├ú v├áo ph├▓ng chiß║┐u.'
+          : `C├▓n ${remaining} ghß║┐ ch╞░a v├áo. Qu├⌐t tiß║┐p hoß║╖c chß╗ìn ghß║┐ ─æß╗â x├íc nhß║¡n.`,
+        booking: updated,
+      });
+      void loadRecentBookings(updated);
+    } catch (error) {
+      setResult((current) => ({
+        type: 'error',
+        title: 'Kh├┤ng thß╗â check-in ghß║┐.',
+        message: error.message || 'Ghß║┐ kh├┤ng ─æß╗º ─æiß╗üu kiß╗çn check-in.',
+        booking: current?.booking || null,
+      }));
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  const openCounterSale = () => {
+    if (!result?.booking) return;
+    setCounterSaleQuantities({});
+    setCounterSaleMessage('');
+    setCashGiven('');
+    setCounterSaleReceipt(null);
+    setCounterSaleBooking(result.booking);
+  };
+
+  const changeCounterSaleQuantity = (foodKey, delta) => {
+    setCounterSaleQuantities((prev) => {
+      const next = Math.max(0, (prev[foodKey] || 0) + delta);
+      const copy = { ...prev };
+      if (next === 0) delete copy[foodKey];
+      else copy[foodKey] = next;
+      return copy;
+    });
+  };
+
+  const counterSaleTotal = useMemo(() => Object.entries(counterSaleQuantities).reduce((sum, [foodKey, qty]) => {
+    const food = staffFoods.find((item) => `${item.kind}-${item.id}` === foodKey);
+    return sum + (food ? Number(food.price || 0) * qty : 0);
+  }, 0), [counterSaleQuantities, staffFoods]);
+
+  const counterSaleLines = useMemo(() => Object.entries(counterSaleQuantities)
+    .filter(([, qty]) => qty > 0)
+    .map(([foodKey, qty]) => {
+      const food = staffFoods.find((item) => `${item.kind}-${item.id}` === foodKey);
+      if (!food) return null;
+      const price = Number(food.price || 0);
+      return { key: foodKey, name: food.name, qty, price, lineTotal: price * qty };
+    })
+    .filter(Boolean), [counterSaleQuantities, staffFoods]);
+
+  // Tiß╗ün kh├ích ─æ╞░a / thß╗æi lß║íi ΓÇö nghiß╗çp vß╗Ñ thu ng├ón
+  const cashGivenValue = cashGiven === '' ? null : Number(cashGiven) || 0;
+  const cashChange = cashGivenValue !== null ? cashGivenValue - counterSaleTotal : null;
+  const cashInsufficient = cashGivenValue !== null && cashGivenValue < counterSaleTotal;
+
+  const submitCounterSale = async () => {
+    const token = getToken();
+    if (!token || !counterSaleBooking?.bookingCode || isSavingCounterSale) return;
+    const foods = Object.entries(counterSaleQuantities)
+      .map(([foodKey, quantity]) => {
+        const food = staffFoods.find((item) => `${item.kind}-${item.id}` === foodKey);
+        if (!food) return null;
+        return food.kind === 'combo'
+          ? { foodItemId: null, foodComboId: food.id, quantity }
+          : { foodItemId: food.id, foodComboId: null, quantity };
+      })
+      .filter(Boolean);
+    if (foods.length === 0) {
+      setCounterSaleMessage('Chß╗ìn ├¡t nhß║Ñt mß╗Öt m├│n.');
+      return;
+    }
+    if (cashInsufficient) {
+      setCounterSaleMessage('Tiß╗ün kh├ích ─æ╞░a ch╞░a ─æß╗º ΓÇö kiß╗âm tra lß║íi tr╞░ß╗¢c khi x├íc nhß║¡n.');
+      return;
+    }
+    setIsSavingCounterSale(true);
+    setCounterSaleMessage('');
+    try {
+      const order = await staffService.createStaffFoodOrder(token, counterSaleBooking.bookingCode, { foods });
+      // Chuyß╗ân sang m├án BI├èN LAI thay v├¼ ─æ├│ng modal ΓÇö staff ─æß╗æi chiß║┐u tiß╗ün ngay tß║íi chß╗ù
+      setCounterSaleReceipt({
+        orderCode: order.orderCode,
+        total: Number(order.totalAmount || 0),
+        cashGiven: cashGivenValue,
+        change: cashChange !== null && cashChange >= 0 ? cashChange : null,
+        time: new Date().toLocaleString('vi-VN'),
+        collector: currentUser?.fullName || currentUser?.name || currentUser?.email || 'STAFF',
+      });
+      setCounterSaleQuantities({});
+      setCashGiven('');
+      setResult((current) => (current ? {
+        ...current,
+        type: 'success',
+        title: '─É├ú b├ín bß║»p n╞░ß╗¢c tß║íi quß║ºy.',
+        message: `─É╞ín ${order.orderCode} (${Number(order.totalAmount || 0).toLocaleString('vi-VN')}─æ) ─æ├ú thu tiß╗ün mß║╖t.`,
+      } : current));
+    } catch (error) {
+      setCounterSaleMessage(error.message || 'Kh├┤ng thß╗â tß║ío ─æ╞ín bß║»p n╞░ß╗¢c.');
+    } finally {
+      setIsSavingCounterSale(false);
+    }
+  };
+
+  const checkInByQr = async (value = qrCode) => {
+    const token = getToken();
+    const trimmedQr = String(value || '').trim();
+    if (!token) {
+      setResult({ type: 'error', title: 'Phi├¬n ─æ─âng nhß║¡p kh├┤ng hß╗úp lß╗ç.', message: 'Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.' });
+      return;
+    }
+    if (!trimmedQr) {
+      setResult({ type: 'warning', title: 'Ch╞░a c├│ m├ú QR.', message: 'Nhß║¡p hoß║╖c qu├⌐t m├ú QR tr╞░ß╗¢c khi x├íc nhß║¡n check-in.' });
+      return;
+    }
+
+    setIsCheckingIn(true);
+    try {
+      const parsedInput = parseQrOrBookingCode(trimmedQr);
+      let qrForCheckIn = parsedInput.qrCode;
+
+      if (!qrForCheckIn && parsedInput.bookingCode) {
+        const foundBooking = await staffService.lookupStaffCheckInBooking(token, {
+          bookingCode: parsedInput.bookingCode,
+          qrCode: '',
+        });
+        qrForCheckIn = foundBooking?.qrCode || '';
+        if (!qrForCheckIn) {
+          throw new Error('Booking n├áy ch╞░a c├│ QR check-in. Vui l├▓ng kiß╗âm tra trß║íng th├íi thanh to├ín.');
+        }
+      }
+
+      const booking = await staffService.checkInStaffBooking(token, qrForCheckIn);
+      rememberBooking(booking);
+      setResult({
+        type: 'success',
+        title: 'Check-in th├ánh c├┤ng.',
+        message: 'Booking ─æ├ú ─æ╞░ß╗úc x├íc nhß║¡n. C├│ thß╗â h╞░ß╗¢ng dß║½n kh├ích v├áo ph├▓ng chiß║┐u.',
+        booking,
+      });
+      void loadRecentBookings(booking);
+    } catch (error) {
+      setResult({ type: 'error', title: 'Kh├┤ng thß╗â check-in.', message: error.message || 'Booking kh├┤ng ─æß╗º ─æiß╗üu kiß╗çn check-in.' });
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  const loadShowtimeBookings = async () => {
+    const token = getToken();
+    const trimmedShowtimeId = showtimeId.trim();
+    if (!token) {
+      setShowtimeError('Vui l├▓ng ─æ─âng nhß║¡p bß║▒ng t├ái khoß║ún STAFF.');
+      return;
+    }
+    if (!trimmedShowtimeId) {
+      setShowtimeError('Nhß║¡p showtimeId tr╞░ß╗¢c khi tß║úi danh s├ích.');
+      return;
+    }
+
+    setShowtimeError('');
+    setIsLoadingShowtime(true);
+    try {
+      const bookings = await staffService.getStaffShowtimeBookings(token, trimmedShowtimeId);
+      setShowtimeBookings(Array.isArray(bookings) ? bookings : []);
+    } catch (error) {
+      setShowtimeBookings([]);
+      setShowtimeError(error.message || 'Kh├┤ng thß╗â tß║úi danh s├ích booking cß╗ºa suß║Ñt chiß║┐u.');
+    } finally {
+      setIsLoadingShowtime(false);
+    }
+  };
+
+  return (
+    <div className="staff-page relative overflow-hidden bg-black text-white">
+      <div className="staff-orb staff-orb-one" />
+      <div className="staff-orb staff-orb-two" />
+      <div className="staff-grid-bg" />
+
+      <main className="relative z-10 mx-auto max-w-[1500px] space-y-5 px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
+        <section className="grid gap-4 xl:grid-cols-[1fr_380px]">
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden border border-neutral-800 bg-gradient-to-r from-[#090909] to-[#050505] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-6">
+            <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_62%)]" />
+            <div className="relative">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+
+                <span className="border border-purple-400/20 bg-purple-500/5 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-purple-300">
+                  STAFF OPERATIONS
+                </span>
+              </div>
+              <h2 className="text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">Kiß╗âm so├ít v├⌐ bß║▒ng QR booking</h2>
+              <p className="mt-3 max-w-2xl text-xs leading-6 text-neutral-400">
+                Mß╗ùi ghß║┐ c├│ mß╗Öt m├ú QR ri├¬ng nh╞░ thß║╗ l├¬n m├íy bay. Qu├⌐t m├ú ghß║┐ ─æß╗â check-in tß╗½ng ng╞░ß╗¥i, hoß║╖c qu├⌐t m├ú booking ─æß╗â x├íc nhß║¡n cß║ú nh├│m c├╣ng l├║c.
+              </p>
+              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+                Nh├ón vi├¬n: {currentUser?.fullName || currentUser?.name || currentUser?.email || 'STAFF'}
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="border border-neutral-800 bg-[#070707] p-5">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">Phi├¬n hiß╗çn tß║íi</p>
+            <p className="mt-1 text-2xl font-black text-white">{stats.checked}/{stats.total}</p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="border border-emerald-400/20 bg-emerald-400/10 p-2.5"><p className="text-lg font-black text-emerald-300">{stats.checked}</p><p className="text-[8px] font-black uppercase tracking-widest text-emerald-200/70">─É├ú v├áo</p></div>
+              <div className="border border-purple-400/20 bg-purple-500/10 p-2.5"><p className="text-lg font-black text-purple-300">{stats.paid}</p><p className="text-[8px] font-black uppercase tracking-widest text-purple-200/70">Chß╗¥ v├áo</p></div>
+              <div className="border border-neutral-800 bg-black p-2.5"><p className="text-lg font-black text-white">{stats.total}</p><p className="text-[8px] font-black uppercase tracking-widest text-neutral-500">─É├ú tra</p></div>
+            </div>
+          </motion.div>
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.75fr)]">
+          <div className="border border-neutral-800 bg-[#070707] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.35)] sm:p-7">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-emerald-400">Qu├⌐t/X├íc nhß║¡n QR</p>
+                  <h3 className="mt-2 text-xl font-black uppercase text-white">Check-in bß║▒ng m├ú QR</h3>
+                  <p className="mt-2 text-xs leading-6 text-neutral-500">Qu├⌐t QR tr├¬n v├⌐, hoß║╖c d├ín chuß╗ùi `CINEAI:...` / m├ú booking `BK...` ─æß╗â tra cß╗⌐u v├á check-in.</p>
+                </div>
+                <div className="space-y-3 border border-neutral-800 bg-black p-3">
+                  <button
+                    type="button"
+                    onClick={isCameraOpen ? stopQrScanner : startQrScanner}
+                    className="flex w-full items-center justify-center gap-2 border border-neutral-700 bg-[#070707] px-4 py-3 text-[9px] font-black uppercase tracking-[0.18em] text-neutral-300 transition hover:border-emerald-400 hover:text-white"
+                  >
+                    {isCameraOpen ? <CameraOff className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
+                    {isCameraOpen ? 'Tß║»t camera' : 'Mß╗ƒ camera qu├⌐t QR'}
+                  </button>
+                  {isCameraOpen && (
+                    <div className="relative overflow-hidden border border-emerald-400/30 bg-neutral-950">
+                      <video
+                        ref={qrVideoRef}
+                        className="aspect-video w-full object-cover"
+                        muted
+                        playsInline
+                      />
+                      <canvas ref={qrCanvasRef} className="hidden" />
+                      <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                        <div className="h-40 w-40 border-2 border-emerald-300/80 shadow-[0_0_0_999px_rgba(0,0,0,0.35)]" />
+                      </div>
+                    </div>
+                  )}
+                  {(scannerMessage || scannerError) && (
+                    <p className={`text-[10px] font-bold leading-5 ${scannerError ? 'text-rose-400' : 'text-emerald-300'}`}>
+                      {scannerError || scannerMessage}
+                    </p>
+                  )}
+                </div>
+                <textarea
+                  value={qrCode}
+                  onChange={(event) => setQrCode(event.target.value)}
+                  placeholder="D├ín m├ú QR CINEAI:... hoß║╖c m├ú booking BK..."
+                  rows={6}
+                  className="w-full resize-none border border-neutral-800 bg-black p-4 text-sm font-bold text-white outline-none transition placeholder:text-neutral-700 focus:border-emerald-400/70"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => lookupBooking({ preferQr: true })}
+                    disabled={isLookingUp || !qrCode.trim()}
+                    className="flex items-center justify-center gap-2 border border-neutral-700 bg-black px-5 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-300 transition hover:border-emerald-400 hover:text-white disabled:opacity-50"
+                  >
+                    {isLookingUp ? <RefreshCw className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} Kiß╗âm tra m├ú
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => checkInByQr()}
+                    disabled={isCheckingIn || !qrCode.trim()}
+                    className="flex items-center justify-center gap-2 bg-emerald-400 px-5 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-black transition hover:bg-emerald-300 disabled:opacity-50"
+                  >
+                    {isCheckingIn ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />} X├íc nhß║¡n check-in
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-purple-400">Tra cß╗⌐u thß╗º c├┤ng</p>
+                  <h3 className="mt-2 text-xl font-black uppercase text-white">T├¼m theo m├ú booking</h3>
+                  <p className="mt-2 text-xs leading-6 text-neutral-500">D├╣ng khi kh├ích ─æß╗ìc m├ú booking nh╞░ng ch╞░a mß╗ƒ ─æ╞░ß╗úc QR.</p>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-600" />
+                  <input
+                    value={bookingCode}
+                    onChange={(event) => setBookingCode(event.target.value)}
+                    placeholder="VD: BKABC123..."
+                    className="w-full border border-neutral-800 bg-black py-4 pl-11 pr-4 text-sm font-bold text-white outline-none transition placeholder:text-neutral-700 focus:border-emerald-400/70"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => lookupBooking()}
+                  disabled={isLookingUp || !bookingCode.trim()}
+                  className="flex w-full items-center justify-center gap-2 border border-neutral-700 bg-black px-5 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-300 transition hover:border-purple-400 hover:text-white disabled:opacity-50"
+                >
+                  {isLookingUp ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Tra cß╗⌐u booking
+                </button>
+                {result?.booking?.qrCode && result.booking.status === 'PAID' && isBookingCheckInOpen(result.booking) && (
+                  <button
+                    type="button"
+                    onClick={() => checkInByQr(result.booking.qrCode)}
+                    disabled={isCheckingIn}
+                    className="flex w-full items-center justify-center gap-2 border border-emerald-400/40 bg-emerald-400/10 px-5 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300 transition hover:bg-emerald-400 hover:text-black disabled:opacity-50"
+                  >
+                    {isCheckingIn ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Check-in booking vß╗½a tra
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <ResultCard
+            result={result}
+            selectedTicketCodes={selectedTicketCodes}
+            onToggleSeat={toggleSeatSelection}
+            onConfirmSeats={checkInSelectedSeats}
+            isCheckingIn={isCheckingIn}
+            onOpenCounterSale={openCounterSale}
+          />
+        </section>
+
+        <section className="border border-neutral-800 bg-[#070707] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-xl">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">Danh s├ích theo suß║Ñt chiß║┐u</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-white">Tß║úi booking cß╗ºa mß╗Öt showtime</h3>
+              <p className="mt-2 text-xs leading-6 text-neutral-500">
+                STAFF c├│ thß╗â nhß║¡p showtimeId ─æß╗â xem to├án bß╗Ö booking thß║¡t cß╗ºa suß║Ñt ─æ├│, sau ─æ├│ check-in trß╗▒c tiß║┐p c├íc booking PAID.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+              <input
+                value={showtimeId}
+                onChange={(event) => setShowtimeId(event.target.value)}
+                placeholder="showtimeId..."
+                className="min-w-[220px] border border-neutral-800 bg-black px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-neutral-700 focus:border-emerald-400/70"
+              />
+              <button
+                type="button"
+                onClick={loadShowtimeBookings}
+                disabled={isLoadingShowtime || !showtimeId.trim()}
+                className="flex items-center justify-center gap-2 bg-white px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-black transition hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {isLoadingShowtime ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Tß║úi danh s├ích
+              </button>
+              {isShowingShowtimeBookings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowtimeBookings([]);
+                    setShowtimeError('');
+                  }}
+                  className="border border-neutral-700 bg-black px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-300 transition hover:border-white hover:text-white"
+                >
+                  Vß╗ü danh s├ích phi├¬n
+                </button>
+              )}
+            </div>
+          </div>
+          {showtimeError && <p className="mt-3 text-xs font-bold text-rose-400">{showtimeError}</p>}
+        </section>
+
+        <section className="border border-neutral-800 bg-[#070707] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-rose-300">Bulk refund failed</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-white">Xu ly hoan tien thu cong</h3>
+              <p className="mt-2 text-xs leading-6 text-neutral-500">
+                STAFF xem cac booking VNPay refund loi, hoan tien ngoai he thong, roi xac nhan de can bang diem loyalty.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadFailedRefunds(failedRefundPage)}
+              disabled={isLoadingFailedRefunds}
+              className="flex items-center justify-center gap-2 border border-neutral-700 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-300 transition hover:border-rose-300 hover:text-white disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFailedRefunds ? 'animate-spin' : ''}`} /> Lam moi
+            </button>
+          </div>
+          {failedRefundError && <p className="mt-3 text-xs font-bold text-rose-400">{failedRefundError}</p>}
+          <div className="mt-4 overflow-x-auto border border-neutral-800 bg-black">
+            <table className="w-full min-w-[860px] text-left">
+              <thead className="border-b border-neutral-800 bg-[#050505] text-[8px] font-black uppercase tracking-[0.18em] text-neutral-500">
+                <tr>
+                  <th className="px-4 py-3">Booking</th>
+                  <th className="px-3 py-3">Khach</th>
+                  <th className="px-3 py-3">Phim / suat</th>
+                  <th className="px-3 py-3">So tien</th>
+                  <th className="px-3 py-3">Diem NET</th>
+                  <th className="px-4 py-3 text-right">Thao tac</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-900">
+                {isLoadingFailedRefunds ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-xs font-bold text-neutral-500">
+                      Dang tai danh sach refund loi...
+                    </td>
+                  </tr>
+                ) : failedRefunds.length > 0 ? failedRefunds.map((refund) => (
+                  <tr key={refund.bookingId} className="transition hover:bg-rose-400/5">
+                    <td className="px-4 py-4">
+                      <p className="font-mono text-[11px] font-black text-white">{refund.bookingCode}</p>
+                      <p className="mt-1 font-mono text-[8px] text-neutral-600">#{refund.bookingId}</p>
+                    </td>
+                    <td className="px-3 py-4">
+                      <p className="max-w-[180px] truncate text-xs font-bold text-neutral-300">{refund.customerName || '--'}</p>
+                      <p className="max-w-[180px] truncate text-[10px] text-neutral-600">{refund.customerEmail}</p>
+                    </td>
+                    <td className="px-3 py-4">
+                      <p className="max-w-[220px] truncate text-xs font-bold text-neutral-300">{refund.movieName}</p>
+                      <p className="text-[10px] font-bold text-neutral-500">{formatDateTime(refund.showtimeStart)}</p>
+                    </td>
+                    <td className="px-3 py-4 font-mono text-xs font-black text-amber-300">{formatCurrency(refund.refundAmount)}</td>
+                    <td className="px-3 py-4 font-mono text-xs font-black text-emerald-300">
+                      {Number(refund.loyaltyCalculation?.netBalanceChange || 0).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openManualRefundModal(refund)}
+                        className="border border-amber-400/40 bg-amber-400 px-3 py-2 text-[8px] font-black uppercase tracking-widest text-black transition hover:bg-amber-300"
+                      >
+                        Xac nhan ngoai
+                      </button>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-10 text-center text-xs font-bold text-neutral-500">
+                      Khong co booking refund loi.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+            <span>Trang {failedRefundPage + 1}/{failedRefundTotalPages}</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={failedRefundPage <= 0}
+                onClick={() => loadFailedRefunds(failedRefundPage - 1)}
+                className="border border-neutral-700 px-3 py-2 text-white transition hover:border-rose-300 disabled:opacity-30"
+              >
+                Truoc
+              </button>
+              <button
+                type="button"
+                disabled={failedRefundPage >= failedRefundTotalPages - 1}
+                onClick={() => loadFailedRefunds(failedRefundPage + 1)}
+                className="border border-neutral-700 px-3 py-2 text-white transition hover:border-rose-300 disabled:opacity-30"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="border border-neutral-800 bg-[#070707] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-400">Quß║ºy bß║»p n╞░ß╗¢c</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-white">Trß║íng th├íi m├│n/combo</h3>
+              <p className="mt-2 text-xs leading-6 text-neutral-500">
+                STAFF c├│ thß╗â ─æß╗òi nhanh trß║íng th├íi bß║»p n╞░ß╗¢c theo quß║ºy: mß╗ƒ b├ín, sß║»p hß║┐t hoß║╖c hß║┐t.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="border border-neutral-700 bg-black px-3 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-300">
+                {foodStats.active}/{foodStats.total} ─æang b├ín
+              </span>
+              <span className="border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-300">
+                {foodStats.lowStock} sß║»p hß║┐t
+              </span>
+              <span className="border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-300">
+                {foodStats.outOfStock} hß║┐t
+              </span>
+              <button
+                type="button"
+                onClick={loadStaffFoods}
+                disabled={isLoadingStaffFoods}
+                className="flex items-center gap-2 border border-neutral-700 bg-black px-4 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-300 transition hover:border-emerald-400 hover:text-white disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingStaffFoods ? 'animate-spin' : ''}`} /> L├ám mß╗¢i
+              </button>
+            </div>
+          </div>
+
+          {staffFoodError && <p className="mt-3 text-xs font-bold text-rose-400">{staffFoodError}</p>}
+
+          <div className="mt-4 flex flex-col gap-2 border border-neutral-800 bg-black p-3 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-3 border border-neutral-800 bg-[#070707] px-3 py-2.5 focus-within:border-purple-400">
+              <Search className="h-4 w-4 shrink-0 text-neutral-500" />
+              <input
+                type="search"
+                value={staffFoodSearch}
+                onChange={(event) => setStaffFoodSearch(event.target.value)}
+                placeholder="T├¼m gß║ºn ─æ├║ng theo t├¬n m├│n/combo..."
+                className="w-full bg-transparent text-xs font-bold text-white outline-none placeholder:text-neutral-600"
+              />
+            </div>
+            <span className="shrink-0 px-1 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+              {filteredStaffFoods.length}/{staffFoods.length} kß║┐t quß║ú
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {isLoadingStaffFoods ? (
+              <div className="border border-neutral-800 bg-black p-4 text-xs font-bold text-neutral-500">─Éang tß║úi danh s├ích bß║»p n╞░ß╗¢c...</div>
+            ) : filteredStaffFoods.length > 0 ? paginatedStaffFoods.map((food) => {
+              const foodKey = `${food.kind}-${food.id}`;
+              const statusMeta = getFoodStatusMeta(food.status);
+              return (
+                <div key={foodKey} className="border border-neutral-800 bg-black p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black uppercase text-white">{food.name}</p>
+                      <p className="mt-1 text-[9px] font-black uppercase tracking-widest text-neutral-500">{food.kind === 'combo' ? 'Combo' : 'M├│n lß║╗'}</p>
+                    </div>
+                    <span className={`px-2 py-1 text-[9px] font-black uppercase ${statusMeta.className}`}>
+                      {statusMeta.label}
+                    </span>
+                  </div>
+                  <select
+                    value={food.status || 'ACTIVE'}
+                    onChange={(event) => updateStaffFoodStatus(food, event.target.value)}
+                    disabled={savingStaffFoodKey === foodKey}
+                    className="mt-4 w-full border border-neutral-800 bg-[#070707] px-3 py-2.5 text-xs font-black text-white outline-none transition focus:border-purple-400 disabled:opacity-50"
+                  >
+                    <option value="ACTIVE">Mß╗ƒ b├ín</option>
+                    <option value="LOW_STOCK">Sß║»p hß║┐t</option>
+                    <option value="OUT_OF_STOCK">Hß║┐t</option>
+                  </select>
+                </div>
+              );
+            }) : (
+              <div className="border border-dashed border-neutral-800 bg-black p-4 text-xs font-bold text-neutral-500">
+                {staffFoodSearch.trim() ? 'Kh├┤ng t├¼m thß║Ñy m├│n/combo ph├╣ hß╗úp.' : 'Ch╞░a c├│ m├│n bß║»p n╞░ß╗¢c n├áo.'}
+              </div>
+            )}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 border border-neutral-800 bg-black/80 p-3 text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Hiß╗ân thß╗ï {staffFoodDisplayStart}-{staffFoodDisplayEnd}/{filteredStaffFoods.length} m├│n - Trang {safeStaffFoodPage}/{staffFoodTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={safeStaffFoodPage <= 1}
+                onClick={() => setStaffFoodPage((page) => Math.max(1, page - 1))}
+                className="inline-flex items-center gap-1 border border-neutral-700 px-3 py-2 text-white transition hover:border-purple-400 disabled:opacity-30"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Tr╞░ß╗¢c
+              </button>
+              <button
+                type="button"
+                disabled={safeStaffFoodPage >= staffFoodTotalPages}
+                onClick={() => setStaffFoodPage((page) => Math.min(staffFoodTotalPages, page + 1))}
+                className="inline-flex items-center gap-1 border border-neutral-700 px-3 py-2 text-white transition hover:border-purple-400 disabled:opacity-30"
+              >
+                Sau <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden border border-neutral-800 bg-[#070707]">
+          <div className="border-b border-neutral-800 p-5">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
+              {isShowingShowtimeBookings ? 'Dß╗» liß╗çu showtime tß╗½ API' : 'Dß╗» liß╗çu recent tß╗½ API'}
+            </p>
+            <h3 className="mt-1 text-lg font-black uppercase text-white">
+              {isShowingShowtimeBookings ? `Booking cß╗ºa showtime #${showtimeId}` : 'Booking vß╗½a tra cß╗⌐u/check-in'}
+            </h3>
+            {!isShowingShowtimeBookings && recentBookingsError && (
+              <p className="mt-2 text-xs font-bold text-rose-400">{recentBookingsError}</p>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left">
+              <thead className="border-b border-neutral-800 bg-black text-[8px] font-black uppercase tracking-[0.18em] text-neutral-500">
+                <tr>
+                  <th className="px-5 py-3">Booking</th>
+                  <th className="px-3 py-3">Phim</th>
+                  <th className="px-3 py-3">Suß║Ñt</th>
+                  <th className="px-3 py-3">Ghß║┐</th>
+                  <th className="px-3 py-3">Trß║íng th├íi</th>
+                  <th className="px-5 py-3 text-right">Thao t├íc</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-900">
+                {!isShowingShowtimeBookings && isLoadingRecentBookings ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center">
+                      <RefreshCw className="mx-auto h-8 w-8 animate-spin text-emerald-400/70" />
+                      <p className="mt-3 text-xs font-bold text-neutral-500">─Éang tß║úi booking gß║ºn ─æ├óy tß╗½ API...</p>
+                    </td>
+                  </tr>
+                ) : visibleBookings.length > 0 ? paginatedBookings.map((booking) => {
+                  const canCheckIn = isBookingCheckInOpen(booking);
+                  return (
+                    <tr key={booking.id} className="transition hover:bg-emerald-400/5">
+                      <td className="px-5 py-4"><p className="font-mono text-[11px] font-black text-white">{booking.bookingCode}</p><p className="mt-1 font-mono text-[8px] text-neutral-600">#{booking.id}</p></td>
+                      <td className="px-3 py-4 text-xs font-bold text-neutral-300">{booking.movieTitle}</td>
+                      <td className="px-3 py-4 text-[10px] font-bold text-neutral-500">
+                        {formatDateTime(booking.showtimeStart)}
+                        {booking.status === 'PAID' && !canCheckIn && (
+                          <p className="mt-1 text-[8px] font-black uppercase tracking-wider text-purple-300">Mß╗ƒ check-in tr╞░ß╗¢c 30 ph├║t</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-4 text-xs font-black text-white">{formatSeats(booking)}</td>
+                      <td className="px-3 py-4"><StatusBadge status={booking.status} /></td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => checkInByQr(booking.qrCode)}
+                          disabled={!canCheckIn || !booking.qrCode || isCheckingIn}
+                          title={booking.status === 'PAID' && !canCheckIn ? getCheckInWindowMessage(booking) : undefined}
+                          className="border border-neutral-700 px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-300 transition hover:border-emerald-400 hover:text-emerald-300 disabled:border-neutral-900 disabled:text-neutral-700"
+                        >
+                          {booking.status === 'USED' ? '─É├ú x├íc nhß║¡n' : booking.status === 'PAID' && !canCheckIn ? 'Ch╞░a mß╗ƒ' : 'Check-in'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center">
+                      <Ticket className="mx-auto h-8 w-8 text-neutral-700" />
+                      <p className="mt-3 text-xs font-bold text-neutral-500">Ch╞░a c├│ booking n├áo trong phi├¬n n├áy.</p>
+                      {isShowingShowtimeBookings && <p className="mt-1 text-[10px] font-bold text-neutral-600">Showtime n├áy ch╞░a c├│ booking.</p>}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col justify-between gap-3 border-t border-neutral-800 px-5 py-4 text-[9px] font-bold uppercase tracking-widest text-neutral-500 sm:flex-row sm:items-center">
+            <span>
+              {visibleBookings.length > 0
+                ? `Hiß╗ân thß╗ï ${bookingsDisplayStart}-${bookingsDisplayEnd}/${visibleBookings.length} booking - Trang ${safeBookingsPage}/${bookingsTotalPages}`
+                : isShowingShowtimeBookings
+                  ? 'Danh s├ích booking lß║Ñy trß╗▒c tiß║┐p theo showtimeId'
+                  : `Hiß╗ân thß╗ï tß╗æi ─æa ${RECENT_BOOKINGS_LIMIT} booking gß║ºn nhß║Ñt tß╗½ API staff/check-in/recent`}
+            </span>
+            {bookingsTotalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={safeBookingsPage <= 1}
+                  onClick={() => setBookingsPage((page) => Math.max(1, page - 1))}
+                  className="inline-flex items-center gap-1 border border-neutral-700 px-3 py-2 text-white transition hover:border-emerald-400 disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Tr╞░ß╗¢c
+                </button>
+                <button
+                  type="button"
+                  disabled={safeBookingsPage >= bookingsTotalPages}
+                  onClick={() => setBookingsPage((page) => Math.min(bookingsTotalPages, page + 1))}
+                  className="inline-flex items-center gap-1 border border-neutral-700 px-3 py-2 text-white transition hover:border-emerald-400 disabled:opacity-30"
+                >
+                  Sau <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+        {counterSaleBooking && (
+          <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-lg border border-purple-400/30 bg-[#070707] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-300">Quß║ºy bß║»p n╞░ß╗¢c</p>
+                  <h3 className="mt-1 text-lg font-black uppercase text-white">B├ín th├¬m cho {counterSaleBooking.bookingCode}</h3>
+                  <p className="mt-1 text-xs text-neutral-500">{counterSaleBooking.customerName || counterSaleBooking.movieTitle} ┬╖ thanh to├ín tiß╗ün mß║╖t tß║íi quß║ºy</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCounterSaleBooking(null)}
+                  className="border border-neutral-700 px-3 py-2 text-[10px] font-black uppercase text-neutral-300 hover:border-white hover:text-white"
+                >
+                  ─É├│ng
+                </button>
+              </div>
+
+              {counterSaleReceipt ? (
+                <div className="mt-4">
+                  <div className="border border-emerald-400/40 bg-emerald-500/5 px-4 py-4 text-center">
+                    <p className="text-2xl">Γ£ô</p>
+                    <p className="mt-1 text-sm font-black uppercase tracking-widest text-emerald-300">─É├ú thu tiß╗ün mß║╖t</p>
+                    <p className="mt-1 font-mono text-xs text-neutral-400">M├ú ─æ╞ín: <span className="font-black text-white">{counterSaleReceipt.orderCode}</span></p>
+                  </div>
+                  <div className="mt-3 divide-y divide-neutral-900 border border-neutral-800 bg-black text-xs">
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <span className="font-bold uppercase tracking-widest text-neutral-500">Tß╗òng thu</span>
+                      <span className="font-mono text-base font-black text-emerald-300">{formatCurrency(counterSaleReceipt.total)}</span>
+                    </div>
+                    {counterSaleReceipt.cashGiven !== null && (
+                      <>
+                        <div className="flex items-center justify-between px-4 py-2.5">
+                          <span className="font-bold uppercase tracking-widest text-neutral-500">Tiß╗ün kh├ích ─æ╞░a</span>
+                          <span className="font-mono font-black text-white">{formatCurrency(counterSaleReceipt.cashGiven)}</span>
+                        </div>
+                        <div className="flex items-center justify-between px-4 py-2.5">
+                          <span className="font-bold uppercase tracking-widest text-neutral-500">Thß╗æi lß║íi kh├ích</span>
+                          <span className="font-mono font-black text-amber-300">{formatCurrency(counterSaleReceipt.change || 0)}</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <span className="font-bold uppercase tracking-widest text-neutral-500">Thß╗¥i gian</span>
+                      <span className="font-mono text-neutral-300">{counterSaleReceipt.time}</span>
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <span className="font-bold uppercase tracking-widest text-neutral-500">Ng╞░ß╗¥i thu</span>
+                      <span className="font-bold text-neutral-300">{counterSaleReceipt.collector}</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCounterSaleBooking(null)}
+                      className="border border-neutral-700 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-300 transition hover:border-white hover:text-white"
+                    >
+                      ─É├│ng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCounterSaleReceipt(null); setCounterSaleMessage(''); }}
+                      className="bg-purple-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-purple-300"
+                    >
+                      B├ín ─æ╞ín kh├íc
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 max-h-52 overflow-y-auto divide-y divide-neutral-900 border border-neutral-800 bg-black">
+                    {staffFoods.filter((food) => food.status === 'ACTIVE' || food.status === 'LOW_STOCK').map((food) => {
+                      const foodKey = `${food.kind}-${food.id}`;
+                      return (
+                        <div key={foodKey} className="flex items-center justify-between gap-3 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-black uppercase text-white">{food.name}</p>
+                            <p className="mt-0.5 font-mono text-[10px] text-amber-300">{formatCurrency(food.price)} ┬╖ {food.kind === 'combo' ? 'Combo' : 'M├│n lß║╗'}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeCounterSaleQuantity(foodKey, -1)}
+                              className="h-7 w-7 border border-neutral-700 text-white transition hover:border-purple-400"
+                            >ΓêÆ</button>
+                            <span className="w-6 text-center font-mono text-xs font-black text-white">{counterSaleQuantities[foodKey] || 0}</span>
+                            <button
+                              type="button"
+                              onClick={() => changeCounterSaleQuantity(foodKey, 1)}
+                              className="h-7 w-7 border border-neutral-700 text-white transition hover:border-purple-400"
+                            >+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {staffFoods.length === 0 && (
+                      <p className="px-4 py-6 text-center text-xs font-bold text-neutral-500">Ch╞░a tß║úi ─æ╞░ß╗úc danh s├ích bß║»p n╞░ß╗¢c.</p>
+                    )}
+                  </div>
+
+                  {counterSaleLines.length > 0 && (
+                    <div className="mt-3 border border-purple-400/20 bg-purple-500/5">
+                      <p className="border-b border-purple-400/20 px-4 py-2 text-[9px] font-black uppercase tracking-[0.2em] text-purple-300">So├ít ─æ╞ín tr╞░ß╗¢c khi thu</p>
+                      <div className="divide-y divide-neutral-900">
+                        {counterSaleLines.map((line) => (
+                          <div key={line.key} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
+                            <span className="min-w-0 truncate font-bold text-neutral-300">{line.name} <span className="font-mono text-neutral-500">├ù {line.qty}</span></span>
+                            <span className="shrink-0 font-mono text-neutral-400">{formatCurrency(line.price)} = <span className="font-black text-white">{formatCurrency(line.lineTotal)}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between border-t border-purple-400/20 px-4 py-3">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cß║ºn thu</span>
+                        <span className="font-mono text-xl font-black text-purple-300">{formatCurrency(counterSaleTotal)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">Tiß╗ün kh├ích ─æ╞░a (bß╗Å trß╗æng nß║┐u thu ─æ├║ng sß╗æ)</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={cashGiven}
+                        onChange={(event) => setCashGiven(event.target.value)}
+                        placeholder="VD: 200000"
+                        className="w-full border border-neutral-700 bg-black px-3 py-2.5 font-mono text-sm font-black text-white outline-none focus:border-purple-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCashGiven('')}
+                        className="shrink-0 border border-neutral-700 px-3 py-2.5 text-[9px] font-black uppercase text-neutral-400 transition hover:border-white hover:text-white"
+                      >
+                        X├│a
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[50000, 100000, 200000, 500000].map((amount) => (
+                        <button
+                          key={amount}
+                          type="button"
+                          onClick={() => setCashGiven(String(amount))}
+                          className="border border-neutral-700 px-3 py-1.5 font-mono text-[10px] font-black text-neutral-300 transition hover:border-purple-400 hover:text-purple-300"
+                        >
+                          {(amount / 1000).toLocaleString('vi-VN')}k
+                        </button>
+                      ))}
+                    </div>
+                    {cashGivenValue !== null && counterSaleTotal > 0 && (
+                      cashInsufficient ? (
+                        <p className="mt-2 text-xs font-black text-rose-400">Kh├ích ─æ╞░a thiß║┐u {formatCurrency(counterSaleTotal - cashGivenValue)} ΓÇö ch╞░a thß╗â x├íc nhß║¡n.</p>
+                      ) : (
+                        <p className="mt-2 text-xs font-bold text-neutral-300">Thß╗æi lß║íi kh├ích: <span className="font-mono text-base font-black text-emerald-300">{formatCurrency(cashChange)}</span></p>
+                      )
+                    )}
+                  </div>
+
+                  {counterSaleMessage && <p className="mt-3 text-xs font-bold text-rose-400">{counterSaleMessage}</p>}
+
+                  <button
+                    type="button"
+                    onClick={submitCounterSale}
+                    disabled={isSavingCounterSale || counterSaleTotal <= 0 || cashInsufficient}
+                    className="mt-4 w-full bg-purple-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-purple-300 disabled:opacity-40"
+                  >
+                    {isSavingCounterSale ? '─Éang x├íc nhß║¡n...' : `X├íc nhß║¡n ─æ├ú thu ${counterSaleTotal > 0 ? formatCurrency(counterSaleTotal) : 'tiß╗ün mß║╖t'}`}
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+        {manualRefundModal && (
+          <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full max-w-lg border border-amber-400/30 bg-[#070707] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">Manual refund</p>
+                  <h3 className="mt-1 text-lg font-black uppercase text-white">Xac nhan da hoan tien ngoai</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setManualRefundModal(null)}
+                  className="border border-neutral-700 px-3 py-2 text-[10px] font-black uppercase text-neutral-300 hover:border-white hover:text-white"
+                >
+                  Dong
+                </button>
+              </div>
+              <div className="mt-5 grid gap-3 text-xs sm:grid-cols-2">
+                <div className="border border-neutral-800 bg-black p-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Booking</p>
+                  <p className="mt-1 font-mono font-black text-white">{manualRefundModal.bookingCode}</p>
+                </div>
+                <div className="border border-neutral-800 bg-black p-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">So tien</p>
+                  <p className="mt-1 font-mono font-black text-amber-300">{formatCurrency(manualRefundModal.refundAmount)}</p>
+                </div>
+                <div className="border border-neutral-800 bg-black p-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Khach hang</p>
+                  <p className="mt-1 truncate font-bold text-neutral-300">{manualRefundModal.customerName || manualRefundModal.customerEmail}</p>
+                </div>
+                <div className="border border-neutral-800 bg-black p-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Diem NET</p>
+                  <p className="mt-1 font-mono font-black text-emerald-300">
+                    {Number(manualRefundModal.loyaltyCalculation?.netBalanceChange || 0).toLocaleString('vi-VN')}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Phuong thuc</span>
+                  <select
+                    value={manualRefundForm.refundMethod}
+                    onChange={(event) => setManualRefundForm((current) => ({ ...current, refundMethod: event.target.value }))}
+                    className="w-full border border-neutral-800 bg-black px-3 py-3 text-xs font-bold text-white outline-none focus:border-amber-300"
+                  >
+                    <option value="MANUAL_BANK_TRANSFER">Bank Transfer</option>
+                    <option value="CASH">Cash</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Ghi chu</span>
+                  <input
+                    value={manualRefundForm.notes}
+                    onChange={(event) => setManualRefundForm((current) => ({ ...current, notes: event.target.value }))}
+                    maxLength={500}
+                    placeholder="Transaction ID, STK, ca truc..."
+                    className="w-full border border-neutral-800 bg-black px-3 py-3 text-xs font-bold text-white outline-none placeholder:text-neutral-700 focus:border-amber-300"
+                  />
+                </label>
+              </div>
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setManualRefundModal(null)}
+                  className="flex-1 border border-neutral-700 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-300 transition hover:border-white hover:text-white"
+                >
+                  Quay lai
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmManualRefund}
+                  disabled={isSavingManualRefund}
+                  className="flex-1 bg-amber-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-amber-300 disabled:opacity-50"
+                >
+                  {isSavingManualRefund ? 'Dang luu...' : 'Da hoan tien ngoai'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
