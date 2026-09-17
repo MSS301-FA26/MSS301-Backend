@@ -4,6 +4,7 @@ import com.sba301.cinemaai.dto.response.ApiResponse;
 import com.sba301.cinemaai.dto.request.user.AdminStaffCreateRequest;
 import com.sba301.cinemaai.dto.request.user.AdminUserStatusUpdateRequest;
 import com.sba301.cinemaai.dto.response.user.UserProfileResponse;
+import com.sba301.cinemaai.enums.RoleName;
 import com.sba301.cinemaai.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,14 +32,14 @@ public class AdminUserController {
     private final UserService userService;
 
     @GetMapping
-    @Operation(summary = "Get all users (Admin)", description = "Get all users (Admin only)")
+    @Operation(summary = "Get all users (Admin)", description = "Get all users, optionally filtered by role (e.g. role=STAFF)")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
     })
-    public ApiResponse<List<UserProfileResponse>> getUsers() {
-        return ApiResponse.success(userService.getAllUsers());
+    public ApiResponse<List<UserProfileResponse>> getUsers(@RequestParam(required = false) RoleName role) {
+        return ApiResponse.success(userService.getAllUsers(role));
     }
 
     @GetMapping("/{userId}")

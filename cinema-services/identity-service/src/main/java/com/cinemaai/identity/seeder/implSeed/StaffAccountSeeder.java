@@ -1,4 +1,4 @@
-package com.cinemaai.identity.seeder;
+package com.cinemaai.identity.seeder.implSeed;
 
 import com.cinemaai.identity.config.SeederAccountProperties;
 import com.cinemaai.identity.entity.Role;
@@ -9,6 +9,7 @@ import com.cinemaai.identity.enums.UserStatus;
 import com.cinemaai.identity.repository.RoleRepository;
 import com.cinemaai.identity.repository.UserRepository;
 import com.cinemaai.identity.repository.UserRoleRepository;
+import com.cinemaai.identity.seeder.Seeder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;

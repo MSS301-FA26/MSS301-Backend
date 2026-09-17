@@ -4,6 +4,7 @@ import com.cinemaai.identity.dto.request.user.AdminStaffCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminUserStatusUpdateRequest;
 import com.cinemaai.identity.dto.response.ApiResponse;
 import com.cinemaai.identity.dto.response.user.UserProfileResponse;
+import com.cinemaai.identity.enums.RoleName;
 import com.cinemaai.identity.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,9 +31,9 @@ public class AdminUserController {
     private final UserService userService;
 
     @GetMapping
-    @Operation(summary = "Get all users (Admin)")
-    public ApiResponse<List<UserProfileResponse>> getUsers() {
-        return ApiResponse.success(userService.getAllUsers());
+    @Operation(summary = "Get all users (Admin)", description = "Get all users, optionally filtered by role (e.g. role=STAFF)")
+    public ApiResponse<List<UserProfileResponse>> getUsers(@RequestParam(required = false) RoleName role) {
+        return ApiResponse.success(userService.getAllUsers(role));
     }
 
     @GetMapping("/{userId}")

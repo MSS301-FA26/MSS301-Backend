@@ -1,6 +1,8 @@
-package com.cinemaai.identity.seeder;
+package com.cinemaai.identity.seeder.implSeed;
 
 import java.util.List;
+
+import com.cinemaai.identity.seeder.Seeder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
