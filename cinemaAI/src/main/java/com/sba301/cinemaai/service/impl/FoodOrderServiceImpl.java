@@ -28,10 +28,13 @@ import com.sba301.cinemaai.repository.BookingSeatRepository;
 import com.sba301.cinemaai.repository.FoodOrderRepository;
 import com.sba301.cinemaai.repository.PaymentRepository;
 import com.sba301.cinemaai.service.AuditLogService;
+import com.sba301.cinemaai.service.FoodInventoryService;
 import com.sba301.cinemaai.service.FoodOrderService;
 import com.sba301.cinemaai.service.FoodService;
+import com.sba301.cinemaai.service.PromotionService;
 import com.sba301.cinemaai.service.QrTicketService;
 import com.sba301.cinemaai.service.UserService;
+import com.sba301.cinemaai.enums.PromotionTarget;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -60,6 +63,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     private final UserService userService;
     private final QrTicketService qrTicketService;
     private final AuditLogService auditLogService;
+    private final FoodInventoryService foodInventoryService;
+    private final PromotionService promotionService;
 
     @Override
     @Transactional
@@ -160,6 +165,20 @@ public class FoodOrderServiceImpl implements FoodOrderService {
         paymentRepository.save(payment);
         order.setStatus(FoodOrderStatus.PAID);
         order.setPaidAt(LocalDateTime.now());
+
+        Long cinemaId = 1L;
+        if (order.getBooking() != null && order.getBooking().getShowtime() != null
+                && order.getBooking().getShowtime().getRoom() != null
+                && order.getBooking().getShowtime().getRoom().getCinema() != null) {
+            cinemaId = order.getBooking().getShowtime().getRoom().getCinema().getId();
+        }
+        List<BookingFoodItem> orderItems = bookingFoodItemRepository.findByFoodOrder(order);
+        for (BookingFoodItem item : orderItems) {
+            Long itemId = item.getFoodItem() != null ? item.getFoodItem().getId() : null;
+            Long comboId = item.getFoodCombo() != null ? item.getFoodCombo().getId() : null;
+            foodInventoryService.deductStockForOrder(cinemaId, itemId, comboId, item.getQuantity(), order.getOrderCode());
+        }
+
         auditLogService.record(AuditActionType.CREATE, "FOOD_ORDER", order.getId(),
                 order.getOrderCode() + " - " + order.getTotalAmount() + " VND");
         return toResponse(order);
@@ -207,6 +226,29 @@ public class FoodOrderServiceImpl implements FoodOrderService {
             bookingFoodItemRepository.save(item);
             total = total.add(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
         }
+
+        if (request.promotionCode() != null && !request.promotionCode().isBlank()) {
+            var voucherReq = new com.sba301.cinemaai.dto.request.promotion.ValidateVoucherRequest(
+                    request.promotionCode().trim(),
+                    total,
+                    PromotionTarget.FOOD_ONLY
+            );
+            var voucher = promotionService.validateVoucher(voucherReq, customer != null ? customer.getId() : null);
+            if (voucher.valid()) {
+                BigDecimal discount = voucher.discountAmount();
+                total = voucher.finalAmount();
+                promotionService.recordPromotionUsage(
+                        request.promotionCode().trim(),
+                        customer != null ? customer.getId() : null,
+                        booking != null ? booking.getId() : null,
+                        order.getId(),
+                        discount
+                );
+            } else {
+                throw new BadRequestException(voucher.message());
+            }
+        }
+
         order.setTotalAmount(total);
         return order;
     }
@@ -225,25 +267,24 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     }
 
     private BookingFoodItem buildFoodItem(Booking booking, BookingFoodRequest request) {
-        if ((request.foodItemId() == null && request.foodComboId() == null)
-                || (request.foodItemId() != null && request.foodComboId() != null)) {
+        if (request.foodItemId() == null && request.foodComboId() == null) {
             throw new BadRequestException("Choose exactly one food item or combo");
         }
         if (request.quantity() <= 0) {
             throw new BadRequestException("Quantity must be positive");
         }
-        if (request.foodItemId() != null) {
-            FoodItem foodItem = foodService.findItem(request.foodItemId());
-            if (!SELLABLE_FOOD_STATUSES.contains(foodItem.getStatus())) {
-                throw new BadRequestException("Food item is not available");
+        if (request.foodComboId() != null) {
+            FoodCombo foodCombo = foodService.findCombo(request.foodComboId());
+            if (!SELLABLE_FOOD_STATUSES.contains(foodCombo.getStatus())) {
+                throw new BadRequestException("Food combo is not available");
             }
-            return new BookingFoodItem(booking, foodItem, null, request.quantity(), foodItem.getPrice());
+            return new BookingFoodItem(booking, null, foodCombo, request.quantity(), foodCombo.getPrice());
         }
-        FoodCombo foodCombo = foodService.findCombo(request.foodComboId());
-        if (!SELLABLE_FOOD_STATUSES.contains(foodCombo.getStatus())) {
-            throw new BadRequestException("Food combo is not available");
+        FoodItem foodItem = foodService.findItem(request.foodItemId());
+        if (!SELLABLE_FOOD_STATUSES.contains(foodItem.getStatus())) {
+            throw new BadRequestException("Food item is not available");
         }
-        return new BookingFoodItem(booking, null, foodCombo, request.quantity(), foodCombo.getPrice());
+        return new BookingFoodItem(booking, foodItem, null, request.quantity(), foodItem.getPrice());
     }
 
     private Booking resolveBookingByCode(String code) {

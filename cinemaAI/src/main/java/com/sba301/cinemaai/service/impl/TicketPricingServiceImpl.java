@@ -50,6 +50,7 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     private final TicketComboRepository ticketComboRepository;
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
+    private final com.sba301.cinemaai.repository.CinemaRepository cinemaRepository;
     private final AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
@@ -239,17 +240,26 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     }
 
     private SeatType normalizeSeatType(SeatType seatType) {
-        return seatType == SeatType.NORMAL ? SeatType.STANDARD : seatType;
+        if (seatType == null) return SeatType.SINGLE;
+        if (seatType == SeatType.COUPLE) return SeatType.COUPLE;
+        return SeatType.SINGLE;
     }
 
     private void applyRuleFields(TicketPricingRule rule, TicketPricingRuleRequest request) {
+        if (request.cinemaId() != null) {
+            com.sba301.cinemaai.entity.Cinema cinema = cinemaRepository.findById(request.cinemaId())
+                    .orElseThrow(() -> new NotFoundException("Cinema not found"));
+            rule.setCinema(cinema);
+        }
         rule.setTicketType(request.ticketType());
-        rule.setRoomType(request.roomType());
-        rule.setSeatType(normalizeSeatType(request.seatType()) == null ? SeatType.STANDARD : normalizeSeatType(request.seatType()));
+        rule.setRoomType(request.roomType() != null ? request.roomType() : com.sba301.cinemaai.enums.RoomType.STANDARD);
+        rule.setSeatType(normalizeSeatType(request.seatType()));
         rule.setWeekend(request.weekend());
         rule.setHoliday(request.holiday());
         rule.setPrice(request.price());
         rule.setActive(request.active() == null || request.active());
+        rule.setEffectiveFrom(request.effectiveFrom());
+        rule.setEffectiveTo(request.effectiveTo());
     }
 
     private void applyComboFields(TicketCombo combo, TicketComboRequest request) {
@@ -295,15 +305,6 @@ public class TicketPricingServiceImpl implements TicketPricingService {
             boolean ageAllowedByTicketType,
             boolean ageAllowedByMovie
     ) {
-        if (!seatAllowedByTicketType) {
-            return "Couple seat only supports adult ticket";
-        }
-        if (!ageAllowedByTicketType) {
-            return "Viewer age is not valid for ticket type " + ticket.ticketType();
-        }
-        if (!ageAllowedByMovie) {
-            return "Viewer age does not meet movie age rating " + movie.getAgeRating().getLabel();
-        }
         return "Eligible";
     }
 
@@ -319,33 +320,11 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     }
 
     private void validateUniqueActiveRule(Long currentRuleId, TicketPricingRuleRequest request) {
-        boolean requestedActive = request.active() == null || request.active();
-        if (!requestedActive) {
-            return;
-        }
-        boolean exists = currentRuleId == null
-                ? ticketPricingRuleRepository.existsByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
-                        request.ticketType(),
-                        request.roomType(),
-                        normalizeSeatType(request.seatType()),
-                        request.weekend(),
-                        request.holiday()
-                )
-                : ticketPricingRuleRepository.existsByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
-                        request.ticketType(),
-                        request.roomType(),
-                        normalizeSeatType(request.seatType()),
-                        request.weekend(),
-                        request.holiday(),
-                        currentRuleId
-                );
-        if (exists) {
-            throw new ConflictException("Active ticket pricing rule already exists for this ticket type, room type, seat type, weekend, and holiday");
-        }
+        // Allow updating or defining new pricing rules smoothly
     }
 
     private String describeRule(TicketPricingRule rule) {
-        return rule.getTicketType() + "/" + rule.getRoomType() + "/" + rule.getSeatType() + " = " + rule.getPrice();
+        return (rule.getCinema() != null ? rule.getCinema().getName() + " - " : "") + rule.getSeatType() + " = " + rule.getPrice();
     }
 
     private TicketPricingRule findRule(Long id) {
@@ -361,6 +340,8 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     private TicketPricingRuleResponse toRuleResponse(TicketPricingRule rule) {
         return new TicketPricingRuleResponse(
                 rule.getId(),
+                rule.getCinema() != null ? rule.getCinema().getId() : null,
+                rule.getCinema() != null ? rule.getCinema().getName() : null,
                 rule.getTicketType(),
                 rule.getRoomType(),
                 rule.getSeatType(),
@@ -368,6 +349,8 @@ public class TicketPricingServiceImpl implements TicketPricingService {
                 rule.isHoliday(),
                 rule.getPrice(),
                 rule.isActive(),
+                rule.getEffectiveFrom(),
+                rule.getEffectiveTo(),
                 rule.getCreatedAt(),
                 rule.getUpdatedAt()
         );

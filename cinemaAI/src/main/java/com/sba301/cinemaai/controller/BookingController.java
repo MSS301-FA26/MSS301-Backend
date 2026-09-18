@@ -85,4 +85,12 @@ public class BookingController {
     ) {
         return ApiResponse.success(bookingService.cancel(user.getUsername(), bookingId), "Booking cancelled successfully");
     }
+
+    @PostMapping("/{bookingId}/release-hold")
+    public ApiResponse<BookingResponse> releaseHold(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long bookingId
+    ) {
+        return ApiResponse.success(bookingService.releaseHold(user.getUsername(), bookingId), "Hold released successfully");
+    }
 }

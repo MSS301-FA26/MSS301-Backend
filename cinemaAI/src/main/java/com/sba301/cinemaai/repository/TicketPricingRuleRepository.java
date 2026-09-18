@@ -16,6 +16,17 @@ public interface TicketPricingRuleRepository extends JpaRepository<TicketPricing
 
     List<TicketPricingRule> findByActiveTrue();
 
+    List<TicketPricingRule> findByCinemaIdAndActiveTrue(Long cinemaId);
+
+    Optional<TicketPricingRule> findFirstByCinemaIdAndSeatTypeAndActiveTrueOrderByUpdatedAtDesc(
+            Long cinemaId,
+            SeatType seatType
+    );
+
+    Optional<TicketPricingRule> findFirstBySeatTypeAndActiveTrueOrderByUpdatedAtDesc(
+            SeatType seatType
+    );
+
     Optional<TicketPricingRule> findFirstByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
             TicketType ticketType,
             RoomType roomType,

@@ -248,6 +248,10 @@ to `EXPIRED`.
 | `GET /users` | — | `List<UserProfileResponse>` | `200` |
 | `GET /users/{userId}` | path | `UserProfileResponse` | `200` |
 | `POST /users/staff` | `AdminStaffCreateRequest` | `UserProfileResponse` | `200` |
+| `GET /users/managers/cinemas` | — | `List<CinemaResponse>` | `200` |
+| `POST /users/managers` | `AdminManagerCreateRequest` (includes non-empty `cinemaIds`) | `UserProfileResponse` | `201` |
+| `GET /users/managers/{userId}/cinemas` | path | `List<Long>` | `200` |
+| `PATCH /users/managers/{userId}/cinemas` | `ManagerCinemaAssignmentRequest` | `List<Long>` | `200` |
 | `PATCH /users/{userId}/status` | `AdminUserStatusUpdateRequest` | `UserProfileResponse` | `200` |
 | `GET /loyalty/config` | — | `LoyaltyConfigurationResponse` | `200` |
 | `PUT /loyalty/config` | `LoyaltyConfigurationRequest` | `LoyaltyConfigurationResponse` | `200` |
@@ -270,6 +274,26 @@ to `EXPIRED`.
 | `GET /recommendations/users/{userId}/debug` | query `limit` | `RecommendationDebugResponse` | `200` |
 | `POST /uploads/images` | multipart `file`, query `folder` | `UploadedFileResponse` | `201` |
 
+Manager operations (role `MANAGER`, limited to cinemas assigned by an ADMIN):
+
+| Method + path | Request | Response | Success |
+|---|---|---|---|
+| `GET /manager/cinemas` | — | `List<CinemaResponse>` | `200` |
+| `GET /manager/cinemas/{cinemaId}/rooms` | path | room list | `200` |
+| `GET /manager/cinemas/{cinemaId}/rooms/{roomId}/seats` | path | seat list | `200` |
+| `PUT /manager/cinemas/{cinemaId}/seats/{seatId}/status` | `{ status, reason }` | `SeatResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes` | path | showtime list | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes/available-slots` | query `roomId,movieId,date` | available slots | `200` |
+| `POST /manager/cinemas/{cinemaId}/showtimes` | `ShowtimeRequest` | `ShowtimeResponse` | `200` |
+| `PUT /manager/cinemas/{cinemaId}/showtimes/{showtimeId}` | `ShowtimeRequest` | `ShowtimeResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes/{showtimeId}/seat-map` | path | `ShowtimeSeatMapResponse` | `200` |
+| `POST /manager/cinemas/{cinemaId}/showtimes/{showtimeId}/cancel` | query `reason` | `ShowtimeResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory` | path | inventory list | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/low-stock` | path | low/out-of-stock inventory list | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/summary` | path | `FoodInventorySummaryResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/transactions` | path | inventory transaction list | `200` |
+| `POST /manager/cinemas/{cinemaId}/inventory/adjust` | `StockAdjustmentRequest` | inventory state | `200` |
+
 ## 6. Contract maintenance rule
 
 Khi endpoint thay đổi, cập nhật đồng thời:
@@ -280,34 +304,3 @@ Khi endpoint thay đổi, cập nhật đồng thời:
 4. integration hoặc endpoint inventory test;
 5. Postman collection nếu flow bị ảnh hưởng;
 6. file này.
-
-
-## Catalog Service checkout quote (BE-04)
-
-### `POST /internal/v1/catalog/checkout-quote`
-
-Internal authentication: `X-Internal-Service-Secret`. This path is blocked at the public API Gateway.
-
-Request:
-
-```json
-{
-  "showtimeId": 101,
-  "seatIds": [1, 2],
-  "tickets": [
-    {"seatId": 1, "ticketType": "ADULT", "viewerAge": 22, "quantity": 1},
-    {"seatId": 2, "ticketType": "STUDENT", "viewerAge": 20, "quantity": 1}
-  ],
-  "foods": [{"productId": 10, "isCombo": false, "quantity": 1}]
-}
-```
-
-The sum of ticket quantities must equal `seatIds.size`. An explicit `ticket.seatId` requires quantity 1; omitted ticket seat IDs are assigned in request seat order. The service accepts only future `OPEN` showtimes, physical `AVAILABLE` seats in the showtime room, eligible viewer ages, and active food products.
-
-Success: `200 ApiResponse<CheckoutQuoteResponse>`. The response includes `quoteId`, `validUntil`, showtime/movie/cinema/room snapshots, per-seat and per-ticket prices, food snapshots, `ticketSubtotal`, `foodSubtotal`, and `subtotal`.
-
-Validation failures return `400 ErrorResponse`; missing internal authentication returns `403`.
-
-### `POST /api/v1/catalog/checkout-quote`
-
-Authenticated customer facade for the current web booking flow. It applies the same calculation and response contract. Booking Service should use the internal endpoint when BE-05 integration is implemented.
