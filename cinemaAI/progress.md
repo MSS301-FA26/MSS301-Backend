@@ -1,4 +1,4 @@
-# CinemaAI Progress
+﻿# CinemaAI Progress
 
 ## Session update - 2026-07-23 recoverable standalone concession checkout
 
@@ -15,7 +15,7 @@ Scope:
 Verification:
 
 - `mvnw.cmd -DskipTests package`: passed.
-- `PaymentIntegrationTests`: passed (5 tests), including standalone create/pay and list/cancel coverage.
+- `PaymentIntegrationTests`: passed (6 tests), including standalone create/pay and list/cancel coverage.
 - Frontend `npm run build`: passed (2799 modules; existing bundle-size warning only).
 
 ## Session update - 2026-07-23 standalone concessions checkout
@@ -244,3 +244,17 @@ Do not mark a partial phase `done` merely because its primary controller exists.
 - Updated the staff scanner to distinguish ticket QR from food QR, display receipt lines, and prevent duplicate handoff.
 - Verification passed: `mvnw -DskipTests compile`, `mvnw -Dtest=PaymentIntegrationTests test` (6 tests), and frontend `npm run build`.
 - Startup follow-up: clean Spring context test passed and both `FoodOrderServiceImpl`/`QrTicketServiceImpl` are discoverable. The reported missing-bean state was caused by an IntelliJ/DevTools process restarting while `target/classes` was being rebuilt. Legacy `commons-logging` was excluded from Cloudinary because Spring already supplies `spring-jcl`.
+
+## 2026-09-18 — BE-03 Catalog Service and BE-04 checkout quote
+
+- Moved the Catalog domain into `cinema-services/catalog-service`: movies, genres, actors, cinema, rooms, physical seats, showtimes, concessions and ticket pricing.
+- Added PostgreSQL Flyway `V1__init_catalog.sql`, optional local demo data, environment-only runtime configuration, API envelopes and centralized exception handling.
+- Added JWT ADMIN authorization, Gateway secret isolation, correlation IDs, Catalog OpenAPI aggregation and internal service authentication.
+- Added `POST /internal/v1/catalog/checkout-quote` with showtime state, seat/room, age, ticket price and food availability validation. The response contains a five-minute quote and immutable snapshot fields.
+- Added the authenticated `/api/v1/catalog/checkout-quote` facade used by the current frontend until Booking Service BE-05 consumes the internal endpoint.
+- Connected `BookingPage` to authoritative ticket/F&B quotes and added the missing Admin concessions delete action.
+- Scope boundary: runtime seat holds and showtime refund coordination remain owned by Booking Service BE-05/BE-06.
+- Verification passed with JDK 21: `mvn -f cinema-services/pom.xml -pl catalog-service,api-gateway -am test` (6 tests), including clean Flyway schema, Hibernate validate, gateway/admin security smoke checks, correct quote totals and wrong-room seat rejection.
+- Frontend verification passed: `npm run build`. Vite reports only the existing large-chunk warning.
+- Deployment follow-up: validate the migration on a disposable PostgreSQL 16 instance before production rollout.
+

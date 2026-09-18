@@ -281,3 +281,33 @@ Khi endpoint thay đổi, cập nhật đồng thời:
 5. Postman collection nếu flow bị ảnh hưởng;
 6. file này.
 
+
+## Catalog Service checkout quote (BE-04)
+
+### `POST /internal/v1/catalog/checkout-quote`
+
+Internal authentication: `X-Internal-Service-Secret`. This path is blocked at the public API Gateway.
+
+Request:
+
+```json
+{
+  "showtimeId": 101,
+  "seatIds": [1, 2],
+  "tickets": [
+    {"seatId": 1, "ticketType": "ADULT", "viewerAge": 22, "quantity": 1},
+    {"seatId": 2, "ticketType": "STUDENT", "viewerAge": 20, "quantity": 1}
+  ],
+  "foods": [{"productId": 10, "isCombo": false, "quantity": 1}]
+}
+```
+
+The sum of ticket quantities must equal `seatIds.size`. An explicit `ticket.seatId` requires quantity 1; omitted ticket seat IDs are assigned in request seat order. The service accepts only future `OPEN` showtimes, physical `AVAILABLE` seats in the showtime room, eligible viewer ages, and active food products.
+
+Success: `200 ApiResponse<CheckoutQuoteResponse>`. The response includes `quoteId`, `validUntil`, showtime/movie/cinema/room snapshots, per-seat and per-ticket prices, food snapshots, `ticketSubtotal`, `foodSubtotal`, and `subtotal`.
+
+Validation failures return `400 ErrorResponse`; missing internal authentication returns `403`.
+
+### `POST /api/v1/catalog/checkout-quote`
+
+Authenticated customer facade for the current web booking flow. It applies the same calculation and response contract. Booking Service should use the internal endpoint when BE-05 integration is implemented.
