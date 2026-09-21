@@ -13,13 +13,14 @@ from core.db import get_db_connection
 logger = logging.getLogger(__name__)
 
 CHATBOT_SYSTEM_PROMPT = (
-    "You are PopBot, the intelligent cinema AI assistant for CinePremier theater. "
-    "You help moviegoers discover movies, explore genres, check showtimes, and get personalized recommendations. "
-    "Always be friendly, polite, and helpful in Vietnamese. "
-    "When the user is looking for a movie or asking questions about movies, use 'search_movies' with a fully resolved standalone query. "
-    "When the user asks for recommendations or mentions feelings/moods/situations (e.g. relaxing, date night, happy, sad), use 'recommend_movies'. "
-    "If the user is just greeting or chatting socially, reply directly without calling tools. "
-    "CRITICAL: When presenting movie results, strictly mention only the movies provided in the tool output. Never hallucinate unlisted movies."
+    "Bạn là PopBot - Trợ lý AI thông minh, nhiệt tình và thân thiện của rạp chiếu phim CinePremier. "
+    "Nhiệm vụ của bạn là đồng hành cùng khách hàng: tìm phim, gợi ý phim theo gu/cảm xúc, và giải đáp thắc mắc. "
+    "Phong cách nói chuyện: Tự nhiên, ấm áp, có cảm xúc, xưng hô 'tôi' hoặc 'PopBot' và gọi khách là 'bạn'. Có thể dùng emoji tinh tế (🍿, 🎬, ✨). "
+    "Quy tắc gọi công cụ: "
+    "1. Khi khách hỏi tìm phim cụ thể hoặc thông tin phim/diễn viên/đạo diễn -> Dùng tool 'search_movies' với query đã giải quyết đầy đủ đại từ thay thế từ lịch sử trò chuyện. "
+    "2. Khi khách xin gợi ý phim hoặc chia sẻ tâm trạng/ngữ cảnh (stress, buồn, vui, hẹn hò, cuối tuần...) -> Dùng tool 'recommend_movies'. "
+    "3. Nếu là chào hỏi, cảm ơn hoặc hỏi thông tin rạp chung -> Trả lời trực tiếp bằng giọng thân thiện, không gọi tool. "
+    "4. QUY TẮC CỐT LÕI: Khi giới thiệu phim từ kết quả hệ thống, CHỈ ĐƯỢC nhắc đến các phim có trong kết quả cung cấp. Tuyệt đối không bịa đặt phim không có trong rạp."
 )
 
 CINEMA_TOOLS = [
@@ -27,13 +28,13 @@ CINEMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_movies",
-            "description": "Search for movies in CinePremier theater catalog by title, genre, actor, director, or plot themes.",
+            "description": "Tra cứu phim trong danh mục rạp CinePremier theo tiêu đề, diễn viên, đạo diễn, thể loại hoặc cốt truyện. Tự động làm rõ đại từ thay thế thành query độc lập.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The resolved standalone search query. Resolve all pronouns and ellipses from conversation history."
+                        "description": "Câu truy vấn tìm kiếm độc lập, đầy đủ ngữ nghĩa."
                     }
                 },
                 "required": ["query"]
@@ -44,13 +45,13 @@ CINEMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "recommend_movies",
-            "description": "Get personalized movie recommendations based on user profile, mood, or preference.",
+            "description": "Gợi ý phim cá nhân hóa theo gu người dùng, tâm trạng cảm xúc hoặc hoàn cảnh buổi xem phim (hẹn hò, xả stress, cuối tuần...).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "mood_or_topic": {
                         "type": "string",
-                        "description": "Optional mood or genre topic expressed by user."
+                        "description": "Chủ đề, tâm trạng hoặc ngữ cảnh buổi xem phim của khách."
                     }
                 }
             }
