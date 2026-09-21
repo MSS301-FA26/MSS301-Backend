@@ -93,3 +93,70 @@ def test_chat_service_agentic_search_tool_call(monkeypatch):
     assert resp.subsystemInvoked == "SEARCH"
     assert resp.rewrittenQuery == "Interstellar"
     assert "Interstellar" in resp.reply
+
+
+def test_tool_decorator_openapi_schema():
+    from modules.chatbot.agent.tool import tool
+
+    @tool()
+    def sample_tool(title: str, year: int, rating: float = 8.5) -> dict:
+        """Tra cứu thông tin phim theo tiêu đề và năm.
+        
+        Args:
+            title: Tên phim cần tra cứu.
+            year: Năm phát hành.
+            rating: Điểm đánh giá tối thiểu.
+        """
+        return {"result": f"{title} ({year})"}
+
+    schema = sample_tool.schema
+    assert schema["type"] == "function"
+    assert schema["function"]["name"] == "sample_tool"
+    assert "Tra cứu thông tin phim" in schema["function"]["description"]
+
+    props = schema["function"]["parameters"]["properties"]
+    assert props["title"]["type"] == "string"
+    assert "Tên phim" in props["title"]["description"]
+    assert props["year"]["type"] == "integer"
+    assert props["rating"]["type"] == "number"
+
+    # title and year are required, rating has default
+    assert "title" in schema["function"]["parameters"]["required"]
+    assert "year" in schema["function"]["parameters"]["required"]
+    assert "rating" not in schema["function"]["parameters"]["required"]
+
+
+def test_tool_registry_and_single_hop_direct_path():
+    from unittest.mock import MagicMock
+    from modules.chatbot.agent.registry import ToolRegistry
+    from modules.chatbot.agent.executor import SingleHopTagExecutor
+    from modules.chatbot.agent.tool import tool
+
+    registry = ToolRegistry()
+
+    @tool()
+    def dummy_tool(x: str) -> dict:
+        """Dummy tool."""
+        return {"echo": x}
+
+    registry.register(dummy_tool)
+    assert registry.get_tool("dummy_tool") is not None
+    assert registry.execute("dummy_tool", x="antigravity") == {"echo": "antigravity"}
+
+    # Test direct path (no tool call from LLM)
+    mock_openai = MagicMock()
+    direct_msg = MagicMock()
+    direct_msg.tool_calls = None
+    direct_msg.content = "Chào bạn! Tôi có thể giúp gì cho bạn hôm nay? 🍿"
+    mock_openai.chat_completion_with_tools = MagicMock(return_value=direct_msg)
+
+    executor = SingleHopTagExecutor(registry, mock_openai)
+    result = executor.execute("Xin chào PopBot", history=[], user_id=42)
+
+    assert result.subsystem == "DIRECT"
+    assert "Chào bạn" in result.reply
+    assert result.movies == []
+    # Verify ONLY 1 LLM call was made (bounded latency for chit-chat)
+    assert mock_openai.chat_completion_with_tools.call_count == 1
+    assert mock_openai.chat_completion.call_count == 0
+
