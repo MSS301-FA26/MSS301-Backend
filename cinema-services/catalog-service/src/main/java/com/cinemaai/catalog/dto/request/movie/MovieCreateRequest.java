@@ -22,7 +22,6 @@ public record MovieCreateRequest(
         @Size(max = 500, message = "Poster URL must be at most 500 characters")
         String posterUrl,
 
-        @NotBlank(message = "Avatar URL is required")
         @Size(max = 500, message = "Avatar URL must be at most 500 characters")
         String avatarUrl,
 
@@ -40,10 +39,8 @@ public record MovieCreateRequest(
         String director,
         List<Long> genreIds,
 
-        @NotEmpty(message = "Actor ids are required")
         List<Long> actorIds,
 
-        @NotEmpty(message = "Main actor ids are required")
         List<Long> mainActorIds
 ) {
 }
