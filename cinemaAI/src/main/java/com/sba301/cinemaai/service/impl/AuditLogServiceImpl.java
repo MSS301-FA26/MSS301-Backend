@@ -30,9 +30,15 @@ public class AuditLogServiceImpl implements AuditLogService {
     @Override
     @Transactional
     public void record(AuditActionType action, String targetType, Long targetId, String detail) {
+        record(action, targetType, targetId, detail, null);
+    }
+
+    @Override
+    @Transactional
+    public void record(AuditActionType action, String targetType, Long targetId, String detail, Long cinemaId) {
         try {
             User actor = resolveActor();
-            auditLogRepository.save(new AuditLog(actor, action, targetType, targetId, detail, null));
+            auditLogRepository.save(new AuditLog(actor, action, targetType, targetId, detail, null, cinemaId));
         } catch (Exception e) {
             log.warn("Audit log write failed for {} {} #{}: {}", action, targetType, targetId, e.getMessage());
         }
@@ -48,6 +54,15 @@ public class AuditLogServiceImpl implements AuditLogService {
                 ? auditLogRepository.findAll(pageable)
                 : auditLogRepository.findByTargetTypeStartingWith(targetType.trim().toUpperCase(), pageable);
         return PageResponse.from(result.map(this::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<AuditLogResponse> getLogsByCinema(Long cinemaId, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 100));
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return PageResponse.from(auditLogRepository.findByCinemaId(cinemaId, pageable).map(this::toResponse));
     }
 
     private User resolveActor() {
@@ -72,7 +87,8 @@ public class AuditLogServiceImpl implements AuditLogService {
                 auditLog.getTargetType(),
                 auditLog.getTargetId(),
                 auditLog.getDetail(),
-                auditLog.getCreatedAt()
+                auditLog.getCreatedAt(),
+                auditLog.getCinemaId()
         );
     }
 }

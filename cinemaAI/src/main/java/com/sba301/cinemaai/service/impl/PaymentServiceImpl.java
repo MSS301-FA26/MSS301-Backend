@@ -19,6 +19,9 @@ import com.sba301.cinemaai.repository.BookingRepository;
 import com.sba301.cinemaai.repository.BookingSeatRepository;
 import com.sba301.cinemaai.repository.FoodOrderRepository;
 import com.sba301.cinemaai.repository.PaymentRepository;
+import com.sba301.cinemaai.entity.BookingFoodItem;
+import com.sba301.cinemaai.repository.BookingFoodItemRepository;
+import com.sba301.cinemaai.service.FoodInventoryService;
 import com.sba301.cinemaai.service.LoyaltyPointService;
 import com.sba301.cinemaai.service.NotificationService;
 import com.sba301.cinemaai.service.PaymentService;
@@ -26,6 +29,7 @@ import com.sba301.cinemaai.service.QrTicketService;
 import com.sba301.cinemaai.service.VNPayService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +50,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final LoyaltyPointService loyaltyPointService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+    private final FoodInventoryService foodInventoryService;
+    private final BookingFoodItemRepository bookingFoodItemRepository;
 
     @Transactional
     public PaymentResponse createVnpayPayment(String email, Long bookingId, String clientIp) {
@@ -250,6 +256,20 @@ public class PaymentServiceImpl implements PaymentService {
                     ? foodOrder.getCustomer()
                     : foodOrder.getBooking().getUser();
             loyaltyPointService.addPointsFromFoodOrder(customer, foodOrder);
+
+            Long cinemaId = 1L;
+            if (foodOrder.getBooking() != null && foodOrder.getBooking().getShowtime() != null
+                    && foodOrder.getBooking().getShowtime().getRoom() != null
+                    && foodOrder.getBooking().getShowtime().getRoom().getCinema() != null) {
+                cinemaId = foodOrder.getBooking().getShowtime().getRoom().getCinema().getId();
+            }
+            List<BookingFoodItem> orderItems = bookingFoodItemRepository.findByFoodOrder(foodOrder);
+            for (BookingFoodItem item : orderItems) {
+                Long itemId = item.getFoodItem() != null ? item.getFoodItem().getId() : null;
+                Long comboId = item.getFoodCombo() != null ? item.getFoodCombo().getId() : null;
+                foodInventoryService.deductStockForOrder(cinemaId, itemId, comboId, item.getQuantity(), foodOrder.getOrderCode());
+            }
+
             log.info("Payment {} confirmed for food order {}", payment.getId(), foodOrder.getOrderCode());
             return;
         }
@@ -261,6 +281,17 @@ public class PaymentServiceImpl implements PaymentService {
         generateSeatTickets(booking);
         loyaltyPointService.addPointsFromBooking(booking.getUser(), booking);
         notificationService.notifyBookingPaid(booking);
+
+        if (booking.getShowtime() != null && booking.getShowtime().getRoom() != null
+                && booking.getShowtime().getRoom().getCinema() != null) {
+            Long cinemaId = booking.getShowtime().getRoom().getCinema().getId();
+            List<BookingFoodItem> bookingFoods = bookingFoodItemRepository.findByBooking(booking);
+            for (BookingFoodItem item : bookingFoods) {
+                Long itemId = item.getFoodItem() != null ? item.getFoodItem().getId() : null;
+                Long comboId = item.getFoodCombo() != null ? item.getFoodCombo().getId() : null;
+                foodInventoryService.deductStockForOrder(cinemaId, itemId, comboId, item.getQuantity(), booking.getBookingCode());
+            }
+        }
         log.info("Payment {} confirmed for booking {}", payment.getId(), booking.getBookingCode());
     }
 

@@ -97,6 +97,8 @@ class MovieIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.title").value("Phase 3 Orbit"))
+                .andExpect(jsonPath("$.data.approvalStatus").value("APPROVED"))
+                .andExpect(jsonPath("$.data.publicationStatus").value("PUBLISHED"))
                 .andExpect(jsonPath("$.data.genres[0].id").value(genreId))
                 .andExpect(jsonPath("$.data.mainActors").value("Actor One"))
                 .andExpect(jsonPath("$.data.castList").value("Actor One, Actor Two"))
@@ -141,6 +143,8 @@ class MovieIntegrationTests {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("Phase 3 Orbit Updated"))
+                .andExpect(jsonPath("$.data.approvalStatus").value("APPROVED"))
+                .andExpect(jsonPath("$.data.publicationStatus").value("PUBLISHED"))
                 .andExpect(jsonPath("$.data.status").value("UPCOMING"))
                 .andExpect(jsonPath("$.data.avatarUrl").value("https://example.com/avatar-2.jpg"))
                 .andExpect(jsonPath("$.data.mainActors").value("Actor Three"));

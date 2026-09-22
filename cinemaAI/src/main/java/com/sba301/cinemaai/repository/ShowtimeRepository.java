@@ -21,6 +21,8 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
 
     List<Showtime> findByMovie(Movie movie);
 
+    boolean existsByMovie(Movie movie);
+
     List<Showtime> findByRoom(Room room);
 
     List<Showtime> findByStatus(ShowtimeStatus status);

@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 
 public record TicketPricingRuleResponse(
         Long id,
+        Long cinemaId,
+        String cinemaName,
         TicketType ticketType,
         RoomType roomType,
         SeatType seatType,
@@ -15,6 +17,8 @@ public record TicketPricingRuleResponse(
         boolean holiday,
         BigDecimal price,
         boolean active,
+        LocalDateTime effectiveFrom,
+        LocalDateTime effectiveTo,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

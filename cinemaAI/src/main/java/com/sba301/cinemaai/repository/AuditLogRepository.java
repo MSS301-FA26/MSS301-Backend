@@ -18,4 +18,6 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     // Lọc theo tiền tố loại đối tượng (vd "FOOD" khớp FOOD_ITEM + FOOD_COMBO + FOOD_ORDER)
     Page<AuditLog> findByTargetTypeStartingWith(String targetTypePrefix, Pageable pageable);
+
+    Page<AuditLog> findByCinemaId(Long cinemaId, Pageable pageable);
 }

@@ -48,7 +48,7 @@ public class Seat extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "seat_type", nullable = false, length = 30)
     @Setter
-    private SeatType seatType = SeatType.STANDARD;
+    private SeatType seatType = SeatType.SINGLE;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

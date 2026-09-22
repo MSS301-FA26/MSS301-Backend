@@ -7,6 +7,7 @@ import com.sba301.cinemaai.dto.request.cinema.SeatLayoutRequest;
 import com.sba301.cinemaai.dto.request.cinema.SeatRowGenerationRequest;
 import com.sba301.cinemaai.dto.response.cinema.SeatResponse;
 import com.sba301.cinemaai.dto.request.cinema.SeatUpdateRequest;
+import com.sba301.cinemaai.dto.request.cinema.SeatOperationalStatusRequest;
 import com.sba301.cinemaai.entity.Cinema;
 import com.sba301.cinemaai.entity.Room;
 import com.sba301.cinemaai.entity.Seat;
@@ -206,6 +207,24 @@ public class RoomServiceImpl implements RoomService {
         seat.setStatus(request.status());
         auditLogService.record(AuditActionType.UPDATE, "ROOM", seat.getRoom().getId(),
                 seat.getRoom().getName() + " - cập nhật ghế " + seat.getRowLabel() + seat.getSeatNumber());
+        return cinemaMapper.toSeatResponse(seat);
+    }
+
+    @Transactional(readOnly = true)
+    public Long getSeatCinemaId(Long seatId) {
+        return findSeatById(seatId).getRoom().getCinema().getId();
+    }
+
+    @Transactional
+    public SeatResponse updateSeatOperationalStatus(Long seatId, SeatOperationalStatusRequest request) {
+        Seat seat = findSeatById(seatId);
+        if (seat.getSeatType() == SeatType.COUPLE) {
+            findCouplePartner(seat).setStatus(request.status());
+        }
+        seat.setStatus(request.status());
+        auditLogService.record(AuditActionType.UPDATE, "SEAT", seat.getId(),
+                seat.getRoom().getName() + " - " + seat.getRowLabel() + seat.getSeatNumber()
+                        + " -> " + request.status() + "; reason=" + request.reason().trim());
         return cinemaMapper.toSeatResponse(seat);
     }
 

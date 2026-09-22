@@ -7,12 +7,13 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 public record TicketPricingRuleRequest(
-        @NotNull(message = "Ticket type is required")
+        Long cinemaId,
+
         TicketType ticketType,
 
-        @NotNull(message = "Room type is required")
         RoomType roomType,
 
         @NotNull(message = "Seat type is required")
@@ -23,10 +24,14 @@ public record TicketPricingRuleRequest(
         boolean holiday,
 
         @NotNull(message = "Price is required")
-        @DecimalMin(value = "10000", message = "Price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Price must be at most 10000000")
         BigDecimal price,
 
-        Boolean active
+        Boolean active,
+
+        LocalDateTime effectiveFrom,
+
+        LocalDateTime effectiveTo
 ) {
 }
