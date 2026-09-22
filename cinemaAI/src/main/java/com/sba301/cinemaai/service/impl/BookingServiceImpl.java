@@ -49,6 +49,8 @@ import com.sba301.cinemaai.service.UserService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -115,15 +117,31 @@ public class BookingServiceImpl implements BookingService {
         if (showtime.getStatus() != ShowtimeStatus.OPEN) {
             throw new BadRequestException("Showtime is not open for booking");
         }
-        if (bookingRepository.existsByUserAndShowtimeAndStatusIn(user, showtime, ACTIVE_CHECKOUT_STATUSES)) {
-            throw new ConflictException(
-                    "You already have an active booking for this showtime. Continue payment or cancel it before selecting new seats"
-            );
+        if (showtime.getStartTime().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Showtime has already started");
+        }
+        if (LocalDateTime.now().isAfter(showtime.getStartTime().minusMinutes(10))) {
+            throw new BadRequestException("Online booking is closed 10 minutes prior to showtime");
+        }
+
+        List<Booking> existingActive = bookingRepository.findByUserAndShowtimeAndStatusIn(
+                user, showtime, ACTIVE_CHECKOUT_STATUSES);
+        for (Booking existing : existingActive) {
+            if (existing.getStatus() == BookingStatus.HOLDING) {
+                releaseSeats(existing);
+                cancel(existing);
+                bookingRepository.saveAndFlush(existing);
+            } else if (existing.getStatus() == BookingStatus.PENDING_PAYMENT) {
+                throw new ConflictException(
+                        "You already have an order pending payment for this showtime. Complete payment or cancel it before selecting new seats"
+                );
+            }
         }
 
         List<Long> requestedSeatIds = request.seatIds().stream().distinct().toList();
         List<Seat> requestedSeats = requestedSeatIds.stream().map(this::findSeat).toList();
         validateCoupleSeatPairs(requestedSeats);
+        validateNoOrphanSeats(showtime, requestedSeats);
 
         Booking booking = bookingRepository.save(new Booking(newBookingCode(), user, showtime,
                 LocalDateTime.now().plusMinutes(HOLD_MINUTES)));
@@ -134,10 +152,6 @@ public class BookingServiceImpl implements BookingService {
             BigDecimal unitPrice = showtime.getPriceForSeatType(seat.getSeatType());
             BookingSeat bookingSeat = bookingSeatRepository.save(new BookingSeat(booking, showtime, seat, unitPrice));
             subtotal = subtotal.add(bookingSeat.getUnitPrice());
-        }
-
-        if (request.tickets() != null && !request.tickets().isEmpty()) {
-            subtotal = applyTicketSelections(booking, request.comboId(), request.holiday(), request.tickets());
         }
         if (request.foods() != null) {
             for (BookingFoodRequest foodRequest : request.foods()) {
@@ -288,6 +302,19 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = findBooking(bookingId);
         validateOwner(booking, user);
         return cancelBooking(booking);
+    }
+
+    @Transactional
+    public BookingResponse releaseHold(String email, Long bookingId) {
+        User user = userService.getByEmail(email);
+        Booking booking = findBooking(bookingId);
+        validateOwner(booking, user);
+        if (booking.getStatus() == BookingStatus.HOLDING) {
+            releaseSeats(booking);
+            cancel(booking);
+            bookingRepository.saveAndFlush(booking);
+        }
+        return toResponse(booking);
     }
 
     @Transactional
@@ -607,25 +634,24 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private BookingFoodItem createFoodItem(Booking booking, BookingFoodRequest request) {
-        if ((request.foodItemId() == null && request.foodComboId() == null)
-                || (request.foodItemId() != null && request.foodComboId() != null)) {
+        if (request.foodItemId() == null && request.foodComboId() == null) {
             throw new BadRequestException("Choose exactly one food item or combo");
         }
         if (request.quantity() <= 0) {
             throw new BadRequestException("Quantity must be positive");
         }
-        if (request.foodItemId() != null) {
-            FoodItem foodItem = foodService.findItem(request.foodItemId());
-            if (!SELLABLE_FOOD_STATUSES.contains(foodItem.getStatus())) {
-                throw new BadRequestException("Food item is not available");
+        if (request.foodComboId() != null) {
+            FoodCombo foodCombo = foodService.findCombo(request.foodComboId());
+            if (!SELLABLE_FOOD_STATUSES.contains(foodCombo.getStatus())) {
+                throw new BadRequestException("Food combo is not available");
             }
-            return new BookingFoodItem(booking, foodItem, null, request.quantity(), foodItem.getPrice());
+            return new BookingFoodItem(booking, null, foodCombo, request.quantity(), foodCombo.getPrice());
         }
-        FoodCombo foodCombo = foodService.findCombo(request.foodComboId());
-        if (!SELLABLE_FOOD_STATUSES.contains(foodCombo.getStatus())) {
-            throw new BadRequestException("Food combo is not available");
+        FoodItem foodItem = foodService.findItem(request.foodItemId());
+        if (!SELLABLE_FOOD_STATUSES.contains(foodItem.getStatus())) {
+            throw new BadRequestException("Food item is not available");
         }
-        return new BookingFoodItem(booking, null, foodCombo, request.quantity(), foodCombo.getPrice());
+        return new BookingFoodItem(booking, foodItem, null, request.quantity(), foodItem.getPrice());
     }
 
     private void validateSeatForShowtime(Showtime showtime, Seat seat) {
@@ -677,6 +703,91 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Couple seats must be selected as a pair");
         }
         return rowSeats.get(partnerIndex);
+    }
+
+    private void validateNoOrphanSeats(Showtime showtime, List<Seat> requestedSeats) {
+        if (requestedSeats == null || requestedSeats.isEmpty()) {
+            return;
+        }
+
+        List<Seat> requestedSingles = requestedSeats.stream()
+                .filter(s -> s.getSeatType() == SeatType.SINGLE)
+                .toList();
+        if (requestedSingles.isEmpty()) {
+            return;
+        }
+
+        Set<Long> requestedSeatIds = requestedSeats.stream()
+                .map(Seat::getId)
+                .collect(Collectors.toSet());
+
+        Set<Long> occupiedSeatIds = bookingSeatRepository.findByShowtime(showtime).stream()
+                .filter(this::isBlockingSeat)
+                .map(bs -> bs.getSeat().getId())
+                .filter(id -> !requestedSeatIds.contains(id))
+                .collect(Collectors.toSet());
+
+        List<Seat> allRoomSeats = seatRepository.findByRoomId(showtime.getRoom().getId());
+
+        Map<String, List<Seat>> requestedByRow = requestedSingles.stream()
+                .collect(Collectors.groupingBy(Seat::getRowLabel));
+
+        Map<String, List<Seat>> allSeatsByRow = allRoomSeats.stream()
+                .filter(s -> s.getSeatType() == SeatType.SINGLE)
+                .collect(Collectors.groupingBy(Seat::getRowLabel));
+
+        for (Map.Entry<String, List<Seat>> entry : requestedByRow.entrySet()) {
+            String rowLabel = entry.getKey();
+            List<Seat> rowSeats = allSeatsByRow.getOrDefault(rowLabel, List.of()).stream()
+                    .sorted(Comparator.comparingInt(Seat::getDisplayColumn))
+                    .toList();
+
+            if (rowSeats.isEmpty()) continue;
+
+            List<List<Seat>> sections = new ArrayList<>();
+            List<Seat> currentSection = new ArrayList<>();
+
+            for (Seat seat : rowSeats) {
+                if (currentSection.isEmpty()) {
+                    currentSection.add(seat);
+                } else {
+                    Seat prev = currentSection.get(currentSection.size() - 1);
+                    if (seat.getDisplayColumn() - prev.getDisplayColumn() == 1) {
+                        currentSection.add(seat);
+                    } else {
+                        sections.add(currentSection);
+                        currentSection = new ArrayList<>();
+                        currentSection.add(seat);
+                    }
+                }
+            }
+            if (!currentSection.isEmpty()) {
+                sections.add(currentSection);
+            }
+
+            for (List<Seat> section : sections) {
+                boolean sectionTouched = section.stream()
+                        .anyMatch(s -> requestedSeatIds.contains(s.getId()));
+                if (!sectionTouched) continue;
+
+                int availableRunLength = 0;
+                for (Seat seat : section) {
+                    boolean isOccupied = occupiedSeatIds.contains(seat.getId())
+                            || requestedSeatIds.contains(seat.getId());
+                    if (isOccupied) {
+                        if (availableRunLength == 1) {
+                            throw new BadRequestException("INVALID_SEAT_GAP: Không thể để trống một ghế đơn lẻ giữa các ghế. Vui lòng chọn vị trí khác.");
+                        }
+                        availableRunLength = 0;
+                    } else {
+                        availableRunLength++;
+                    }
+                }
+                if (availableRunLength == 1) {
+                    throw new BadRequestException("INVALID_SEAT_GAP: Không thể để trống một ghế đơn lẻ giữa các ghế. Vui lòng chọn vị trí khác.");
+                }
+            }
+        }
     }
 
     private boolean isBlockingSeat(BookingSeat bookingSeat) {

@@ -137,33 +137,27 @@ public class Showtime extends BaseEntity {
     }
 
     public BigDecimal getPriceForSeatType(SeatType seatType) {
-        return getPriceForTicketAndSeatType(TicketType.ADULT, seatType);
+        SeatType normalized = normalizeSeatType(seatType);
+        if (normalized == SeatType.COUPLE) {
+            BigDecimal pairPrice = couplePrice != null ? couplePrice : (basePrice != null ? basePrice.multiply(BigDecimal.valueOf(2)) : BigDecimal.valueOf(180_000));
+            return pairPrice.divide(BigDecimal.valueOf(2)).add(getSurchargeAmount());
+        }
+        BigDecimal price = basePrice != null ? basePrice : BigDecimal.valueOf(90_000);
+        return price.add(getSurchargeAmount());
+    }
+
+    public BigDecimal getFullPriceForSeatType(SeatType seatType) {
+        SeatType normalized = normalizeSeatType(seatType);
+        if (normalized == SeatType.COUPLE) {
+            BigDecimal pairPrice = couplePrice != null ? couplePrice : (basePrice != null ? basePrice.multiply(BigDecimal.valueOf(2)) : BigDecimal.valueOf(180_000));
+            return pairPrice.add(getSurchargeAmount().multiply(BigDecimal.valueOf(2)));
+        }
+        BigDecimal price = basePrice != null ? basePrice : BigDecimal.valueOf(90_000);
+        return price.add(getSurchargeAmount());
     }
 
     public BigDecimal getPriceForTicketAndSeatType(TicketType ticketType, SeatType seatType) {
-        BigDecimal configured = switch (ticketType) {
-            case CHILD -> switch (normalizeSeatType(seatType)) {
-                case VIP -> childVipPrice;
-                case COUPLE -> childCouplePrice;
-                default -> childStandardPrice;
-            };
-            case STUDENT -> switch (normalizeSeatType(seatType)) {
-                case VIP -> studentVipPrice;
-                case COUPLE -> studentCouplePrice;
-                default -> studentStandardPrice;
-            };
-            default -> switch (normalizeSeatType(seatType)) {
-                case VIP -> adultVipPrice;
-                case COUPLE -> adultCouplePrice;
-                default -> adultStandardPrice;
-            };
-        };
-        BigDecimal fallback = switch (normalizeSeatType(seatType)) {
-            case VIP    -> vipPrice    != null ? vipPrice    : basePrice.multiply(new BigDecimal("1.5"));
-            case COUPLE -> couplePrice != null ? couplePrice : basePrice.multiply(new BigDecimal("2.0"));
-            default     -> basePrice;
-        };
-        return defaultMoney(configured, fallback).add(getSurchargeAmount());
+        return getPriceForSeatType(seatType);
     }
 
     public BigDecimal getSurchargeAmount() {
@@ -186,7 +180,9 @@ public class Showtime extends BaseEntity {
     }
 
     private SeatType normalizeSeatType(SeatType seatType) {
-        return seatType == SeatType.NORMAL ? SeatType.STANDARD : seatType;
+        if (seatType == null) return SeatType.SINGLE;
+        if (seatType == SeatType.COUPLE) return SeatType.COUPLE;
+        return SeatType.SINGLE;
     }
 
     private BigDecimal defaultMoney(BigDecimal value, BigDecimal fallback) {

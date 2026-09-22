@@ -180,6 +180,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Transactional(readOnly = true)
     public List<AvailableSlotResponse> getAvailableSlots(Long roomId, Long movieId, LocalDate date) {
         Movie movie = findMovie(movieId);
+        if (movie.getApprovalStatus() != MovieApprovalStatus.APPROVED) {
+            return List.of();
+        }
         Room room = roomService.findById(roomId);
         int slotMinutes = movie.getDurationMinutes() + CLEANUP_MINUTES;
 
@@ -243,6 +246,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         Movie movie = findMovie(request.movieId());
         if (movie.getStatus() == MovieStatus.INACTIVE) {
             throw new BadRequestException("Cannot schedule inactive movie");
+        }
+        if (movie.getApprovalStatus() != MovieApprovalStatus.APPROVED) {
+            throw new BadRequestException("MOVIE_NOT_APPROVED: Chỉ những bộ phim đã được DUYỆT (APPROVED) mới được phép tạo suất chiếu!");
         }
         validateChildTicketPricingAllowed(movie, request.childStandardPrice(), request.childVipPrice(), request.childCouplePrice());
         validateInitialStatus(request.defaultStatus());
@@ -427,6 +433,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                                   LocalDateTime endTime, Long excludeId) {
         if (movie.getStatus() == MovieStatus.INACTIVE) {
             throw new BadRequestException("Cannot schedule inactive movie");
+        }
+        if (movie.getApprovalStatus() != MovieApprovalStatus.APPROVED) {
+            throw new BadRequestException("MOVIE_NOT_APPROVED: Chỉ những bộ phim đã được DUYỆT (APPROVED) mới được phép tạo suất chiếu!");
         }
         validateShowtimeWithinMovieReleaseWindow(movie, startTime, "");
         if (room.getStatus() != RoomStatus.ACTIVE) {
