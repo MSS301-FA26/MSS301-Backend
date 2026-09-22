@@ -146,8 +146,8 @@ Tất cả endpoint dưới đây có prefix `/api/v1/admin` và yêu cầu role
 | `DELETE /genres/{genreId}` | path | `Void` | `200` |
 | `GET /movies` | query `keyword,status,genreId,fromDate,toDate,page,size` | `PageResponse<MovieResponse>` | `200` |
 | `GET /movies/{movieId}` | path | `MovieResponse` | `200` |
-| `POST /movies` | `MovieCreateRequest` | `MovieResponse` | `201` |
-| `PUT /movies/{movieId}` | `MovieUpdateRequest` | `MovieResponse` | `200` |
+| `POST /movies` | `MovieCreateRequest`; Admin được duyệt và xuất bản trực tiếp | `MovieResponse` (`APPROVED`, `PUBLISHED`) | `201` |
+| `PUT /movies/{movieId}` | `MovieUpdateRequest`; thay đổi của Admin được xuất bản trực tiếp | `MovieResponse` (`APPROVED`, `PUBLISHED`) | `200` |
 | `PATCH /movies/{movieId}/status` | `MovieStatusUpdateRequest` | `MovieResponse` | `200` |
 | `DELETE /movies/{movieId}` | path | `Void` | `200` |
 

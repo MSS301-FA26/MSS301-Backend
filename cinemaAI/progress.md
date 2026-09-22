@@ -239,6 +239,16 @@ Future sessions must update:
 - pass/fail evidence;
 - unresolved blocker and next concrete action.
 
+## 2026-09-22 - Admin direct movie publication
+
+- Admin movie creation and updates now transition directly to `APPROVED` and `PUBLISHED`, including approval/publication actor and timestamps.
+- Manager calls to the shared movie endpoints retain the existing draft/approval restrictions; the direct transition is role-checked in the service.
+- Removed the Admin movie-proposal approval page, sidebar entry, pending-count polling, and `/admin/approvals` section registration.
+- Simplified the Admin movie form to one `ĐĂNG PHIM` / `CẬP NHẬT & ĐĂNG` action with publication-required validation.
+- Updated the movie API contract and focused integration assertions.
+- Verification: frontend `npm run build` passed; backend `mvn -q -DskipTests compile` passed.
+- `MovieIntegrationTests` could not start because Maven test compilation is already broken by stale `TicketPricingRuleRequest` constructors in booking, cinema, and ticket-pricing tests; this unrelated baseline issue was not changed in this task.
+
 Do not mark a partial phase `done` merely because its primary controller exists.
 
 ## 2026-09-19 - MANAGER provision and cinema scope

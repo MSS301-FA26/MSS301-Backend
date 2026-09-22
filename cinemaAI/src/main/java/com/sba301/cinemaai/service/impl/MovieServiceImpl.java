@@ -157,11 +157,19 @@ public class MovieServiceImpl implements MovieService {
 
         MovieStatus computedStatus = resolveStatusFromDates(request.releaseDate(), request.endDate());
         Movie movie = new Movie(request.title(), request.durationMinutes(), computedStatus);
-        movie.setApprovalStatus(MovieApprovalStatus.DRAFT);
-        movie.setPublicationStatus(MoviePublicationStatus.UNPUBLISHED);
-
         User creator = userId != null ? userRepository.findById(userId).orElse(null) : resolveActor();
         movie.setSubmittedBy(creator);
+        if (isUserAdmin(creator)) {
+            LocalDateTime now = LocalDateTime.now();
+            movie.setApprovalStatus(MovieApprovalStatus.APPROVED);
+            movie.setPublicationStatus(MoviePublicationStatus.PUBLISHED);
+            movie.setApprovedBy(creator);
+            movie.setApprovedAt(now);
+            movie.setPublishedAt(now);
+        } else {
+            movie.setApprovalStatus(MovieApprovalStatus.DRAFT);
+            movie.setPublicationStatus(MoviePublicationStatus.UNPUBLISHED);
+        }
 
         List<Actor> actors = resolveActors(request.actorIds());
         Set<Long> mainActorIds = validateMainActorIds(actors, request.mainActorIds());
@@ -178,7 +186,8 @@ public class MovieServiceImpl implements MovieService {
         replaceGenres(saved, request.genreIds());
         replaceActors(saved, actors, mainActorIds);
 
-        auditLogService.record(AuditActionType.CREATE, "MOVIE", saved.getId(), saved.getTitle() + " (Bản nháp - DRAFT)");
+        auditLogService.record(AuditActionType.CREATE, "MOVIE", saved.getId(),
+                saved.getTitle() + (isUserAdmin(creator) ? " (Đăng trực tiếp bởi Admin)" : " (Bản nháp - DRAFT)"));
         return toResponse(saved);
     }
 
@@ -194,6 +203,8 @@ public class MovieServiceImpl implements MovieService {
     @CacheEvict(cacheNames = {"publicMovies", "publicMovieDetails"}, allEntries = true)
     public MovieResponse update(Long id, MovieUpdateRequest request, Long userId) {
         Movie movie = findById(id);
+        User editor = userId != null ? userRepository.findById(userId).orElse(null) : resolveActor();
+        boolean adminEdit = isUserAdmin(editor);
 
         movieRepository.findByTitleIgnoreCase(request.title())
                 .filter(existing -> !existing.getId().equals(id))
@@ -207,11 +218,19 @@ public class MovieServiceImpl implements MovieService {
             }
         }
 
-        // When modifying an existing movie, allow in-place updates regardless of current status
-        if (movie.getPublicationStatus() == MoviePublicationStatus.PUBLISHED) {
+        // Admin changes are published immediately; Manager changes still follow approval workflow.
+        if (adminEdit) {
+            LocalDateTime now = LocalDateTime.now();
+            movie.setApprovalStatus(MovieApprovalStatus.APPROVED);
+            movie.setPublicationStatus(MoviePublicationStatus.PUBLISHED);
+            movie.setApprovedBy(editor);
+            movie.setApprovedAt(now);
+            movie.setPublishedAt(now);
+            movie.setRejectedAt(null);
+            movie.setRejectedBy(null);
+            movie.setRejectionReason(null);
+        } else if (movie.getApprovalStatus() == MovieApprovalStatus.APPROVED) {
             movie.setPublicationStatus(MoviePublicationStatus.UNPUBLISHED);
-        }
-        if (movie.getApprovalStatus() == MovieApprovalStatus.APPROVED) {
             movie.setApprovalStatus(MovieApprovalStatus.DRAFT);
             movie.setApprovedAt(null);
             movie.setApprovedBy(null);

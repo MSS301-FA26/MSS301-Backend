@@ -38,10 +38,10 @@
       "id": "PHASE-3",
       "name": "Movie, Genre and Actor Management",
       "status": "done",
-      "scope": ["Public catalog", "Admin CRUD", "Movie-genre-actor relationships"],
+      "scope": ["Public catalog", "Admin CRUD with direct approval/publication", "Movie-genre-actor relationships"],
       "outOfScope": ["External metadata ingestion"],
       "verification": ["MovieCatalogEndpointInventoryTests", "MovieIntegrationTests", "ActorIntegrationTests"],
-      "evidence": ["All listed suites passed on 2026-06-25"],
+      "evidence": ["All listed suites passed on 2026-06-25", "Admin direct-publication frontend build and backend main-source compile passed on 2026-09-22; focused test was blocked by unrelated stale ticket-pricing test constructors"],
       "nextAction": "Maintain contract tests when catalog APIs change"
     },
     {
