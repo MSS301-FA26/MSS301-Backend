@@ -113,17 +113,30 @@ public class MovieServiceImpl implements MovieService {
             throw new ConflictException("Movie title already exists");
         }
 
-        validateReleaseWindow(request.releaseDate(), request.endDate());
-        MovieStatus computedStatus = resolveStatusFromDates(request.releaseDate(), request.endDate());
+        LocalDate today = LocalDate.now();
+        LocalDate effectiveReleaseDate = request.releaseDate() != null ? request.releaseDate() : today;
+        LocalDate effectiveEndDate = request.endDate() != null ? request.endDate() : effectiveReleaseDate.plusDays(45);
+        validateReleaseWindow(effectiveReleaseDate, effectiveEndDate);
+        MovieStatus computedStatus = resolveStatusFromDates(effectiveReleaseDate, effectiveEndDate);
+        if (request.status() != null && request.status() == MovieStatus.INACTIVE) {
+            computedStatus = MovieStatus.INACTIVE;
+        }
         Movie movie = new Movie(request.title(), request.durationMinutes(), computedStatus);
-        List<Actor> actors = resolveActors(request.actorIds());
-        Set<Long> mainActorIds = validateMainActorIds(actors, request.mainActorIds());
+        List<Long> actorIds = request.actorIds() != null ? request.actorIds() : List.of();
+        List<Actor> actors = resolveActors(actorIds);
+        List<Long> requestedMain = (request.mainActorIds() != null && !request.mainActorIds().isEmpty())
+                ? request.mainActorIds()
+                : actorIds;
+        Set<Long> mainActorIds = validateMainActorIds(actors, requestedMain);
         String actorNames = actorNamesText(actors);
         String mainActorNames = actorNamesText(actors.stream()
                 .filter(actor -> mainActorIds.contains(actor.getId()))
                 .toList());
-        applyMovieFields(movie, request.description(), request.releaseDate(), request.endDate(), request.trailerUrl(), request.posterUrl(),
-                request.avatarUrl(), request.language(), request.subtitleLanguage(), request.ageRating(),
+        String effectiveAvatarUrl = (request.avatarUrl() != null && !request.avatarUrl().isBlank())
+                ? request.avatarUrl()
+                : request.posterUrl();
+        applyMovieFields(movie, request.description(), effectiveReleaseDate, effectiveEndDate, request.trailerUrl(), request.posterUrl(),
+                effectiveAvatarUrl, request.language(), request.subtitleLanguage(), request.ageRating(),
                 request.director(), mainActorNames, actorNames, computedStatus);
         Movie saved = movieRepository.save(movie);
         replaceGenres(saved, request.genreIds());
@@ -239,14 +252,8 @@ public class MovieServiceImpl implements MovieService {
     }
 
     private void validateReleaseWindow(LocalDate releaseDate, LocalDate endDate) {
-        if (releaseDate == null) {
-            throw new BadRequestException("Release date is required");
-        }
-        if (endDate == null) {
-            throw new BadRequestException("End date is required");
-        }
-        if (releaseDate.isBefore(LocalDate.now())) {
-            throw new BadRequestException("Release date must be today or in the future");
+        if (releaseDate == null || endDate == null) {
+            return;
         }
         if (endDate.isBefore(releaseDate)) {
             throw new BadRequestException("End date must be on or after release date");
@@ -274,6 +281,9 @@ public class MovieServiceImpl implements MovieService {
     }
 
     private List<Actor> resolveActors(List<Long> actorIds) {
+        if (actorIds == null || actorIds.isEmpty()) {
+            return List.of();
+        }
         return actorIds.stream()
                 .distinct()
                 .map(this::findActorById)
@@ -281,12 +291,14 @@ public class MovieServiceImpl implements MovieService {
     }
 
     private Set<Long> validateMainActorIds(List<Actor> actors, List<Long> requestedMainActorIds) {
-        Set<Long> actorIds = actors.stream().map(Actor::getId).collect(Collectors.toSet());
-        Set<Long> mainActorIds = new HashSet<>(requestedMainActorIds);
-        if (!actorIds.containsAll(mainActorIds)) {
-            throw new BadRequestException("Main actor ids must be included in actor ids");
+        if (actors.isEmpty() || requestedMainActorIds == null || requestedMainActorIds.isEmpty()) {
+            return Set.of();
         }
-        return mainActorIds;
+        Set<Long> actorIds = actors.stream().map(Actor::getId).collect(Collectors.toSet());
+        Set<Long> mainActorIds = requestedMainActorIds.stream()
+                .filter(actorIds::contains)
+                .collect(Collectors.toSet());
+        return mainActorIds.isEmpty() ? Set.of(actors.get(0).getId()) : mainActorIds;
     }
 
     private String actorNamesText(List<Actor> actors) {
