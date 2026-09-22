@@ -15,7 +15,7 @@ public class TrustedGatewayFilter implements GlobalFilter, Ordered {
 
     private final String secret;
 
-    public TrustedGatewayFilter(@Value("${INTERNAL_GATEWAY_SECRET:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String secret) {
+    public TrustedGatewayFilter(@Value("${INTERNAL_GATEWAY_SECRET}") String secret) {
         if (secret == null || secret.isBlank()) {
             throw new IllegalArgumentException("Gateway secret is required");
         }

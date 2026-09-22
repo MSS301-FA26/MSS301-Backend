@@ -28,14 +28,23 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
 @Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper mapper,
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper mapper,
             @Value("${app.gateway.secret}") String gatewaySecret,
             @Value("${app.internal.secret}") String internalSecret,
             @Value("${app.jwt.secret}") String jwtSecret) throws Exception {
-        if (gatewaySecret.isBlank() || internalSecret.isBlank()) {
+        if (gatewaySecret == null || gatewaySecret.isBlank() || internalSecret == null || internalSecret.isBlank()) {
             throw new IllegalArgumentException("Gateway and internal service secrets must not be blank");
         }
         var key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
@@ -50,7 +59,7 @@ public class SecurityConfig {
                 try {
                     String path = request.getRequestURI();
                     boolean internal = path.startsWith("/internal/");
-                    if (!path.equals("/actuator/health")) {
+                    if (!path.equals("/actuator/health") && !path.startsWith("/actuator/health/")) {
                         String supplied = request.getHeader(internal ? "X-Internal-Service-Secret" : "X-Gateway-Secret");
                         String expected = internal ? internalSecret : gatewaySecret;
                         if (supplied == null || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
@@ -80,11 +89,13 @@ public class SecurityConfig {
             }
         };
         return http.csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/internal/v1/catalog/checkout-quote").permitAll()
-                        .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/ticket-pricing/validate", "/api/v1/catalog/checkout-quote").authenticated()
                         .anyRequest().denyAll())
@@ -94,10 +105,24 @@ public class SecurityConfig {
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class).build();
     }
 
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
     private static void writeError(ObjectMapper mapper, HttpServletRequest request,
             HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status);
-        response.setContentType("application/json");
-        mapper.writeValue(response.getOutputStream(), ErrorResponse.of(message, request.getRequestURI()));
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        mapper.writeValue(response.getWriter(), ErrorResponse.of(message, request.getRequestURI()));
     }
 }

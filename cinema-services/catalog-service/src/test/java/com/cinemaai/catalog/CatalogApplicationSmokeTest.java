@@ -23,7 +23,12 @@ import org.springframework.test.web.servlet.MockMvc;
         "INTERNAL_GATEWAY_SECRET=gateway-test-secret",
         "INTERNAL_SERVICE_SECRET=internal-test-secret",
         "JWT_SECRET=test-jwt-secret-key-with-at-least-32-bytes",
-        "QUOTE_TTL_SECONDS=300", "LOG_LEVEL_PATTERN=%5p"
+        "QUOTE_TTL_SECONDS=300", "LOG_LEVEL_PATTERN=%5p",
+        "CLOUDINARY_CLOUD_NAME=test-cloud",
+        "CLOUDINARY_API_KEY=test-key",
+        "CLOUDINARY_API_SECRET=test-secret",
+        "MAX_FILE_SIZE=10MB",
+        "MAX_REQUEST_SIZE=10MB"
 })
 @AutoConfigureMockMvc
 class CatalogApplicationSmokeTest {
@@ -46,5 +51,22 @@ class CatalogApplicationSmokeTest {
         mvc.perform(post("/internal/v1/catalog/checkout-quote")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCreateMovieWithJwt() throws Exception {
+        var key = io.jsonwebtoken.security.Keys.hmacShaKeyFor("test-jwt-secret-key-with-at-least-32-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String token = io.jsonwebtoken.Jwts.builder()
+                .subject("admin@cinemaai.com")
+                .claim("roles", java.util.List.of("ADMIN"))
+                .signWith(key)
+                .compact();
+
+        mvc.perform(post("/api/v1/admin/movies")
+                        .header("X-Gateway-Secret", "gateway-test-secret")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 }
