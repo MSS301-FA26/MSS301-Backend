@@ -39,16 +39,16 @@ public class PaymentServiceImpl implements PaymentService {
     private final BookingClient bookingClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${vnpay.tmn-code:HNJAWPZ8}")
+    @Value("${vnpay.tmn-code}")
     private String vnpTmnCode;
 
-    @Value("${vnpay.hash-secret:Q78M2SN95OZRMDVJPWIX5FEL37TXG9UL}")
+    @Value("${vnpay.hash-secret}")
     private String vnpHashSecret;
 
-    @Value("${vnpay.pay-url:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}")
+    @Value("${vnpay.pay-url}")
     private String vnpPayUrl;
 
-    @Value("${vnpay.return-url:http://localhost:8080/api/v1/payments/vnpay/return}")
+    @Value("${vnpay.return-url}")
     private String vnpReturnUrl;
 
     @Override

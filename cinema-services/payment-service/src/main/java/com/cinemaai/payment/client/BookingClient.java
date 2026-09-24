@@ -25,8 +25,8 @@ public class BookingClient {
     ) {}
 
     public BookingClient(
-            @Value("${booking.service.url:http://localhost:8083}") String bookingServiceUrl,
-            @Value("${app.internal.secret:CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}") String internalSecret
+            @Value("${booking.service.url}") String bookingServiceUrl,
+            @Value("${app.internal.secret}") String internalSecret
     ) {
         this.internalSecret = internalSecret;
         this.restClient = RestClient.builder().baseUrl(bookingServiceUrl).build();

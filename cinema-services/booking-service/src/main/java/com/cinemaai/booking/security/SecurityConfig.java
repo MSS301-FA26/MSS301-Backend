@@ -44,9 +44,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             ObjectMapper mapper,
-            @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String gatewaySecret,
-            @Value("${app.internal.secret:CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}") String internalSecret,
-            @Value("${app.jwt.secret:cineai-development-secret-key-please-change-123456}") String jwtSecret
+            @Value("${app.gateway.secret}") String gatewaySecret,
+            @Value("${app.internal.secret}") String internalSecret,
+            @Value("${app.jwt.secret}") String jwtSecret
     ) throws Exception {
 
         var key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
@@ -56,82 +56,94 @@ public class SecurityConfig {
             protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                     throws ServletException, IOException {
 
-                String path = request.getRequestURI();
+                String correlation = request.getHeader("X-Correlation-Id");
+                if (correlation == null || !correlation.matches("[a-zA-Z0-9._-]{1,100}")) {
+                    correlation = UUID.randomUUID().toString();
+                }
+                MDC.put("correlationId", correlation);
+                response.setHeader("X-Correlation-Id", correlation);
 
-                // Whitelisted endpoints
-                if (path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
+                try {
+                    String path = request.getRequestURI();
+
+                    // Whitelisted endpoints
+                    if (path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
+                        chain.doFilter(request, response);
+                        return;
+                    }
+
+                    // Check Gateway Secret or Internal Secret
+                    boolean internal = path.startsWith("/internal/");
+                    String suppliedSecret = request.getHeader(internal ? "X-Internal-Service-Secret" : "X-Gateway-Secret");
+                    String expectedSecret = internal ? internalSecret : gatewaySecret;
+
+                    if (suppliedSecret == null || !MessageDigest.isEqual(
+                            expectedSecret.getBytes(StandardCharsets.UTF_8),
+                            suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
+                        writeError(mapper, request, response, 403, "Trusted service access required");
+                        return;
+                    }
+
+                    // Authenticate from Header (Gateway Forwarding) or Bearer JWT Token
+                    String userIdHeader = request.getHeader("X-User-Id");
+                    String userRolesHeader = request.getHeader("X-User-Roles");
+                    String authHeader = request.getHeader("Authorization");
+
+                    if (userIdHeader != null && !userIdHeader.isBlank()) {
+                        try {
+                            Long uid = Long.parseLong(userIdHeader);
+                            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                            if (userRolesHeader != null && !userRolesHeader.isBlank()) {
+                                for (String role : userRolesHeader.split(",")) {
+                                    String r = role.trim();
+                                    if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
+                                    authorities.add(new SimpleGrantedAuthority(r));
+                                }
+                            }
+                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), authorities);
+                            SecurityContextHolder.getContext().setAuthentication(
+                                    new UsernamePasswordAuthenticationToken(user, null, authorities));
+                        } catch (Exception ex) {
+                            log.warn("Invalid X-User-Id header: {}", userIdHeader);
+                        }
+                    } else if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                        String token = authHeader.substring(7);
+                        try {
+                            Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+                            Long uid = null;
+                            Object uidObj = claims.get("userId");
+                            if (uidObj instanceof Number num) {
+                                uid = num.longValue();
+                            } else if (claims.getSubject() != null) {
+                                try {
+                                    uid = Long.parseLong(claims.getSubject());
+                                } catch (Exception ignored) {}
+                            }
+
+                            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                            Object rawRoles = claims.get("roles");
+                            if (rawRoles instanceof List<?> list) {
+                                for (Object item : list) {
+                                    String r = String.valueOf(item);
+                                    if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
+                                    authorities.add(new SimpleGrantedAuthority(r));
+                                }
+                            }
+
+                            AuthenticatedUser user = new AuthenticatedUser(uid, claims.get("email", String.class), authorities);
+                            SecurityContextHolder.getContext().setAuthentication(
+                                    new UsernamePasswordAuthenticationToken(user, null, authorities));
+                        } catch (Exception ex) {
+                            log.warn("JWT parse failed: {}", ex.getMessage());
+                            writeError(mapper, request, response, 401, "Invalid or expired access token");
+                            return;
+                        }
+                    }
+
                     chain.doFilter(request, response);
-                    return;
+                } finally {
+                    MDC.remove("correlationId");
                 }
-
-                // Check Gateway Secret or Internal Secret
-                boolean internal = path.startsWith("/internal/");
-                String suppliedSecret = request.getHeader(internal ? "X-Internal-Service-Secret" : "X-Gateway-Secret");
-                String expectedSecret = internal ? internalSecret : gatewaySecret;
-
-                if (suppliedSecret == null || !MessageDigest.isEqual(
-                        expectedSecret.getBytes(StandardCharsets.UTF_8),
-                        suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
-                    writeError(mapper, response, 403, "DIRECT_ACCESS_FORBIDDEN",
-                            "Direct access to microservice is blocked. Requests must be routed through API Gateway (Port 8080).");
-                    return;
-                }
-
-                // Authenticate from Header (Gateway Forwarding) or Bearer JWT Token
-                String userIdHeader = request.getHeader("X-User-Id");
-                String userRolesHeader = request.getHeader("X-User-Roles");
-                String authHeader = request.getHeader("Authorization");
-
-                if (userIdHeader != null && !userIdHeader.isBlank()) {
-                    try {
-                        Long uid = Long.parseLong(userIdHeader);
-                        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                        if (userRolesHeader != null && !userRolesHeader.isBlank()) {
-                            for (String role : userRolesHeader.split(",")) {
-                                String r = role.trim();
-                                if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
-                                authorities.add(new SimpleGrantedAuthority(r));
-                            }
-                        }
-                        AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), authorities);
-                        SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, authorities));
-                    } catch (Exception ex) {
-                        log.warn("Invalid X-User-Id header: {}", userIdHeader);
-                    }
-                } else if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                    String token = authHeader.substring(7);
-                    try {
-                        Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-                        Long uid = null;
-                        Object uidObj = claims.get("userId");
-                        if (uidObj instanceof Number num) {
-                            uid = num.longValue();
-                        } else if (claims.getSubject() != null) {
-                            try {
-                                uid = Long.parseLong(claims.getSubject());
-                            } catch (Exception ignored) {}
-                        }
-
-                        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                        Object rawRoles = claims.get("roles");
-                        if (rawRoles instanceof List<?> list) {
-                            for (Object item : list) {
-                                String r = String.valueOf(item);
-                                if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
-                                authorities.add(new SimpleGrantedAuthority(r));
-                            }
-                        }
-
-                        AuthenticatedUser user = new AuthenticatedUser(uid, claims.get("email", String.class), authorities);
-                        SecurityContextHolder.getContext().setAuthentication(
-                                new UsernamePasswordAuthenticationToken(user, null, authorities));
-                    } catch (Exception ex) {
-                        log.warn("JWT parse failed: {}", ex.getMessage());
-                    }
-                }
-
-                chain.doFilter(request, response);
             }
         };
 
@@ -145,8 +157,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((req, res, ex) -> writeError(mapper, res, 401, "UNAUTHORIZED", "Authentication required"))
-                        .accessDeniedHandler((req, res, ex) -> writeError(mapper, res, 403, "FORBIDDEN", "Access denied")))
+                        .authenticationEntryPoint((req, res, ex) -> writeError(mapper, req, res, 401, "Authentication required"))
+                        .accessDeniedHandler((req, res, ex) -> writeError(mapper, req, res, 403, "Access denied")))
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
@@ -164,16 +176,12 @@ public class SecurityConfig {
         return source;
     }
 
-    private void writeError(ObjectMapper mapper, HttpServletResponse response, int status, String code, String message)
+    private void writeError(ObjectMapper mapper, HttpServletRequest request, HttpServletResponse response, int status, String message)
             throws IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        Map<String, Object> body = Map.of(
-                "success", false,
-                "code", code,
-                "message", message
-        );
-        response.getWriter().write(mapper.writeValueAsString(body));
+        com.cinemaai.booking.dto.response.ErrorResponse error = com.cinemaai.booking.dto.response.ErrorResponse.of(message, request.getRequestURI());
+        mapper.writeValue(response.getWriter(), error);
     }
 }
