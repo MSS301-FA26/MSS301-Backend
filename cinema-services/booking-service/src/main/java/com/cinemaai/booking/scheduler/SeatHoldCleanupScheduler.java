@@ -20,7 +20,7 @@ public class SeatHoldCleanupScheduler {
 
     private final BookingRepository bookingRepository;
 
-    @Scheduled(fixedRateString = "${booking.hold.cleanup.fixed-delay-ms:30000}")
+    @Scheduled(fixedRateString = "${booking.hold.cleanup.fixed-delay-ms}")
     @Transactional
     public void cleanupExpiredHolds() {
         LocalDateTime now = LocalDateTime.now();
