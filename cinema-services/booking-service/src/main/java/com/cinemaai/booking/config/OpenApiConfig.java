@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiConfig {
 
-    @Value("${app.gateway.url:http://localhost:8080}")
+    @Value("${app.gateway.url}")
     private String gatewayUrl;
 
     @Bean

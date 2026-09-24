@@ -2,7 +2,11 @@
 
 File này mô tả conceptual model của backend CinemaAI theo Mermaid. Mô hình được gom theo các domain chính: user, phim, rạp, phòng chiếu, hàng ghế, ghế, suất chiếu, booking, payment, promotion, point và recommendation.
 
-## ERD
+## Danh mục tài liệu chuyên sâu theo phân công:
+- **[Người 3: Conceptual Model - Booking & Payment (Đặt vé, Giữ ghế, F&B, Thanh toán, Hoàn tiền, Snapshot Data)](./CONCEPTUAL_BOOKING_PAYMENT.md)**
+- **[Người 6: Conceptual Model - Recommendation (Tín hiệu xem phim/wishlist/booking/rating, Content-based, Collaborative, Hybrid)](./CONCEPTUAL_RECOMMENDATION.md)**
+
+## ERD Tổng thể
 
 ```mermaid
 erDiagram
