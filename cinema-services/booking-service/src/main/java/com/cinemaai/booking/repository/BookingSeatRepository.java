@@ -31,4 +31,17 @@ public interface BookingSeatRepository extends JpaRepository<BookingSeat, Long> 
             Long showtimeId, Collection<BookingSeatStatus> statuses);
 
     List<BookingSeat> findByBookingId(Long bookingId);
+
+    @Query(value = """
+        SELECT bs.seat_id, bs.status, b.hold_expires_at FROM booking_seats bs
+        JOIN bookings b ON bs.booking_id = b.id
+        WHERE bs.showtime_id = :showtimeId
+          AND (bs.status = 'BOOKED' OR (bs.status = 'HOLDING' AND b.hold_expires_at > :now))
+    """, nativeQuery = true)
+    List<Object[]> findOccupiedSeatsRaw(
+            @Param("showtimeId") Long showtimeId,
+            @Param("now") LocalDateTime now
+    );
+
+    java.util.Optional<BookingSeat> findByTicketCode(String ticketCode);
 }

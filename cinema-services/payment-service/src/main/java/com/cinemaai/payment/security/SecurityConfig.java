@@ -67,7 +67,12 @@ public class SecurityConfig {
                     String path = request.getRequestURI();
 
                     // Whitelisted endpoints
-                    if (path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
+                    if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                            || path.startsWith("/actuator/health")
+                            || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/error")
+                            || path.equals("/api/v1/payments/vnpay/return")
+                            || path.equals("/api/v1/payments/vnpay/null")) {
                         chain.doFilter(request, response);
                         return;
                     }
@@ -153,7 +158,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
-                        .requestMatchers("/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return").permitAll()
+                        .requestMatchers("/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return", "/api/v1/payments/vnpay/null").permitAll()
+                        .requestMatchers("/api/v1/loyalty/config", "/api/v1/loyalty/me").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())

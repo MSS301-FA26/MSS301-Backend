@@ -25,4 +25,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Booking> findByStatusInAndHoldExpiresAtBefore(
             Collection<BookingStatus> statuses, LocalDateTime time);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT b FROM Booking b
+            WHERE b.status IN :statuses
+            ORDER BY
+                CASE
+                    WHEN b.checkedInAt IS NOT NULL THEN b.checkedInAt
+                    WHEN b.paidAt IS NOT NULL THEN b.paidAt
+                    ELSE b.createdAt
+                END DESC,
+                b.id DESC
+            """)
+    List<Booking> findRecentForCheckIn(
+            @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses,
+            Pageable pageable);
+
+    List<Booking> findByShowtimeId(Long showtimeId);
 }

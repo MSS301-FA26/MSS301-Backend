@@ -58,10 +58,31 @@ public class PaymentController {
         return ApiResponse.success(response, "Thanh toán giả lập thành công");
     }
 
+    @org.springframework.beans.factory.annotation.Value("${vnpay.success-redirect-url}")
+    private String successRedirectUrl;
+
     @Operation(summary = "Webhook IPN xử lý kết quả từ cổng VNPay (Idempotent)")
     @RequestMapping(value = "/vnpay/ipn", method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, String> vnpayIpn(@RequestParam Map<String, String> allParams) {
         return paymentService.processVnpayIpn(allParams);
+    }
+
+    @Operation(summary = "VNPay return URL callback sau khi khách hàng hoàn tất thanh toán")
+    @RequestMapping(value = {"/vnpay/return", "/vnpay/null"}, method = {RequestMethod.GET, RequestMethod.POST})
+    public org.springframework.http.ResponseEntity<Void> vnpayReturn(
+            @RequestParam Map<String, String> allParams,
+            HttpServletRequest request
+    ) {
+        try {
+            paymentService.processVnpayIpn(allParams);
+        } catch (Exception ex) {
+            // Log warning and proceed with redirect so client can render failure view
+        }
+        String queryString = request.getQueryString();
+        String redirectUrl = successRedirectUrl + (queryString != null && !queryString.isBlank() ? "?" + queryString : "");
+        return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FOUND)
+                .header(org.springframework.http.HttpHeaders.LOCATION, redirectUrl)
+                .build();
     }
 
     @Operation(summary = "Lấy thông tin thanh toán theo mã đặt vé")

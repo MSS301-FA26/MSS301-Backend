@@ -47,11 +47,18 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
             if (!seat.getRoom().getId().equals(showtime.getRoom().getId())) throw new BadRequestException("Seat belongs to another room: " + id);
             if (seat.getStatus() != SeatStatus.AVAILABLE) throw new BadRequestException("Seat is unavailable: " + id);
         }
-        if (request.tickets().stream().mapToLong(CheckoutQuoteRequest.Ticket::quantity).sum() != requested.size())
+        List<CheckoutQuoteRequest.Ticket> effectiveTickets = request.tickets();
+        if (effectiveTickets == null || effectiveTickets.isEmpty()) {
+            effectiveTickets = request.seatIds().stream()
+                    .map(seatId -> new CheckoutQuoteRequest.Ticket(seatId, TicketType.ADULT, 22, 1))
+                    .toList();
+        }
+
+        if (effectiveTickets.stream().mapToLong(CheckoutQuoteRequest.Ticket::quantity).sum() != requested.size())
             throw new BadRequestException("Ticket quantity must match the number of selected seats");
         // Explicit assignments are reserved first, so subsequent batches cannot reuse them.
         Set<Long> assigned = new HashSet<>();
-        for (var ticket : request.tickets()) {
+        for (var ticket : effectiveTickets) {
             if (ticket.seatId() != null && (ticket.quantity() != 1 || !requested.contains(ticket.seatId()) || !assigned.add(ticket.seatId())))
                 throw new BadRequestException("Invalid or duplicate ticket seat assignment");
         }
@@ -59,7 +66,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         List<SeatSnapshot> seatLines = new ArrayList<>();
         List<TicketSnapshot> ticketLines = new ArrayList<>();
         BigDecimal ticketTotal = BigDecimal.ZERO;
-        for (var ticket : request.tickets()) {
+        for (var ticket : effectiveTickets) {
             if (!ticket.ticketType().allowsAge(ticket.viewerAge()) || (showtime.getMovie().getAgeRating() != null
                     && !showtime.getMovie().getAgeRating().allowsAge(ticket.viewerAge())))
                 throw new BadRequestException("Viewer age is not eligible for ticket type or movie age rating");
@@ -75,27 +82,99 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         List<FoodSnapshot> foodLines = new ArrayList<>();
         Set<String> foodKeys = new HashSet<>();
         BigDecimal foodTotal = BigDecimal.ZERO;
-        for (var food : request.foods()) {
-            if (!foodKeys.add(food.isCombo() + ":" + food.productId())) throw new BadRequestException("Duplicate food product");
-            String name;
-            BigDecimal price;
-            FoodItemStatus status;
-            if (food.isCombo()) {
-                var combo = combos.findById(food.productId()).orElseThrow(() -> new BadRequestException("Food combo does not exist: " + food.productId()));
-                name = combo.getName(); price = combo.getPrice(); status = combo.getStatus();
-            } else {
-                var item = items.findById(food.productId()).orElseThrow(() -> new BadRequestException("Food item does not exist: " + food.productId()));
-                name = item.getName(); price = item.getPrice(); status = item.getStatus();
+        if (request.foods() != null) {
+            for (var food : request.foods()) {
+                Long resolvedId = food.productId();
+                if (resolvedId == null) {
+                    if (food.foodComboId() != null) resolvedId = food.foodComboId();
+                    else if (food.foodItemId() != null) resolvedId = food.foodItemId();
+                }
+                if (resolvedId == null) continue;
+                final Long productId = resolvedId;
+
+                boolean isCombo = Boolean.TRUE.equals(food.isCombo()) || food.foodComboId() != null;
+                int qty = food.quantity() != null && food.quantity() > 0 ? food.quantity() : 1;
+
+                if (!foodKeys.add(isCombo + ":" + productId)) continue;
+                String name;
+                BigDecimal price;
+                FoodItemStatus status;
+                if (isCombo) {
+                    var combo = combos.findById(productId)
+                            .orElseThrow(() -> new BadRequestException("Food combo does not exist: " + productId));
+                    name = combo.getName();
+                    price = combo.getPrice();
+                    status = combo.getStatus();
+                } else {
+                    var item = items.findById(productId)
+                            .orElseThrow(() -> new BadRequestException("Food item does not exist: " + productId));
+                    name = item.getName();
+                    price = item.getPrice();
+                    status = item.getStatus();
+                }
+                if (status != FoodItemStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
+                BigDecimal total = price.multiply(BigDecimal.valueOf(qty));
+                foodLines.add(new FoodSnapshot(productId, isCombo, name, price, qty, total));
+                foodTotal = foodTotal.add(total);
             }
-            if (status != FoodItemStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + food.productId());
-            BigDecimal total = price.multiply(BigDecimal.valueOf(food.quantity()));
-            foodLines.add(new FoodSnapshot(food.productId(), food.isCombo(), name, price, food.quantity(), total));
-            foodTotal = foodTotal.add(total);
         }
+
+        BigDecimal discount = BigDecimal.ZERO;
+        BigDecimal cinePointsDiscount = BigDecimal.ZERO;
+        if (request.cinePointsToUse() != null && request.cinePointsToUse() > 0) {
+            cinePointsDiscount = BigDecimal.valueOf(request.cinePointsToUse()).multiply(BigDecimal.valueOf(1000));
+        }
+        BigDecimal subtotal = ticketTotal.add(foodTotal);
+        BigDecimal total = subtotal.subtract(discount).subtract(cinePointsDiscount);
+        if (total.compareTo(BigDecimal.ZERO) < 0) {
+            total = BigDecimal.ZERO;
+        }
+
         var movie = showtime.getMovie();
         var room = showtime.getRoom();
-        return new CheckoutQuoteResponse(UUID.randomUUID().toString(), Instant.now().plusSeconds(ttlSeconds),
-                new ShowtimeSnapshot(showtime.getId(), movie.getId(), movie.getTitle(), movie.getPosterUrl(), room.getCinema().getName(), room.getName(), showtime.getStartTime()),
-                List.copyOf(seatLines), List.copyOf(ticketLines), List.copyOf(foodLines), ticketTotal, foodTotal, ticketTotal.add(foodTotal));
+        var cinema = room.getCinema();
+        var movieSummary = new MovieSummary(
+                movie.getId(),
+                movie.getTitle(),
+                movie.getPosterUrl(),
+                movie.getAgeRating() != null ? movie.getAgeRating().name() : null,
+                movie.getDurationMinutes()
+        );
+        var cinemaSummary = new CinemaSummary(
+                cinema.getId(),
+                cinema.getName(),
+                cinema.getAddress(),
+                room.getName()
+        );
+        var showtimeSnapshot = new ShowtimeSnapshot(
+                showtime.getId(),
+                movie.getId(),
+                movie.getTitle(),
+                movie.getPosterUrl(),
+                cinema.getName(),
+                room.getName(),
+                showtime.getStartTime()
+        );
+
+        return new CheckoutQuoteResponse(
+                UUID.randomUUID().toString(),
+                Instant.now().plusSeconds(ttlSeconds),
+                showtimeSnapshot,
+                List.copyOf(seatLines),
+                List.copyOf(ticketLines),
+                List.copyOf(foodLines),
+                List.copyOf(foodLines),
+                ticketTotal,
+                foodTotal,
+                subtotal,
+                discount,
+                cinePointsDiscount,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                total,
+                null,
+                movieSummary,
+                cinemaSummary
+        );
     }
 }

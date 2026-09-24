@@ -385,4 +385,26 @@ public class BookingServiceImpl implements BookingService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + bookingCode));
         return BookingMapper.toResponse(booking);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.cinemaai.booking.dto.response.OccupiedSeatDto> getOccupiedSeats(Long showtimeId) {
+        LocalDateTime now = LocalDateTime.now();
+        List<Object[]> rawList = bookingSeatRepository.findOccupiedSeatsRaw(showtimeId, now);
+        List<com.cinemaai.booking.dto.response.OccupiedSeatDto> result = new ArrayList<>();
+        for (Object[] row : rawList) {
+            Long seatId = row[0] instanceof Number ? ((Number) row[0]).longValue() : Long.parseLong(row[0].toString());
+            String status = row[1] != null ? row[1].toString() : "BOOKED";
+            LocalDateTime holdExpiresAt = null;
+            if (row[2] != null) {
+                if (row[2] instanceof java.sql.Timestamp) {
+                    holdExpiresAt = ((java.sql.Timestamp) row[2]).toLocalDateTime();
+                } else if (row[2] instanceof LocalDateTime) {
+                    holdExpiresAt = (LocalDateTime) row[2];
+                }
+            }
+            result.add(new com.cinemaai.booking.dto.response.OccupiedSeatDto(seatId, status, holdExpiresAt));
+        }
+        return result;
+    }
 }
