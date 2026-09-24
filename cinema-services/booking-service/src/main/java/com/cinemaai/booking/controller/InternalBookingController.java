@@ -24,4 +24,12 @@ public class InternalBookingController {
     public ApiResponse<BookingResponse> getBookingInternal(@PathVariable Long bookingId) {
         return ApiResponse.success(bookingService.getBookingByIdInternal(bookingId));
     }
+
+    @Operation(summary = "Lấy danh sách các ghế đang bận (BOOKED hoặc HOLDING) của suất chiếu (Internal)")
+    @GetMapping("/showtimes/{showtimeId}/occupied-seats")
+    public ApiResponse<java.util.List<com.cinemaai.booking.dto.response.OccupiedSeatDto>> getOccupiedSeatsInternal(
+            @PathVariable Long showtimeId
+    ) {
+        return ApiResponse.success(bookingService.getOccupiedSeats(showtimeId));
+    }
 }

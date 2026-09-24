@@ -67,7 +67,7 @@ public class SecurityConfig {
                     String path = request.getRequestURI();
 
                     // Whitelisted endpoints
-                    if (path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
+                    if ("OPTIONS".equalsIgnoreCase(request.getMethod()) || path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
                         chain.doFilter(request, response);
                         return;
                     }

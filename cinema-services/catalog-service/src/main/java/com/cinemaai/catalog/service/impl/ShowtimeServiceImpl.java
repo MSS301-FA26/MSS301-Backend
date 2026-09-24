@@ -58,6 +58,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     private final RoomService roomService;
     private final CinemaMapper cinemaMapper;
     private final AuditLogService auditLogService;
+    private final com.cinemaai.catalog.client.BookingClient bookingClient;
 
 
     // -------------------------------------------------------------------------
@@ -350,10 +351,35 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                 .stream()
                 .sorted(Comparator.comparing(Seat::getRowLabel).thenComparingInt(Seat::getSeatNumber))
                 .toList();
+
+        List<com.cinemaai.catalog.client.BookingClient.OccupiedSeat> occupiedSeats =
+                bookingClient.getOccupiedSeats(showtimeId);
+        Map<Long, com.cinemaai.catalog.client.BookingClient.OccupiedSeat> occupiedMap = occupiedSeats.stream()
+                .collect(Collectors.toMap(
+                        com.cinemaai.catalog.client.BookingClient.OccupiedSeat::seatId,
+                        Function.identity(),
+                        (a, b) -> a
+                ));
+
         List<ShowtimeSeatResponse> seatResponses = seats.stream()
-                .map(seat -> cinemaMapper.toShowtimeSeatResponse(seat,
-                        seat.getStatus() == SeatStatus.AVAILABLE ? "AVAILABLE" : "UNAVAILABLE", null, showtime))
+                .map(seat -> {
+                    com.cinemaai.catalog.client.BookingClient.OccupiedSeat occupied = occupiedMap.get(seat.getId());
+                    String runtimeStatus;
+                    LocalDateTime holdExpiresAt = null;
+
+                    if (seat.getStatus() != SeatStatus.AVAILABLE) {
+                        runtimeStatus = "UNAVAILABLE";
+                    } else if (occupied != null) {
+                        runtimeStatus = occupied.runtimeStatus();
+                        holdExpiresAt = occupied.holdExpiresAt();
+                    } else {
+                        runtimeStatus = "AVAILABLE";
+                    }
+
+                    return cinemaMapper.toShowtimeSeatResponse(seat, runtimeStatus, holdExpiresAt, showtime);
+                })
                 .toList();
+
         return new ShowtimeSeatMapResponse(
                 cinemaMapper.toShowtimeResponse(showtime),
                 showtime.getRoom().getRowCount(),

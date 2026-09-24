@@ -14,6 +14,7 @@ import com.cinemaai.payment.exception.NotFoundException;
 import com.cinemaai.payment.mapper.PaymentMapper;
 import com.cinemaai.payment.repository.OutboxEventRepository;
 import com.cinemaai.payment.repository.PaymentRepository;
+import com.cinemaai.payment.service.OutboxPublisherWorker;
 import com.cinemaai.payment.service.PaymentService;
 import com.cinemaai.payment.util.VNPayUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +29,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -36,6 +39,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final OutboxEventRepository outboxEventRepository;
+    private final OutboxPublisherWorker outboxPublisherWorker;
     private final BookingClient bookingClient;
     private final ObjectMapper objectMapper;
 
@@ -57,8 +61,9 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal amount = BigDecimal.ZERO;
         Long targetUserId = userId;
 
+        BookingClient.BookingInfo booking = null;
         if (bookingId != null) {
-            BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
+            booking = bookingClient.getBooking(bookingId);
             amount = booking.totalAmount();
             if (targetUserId == null) {
                 targetUserId = booking.userId();
@@ -88,8 +93,9 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Generate VNPay URL
-        String txnRef = payment.getId() + "_" + System.currentTimeMillis();
-        String orderInfo = "Thanh toan ve xem phim ma " + bookingId;
+        String bookingCode = booking != null ? booking.bookingCode() : null;
+        String txnRef = payment.getId() + "-" + (bookingCode != null && !bookingCode.isBlank() ? bookingCode : System.currentTimeMillis());
+        String orderInfo = "Thanh toan ve xem phim ma " + (bookingCode != null ? bookingCode : bookingId);
 
         Map<String, String> vnpParams = new HashMap<>();
         vnpParams.put("vnp_Version", "2.1.0");
@@ -177,6 +183,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Transactional Outbox: Write PaymentSucceededEvent in the same DB transaction
         writeOutboxEvent(payment, now);
+        triggerOutboxPublishImmediately();
 
         return PaymentMapper.toResponse(payment);
     }
@@ -201,7 +208,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         Long paymentId;
         try {
-            paymentId = Long.parseLong(txnRef.split("_")[0]);
+            paymentId = Long.parseLong(txnRef.split("[-_]")[0]);
         } catch (Exception ex) {
             return Map.of("RspCode", "01", "Message", "Invalid transaction reference");
         }
@@ -236,6 +243,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             // Transactional Outbox pattern: Record event in the same DB transaction
             writeOutboxEvent(payment, now);
+            triggerOutboxPublishImmediately();
 
             log.info("VNPay IPN Success for Payment id={}, Booking id={}", payment.getId(), payment.getBookingId());
             return Map.of("RspCode", "00", "Message", "Confirm Success");
@@ -245,6 +253,27 @@ public class PaymentServiceImpl implements PaymentService {
             paymentRepository.save(payment);
             log.warn("VNPay IPN Failed for Payment id={}, code={}", payment.getId(), responseCode);
             return Map.of("RspCode", "00", "Message", "Confirm Success");
+        }
+    }
+
+    private void triggerOutboxPublishImmediately() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        outboxPublisherWorker.publishPendingEvents();
+                    } catch (Exception ex) {
+                        log.warn("Immediate outbox publish failed (scheduled worker will retry): {}", ex.getMessage());
+                    }
+                }
+            });
+        } else {
+            try {
+                outboxPublisherWorker.publishPendingEvents();
+            } catch (Exception ex) {
+                log.warn("Immediate outbox publish failed: {}", ex.getMessage());
+            }
         }
     }
 
