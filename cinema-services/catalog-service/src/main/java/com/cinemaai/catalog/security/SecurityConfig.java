@@ -59,13 +59,18 @@ public class SecurityConfig {
                 try {
                     String path = request.getRequestURI();
                     boolean internal = path.startsWith("/internal/");
-                    if (!path.equals("/actuator/health") && !path.startsWith("/actuator/health/")) {
-                        String supplied = request.getHeader(internal ? "X-Internal-Service-Secret" : "X-Gateway-Secret");
-                        String expected = internal ? internalSecret : gatewaySecret;
-                        if (supplied == null || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
-                            writeError(mapper, request, response, 403, "Trusted service access required");
-                            return;
-                        }
+                    if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                            || path.startsWith("/actuator/health")
+                            || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/error")) {
+                        chain.doFilter(request, response);
+                        return;
+                    }
+                    String supplied = request.getHeader(internal ? "X-Internal-Service-Secret" : "X-Gateway-Secret");
+                    String expected = internal ? internalSecret : gatewaySecret;
+                    if (supplied == null || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
+                        writeError(mapper, request, response, 403, "Trusted service access required");
+                        return;
                     }
                     String bearer = request.getHeader("Authorization");
                     if (bearer != null && bearer.startsWith("Bearer ") && !internal) {
@@ -94,10 +99,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/internal/v1/catalog/checkout-quote").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/ticket-pricing/validate", "/api/v1/catalog/checkout-quote").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ticket-pricing/validate", "/api/v1/catalog/checkout-quote").permitAll()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> writeError(mapper, request, response, 401, "Authentication required"))
