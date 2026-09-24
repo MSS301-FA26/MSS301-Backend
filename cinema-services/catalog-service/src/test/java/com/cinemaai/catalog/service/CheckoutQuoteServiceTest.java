@@ -101,6 +101,26 @@ class CheckoutQuoteServiceTest {
         assertThat(response.ticketSubtotal()).isEqualByComparingTo("100000");
     }
 
+    @Test
+    void handlesFrontendPayloadWithoutTicketsAndWithFoodItemId() {
+        FoodItem popcorn = withId(new FoodItem("Popcorn", "Large", new BigDecimal("45000")), 50L);
+        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
+        when(items.findById(50L)).thenReturn(Optional.of(popcorn));
+
+        // Frontend sends seatIds, foods with foodItemId (no tickets, no productId, no isCombo)
+        var food = new CheckoutQuoteRequest.Food(null, null, 2, 50L, null);
+        var request = new CheckoutQuoteRequest(40L, List.of(100L), null, List.of(food), null, null, null);
+
+        var response = service.quote(request);
+
+        assertThat(response.ticketSubtotal()).isEqualByComparingTo("90000");
+        assertThat(response.foodSubtotal()).isEqualByComparingTo("90000");
+        assertThat(response.subtotal()).isEqualByComparingTo("180000");
+        assertThat(response.total()).isEqualByComparingTo("180000");
+        assertThat(response.tickets()).hasSize(1);
+        assertThat(response.tickets().get(0).ticketType()).isEqualTo(TicketType.ADULT);
+    }
+
     private static <T> T withId(T entity, Long id) {
         ReflectionTestUtils.setField(entity, "id", id);
         return entity;
