@@ -36,10 +36,21 @@ public class StaffCheckInController {
     private final BookingSeatRepository bookingSeatRepository;
     private final FoodOrderRepository foodOrderRepository;
 
-    @Operation(summary = "Tra cứu thông tin vé để soát vé")
-    @RequestMapping(value = "/lookup", method = {RequestMethod.GET, RequestMethod.POST})
+    @Operation(summary = "Tra cứu thông tin vé để soát vé qua GET")
+    @GetMapping("/lookup")
     @Transactional
-    public ApiResponse<BookingResponse> lookup(
+    public ApiResponse<BookingResponse> lookupGet(
+            @RequestParam(required = false) String bookingCode,
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String qrCode
+    ) {
+        return processLookup(bookingCode, code, qrCode);
+    }
+
+    @Operation(summary = "Tra cứu thông tin vé để soát vé qua POST")
+    @PostMapping("/lookup")
+    @Transactional
+    public ApiResponse<BookingResponse> lookupPost(
             @RequestParam(required = false) String bookingCode,
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String qrCode,
@@ -53,6 +64,13 @@ public class StaffCheckInController {
             if (queryCode == null || queryCode.isBlank()) queryCode = body.get("code");
             if (queryCode == null || queryCode.isBlank()) queryCode = body.get("qrCode");
         }
+        return processLookup(queryCode, null, null);
+    }
+
+    private ApiResponse<BookingResponse> processLookup(String bookingCode, String code, String qrCode) {
+        String queryCode = bookingCode;
+        if (queryCode == null || queryCode.isBlank()) queryCode = code;
+        if (queryCode == null || queryCode.isBlank()) queryCode = qrCode;
 
         if (queryCode == null || queryCode.isBlank()) {
             throw new BadRequestException("Mã đặt vé hoặc mã QR không được để trống.");
@@ -61,9 +79,14 @@ public class StaffCheckInController {
         String targetCode = extractBookingCode(queryCode);
         Booking booking = bookingRepository.findByBookingCode(targetCode)
                 .or(() -> bookingSeatRepository.findByTicketCode(targetCode).map(BookingSeat::getBooking))
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + targetCode));
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy thông tin đặt vé cho mã: " + targetCode));
 
-        ensureSeatTicketCodes(booking);
+        try {
+            ensureSeatTicketCodes(booking);
+        } catch (Exception ex) {
+            log.warn("Non-fatal: Failed to ensure seat ticket codes for booking {}: {}", booking.getBookingCode(), ex.getMessage());
+        }
+
         return ApiResponse.success(BookingMapper.toResponse(booking), "Tìm thấy thông tin đặt vé");
     }
 
