@@ -34,4 +34,15 @@ public record TicketPricingRuleRequest(
 
         LocalDateTime effectiveTo
 ) {
+    public TicketPricingRuleRequest(
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday,
+            BigDecimal price,
+            Boolean active
+    ) {
+        this(null, ticketType, roomType, seatType, weekend, holiday, price, active, null, null);
+    }
 }
