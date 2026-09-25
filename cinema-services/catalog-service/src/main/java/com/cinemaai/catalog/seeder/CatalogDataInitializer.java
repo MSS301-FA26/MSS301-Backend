@@ -7,6 +7,9 @@ import com.cinemaai.catalog.entity.MovieActor;
 import com.cinemaai.catalog.entity.MovieGenre;
 import com.cinemaai.catalog.enums.AgeRating;
 import com.cinemaai.catalog.enums.MovieStatus;
+import com.cinemaai.catalog.entity.Cinema;
+import com.cinemaai.catalog.enums.CinemaStatus;
+import com.cinemaai.catalog.repository.CinemaRepository;
 import com.cinemaai.catalog.repository.ActorRepository;
 import com.cinemaai.catalog.repository.GenreRepository;
 import com.cinemaai.catalog.repository.MovieActorRepository;
@@ -45,15 +48,29 @@ public class CatalogDataInitializer implements CommandLineRunner {
     private final MovieRepository movieRepository;
     private final MovieGenreRepository movieGenreRepository;
     private final MovieActorRepository movieActorRepository;
+    private final CinemaRepository cinemaRepository;
 
     @Override
     @Transactional
     public void run(String... args) {
         log.info("Bắt đầu kiểm tra và khởi tạo dữ liệu mẫu Catalog Service...");
+        seedCinema();
         Map<String, Genre> genreMap = seedGenres();
         Map<String, Actor> actorMap = seedActors();
         seedMovies(genreMap, actorMap);
         log.info("Hoàn tất khởi tạo dữ liệu mẫu Catalog Service thành công! Tổng số phim hiện tại: {}", movieRepository.count());
+    }
+
+    private void seedCinema() {
+        Cinema cinema = cinemaRepository.findFirstByOrderByIdAsc().orElseGet(() -> {
+            Cinema c = new Cinema("CinemaAI Central", "1 Cinema Street, Phường Bến Nghé, Quận 1", "TP. Hồ Chí Minh", "0900000000");
+            c.setStatus(CinemaStatus.ACTIVE);
+            return cinemaRepository.save(c);
+        });
+        if (cinema.getStatus() != CinemaStatus.ACTIVE) {
+            cinema.setStatus(CinemaStatus.ACTIVE);
+            cinemaRepository.save(cinema);
+        }
     }
 
     private Map<String, Genre> seedGenres() {

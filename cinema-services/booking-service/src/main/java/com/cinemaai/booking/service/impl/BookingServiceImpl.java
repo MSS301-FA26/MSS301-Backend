@@ -407,4 +407,48 @@ public class BookingServiceImpl implements BookingService {
         }
         return result;
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.cinemaai.booking.dto.response.PageResponse<BookingResponse> getAdminBookings(
+            BookingStatus status, int page, int size) {
+        int boundedPage = Math.max(0, page);
+        int boundedSize = Math.min(Math.max(1, size), 100);
+        org.springframework.data.domain.PageRequest pageRequest =
+                org.springframework.data.domain.PageRequest.of(boundedPage, boundedSize);
+
+        Page<Booking> bookingPage;
+        if (status != null) {
+            bookingPage = bookingRepository.findByStatusOrderByCreatedAtDesc(status, pageRequest);
+        } else {
+            bookingPage = bookingRepository.findAllByOrderByCreatedAtDesc(pageRequest);
+        }
+
+        Page<BookingResponse> dtoPage = bookingPage.map(BookingMapper::toResponse);
+        return com.cinemaai.booking.dto.response.PageResponse.from(dtoPage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookingResponse getAdminBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
+        return BookingMapper.toResponse(booking);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse cancelAdmin(Long bookingId, String reason) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(LocalDateTime.now());
+        if (booking.getSeats() != null) {
+            booking.getSeats().forEach(s -> s.setStatus(BookingSeatStatus.RELEASED));
+        }
+        Booking saved = bookingRepository.save(booking);
+        log.info("Admin cancelled booking #{} reason: {}", bookingId, reason);
+        return BookingMapper.toResponse(saved);
+    }
 }

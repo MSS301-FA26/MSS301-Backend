@@ -20,11 +20,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class GatewaySecretFilter extends OncePerRequestFilter {
 
     private final String gatewaySecret;
+    private final String internalSecret;
 
     public GatewaySecretFilter(
-            @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String gatewaySecret
+            @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String gatewaySecret,
+            @Value("${app.internal.secret:CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}") String internalSecret
     ) {
         this.gatewaySecret = gatewaySecret;
+        this.internalSecret = internalSecret;
     }
 
     @Override
@@ -38,9 +41,13 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
             return;
         }
 
-        String supplied = request.getHeader("X-Gateway-Secret");
+        boolean isInternalPath = path.startsWith("/internal/");
+        String headerName = isInternalPath ? "X-Internal-Service-Secret" : "X-Gateway-Secret";
+        String expectedSecret = isInternalPath ? internalSecret : gatewaySecret;
+        String supplied = request.getHeader(headerName);
+
         if (supplied == null || !MessageDigest.isEqual(
-                gatewaySecret.getBytes(StandardCharsets.UTF_8),
+                expectedSecret.getBytes(StandardCharsets.UTF_8),
                 supplied.getBytes(StandardCharsets.UTF_8))) {
 
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
@@ -50,7 +57,7 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
                 {
                     "success": false,
                     "code": "DIRECT_ACCESS_FORBIDDEN",
-                    "message": "Direct access to microservice is blocked. Requests must be routed through API Gateway (Port 8080)."
+                    "message": "Direct access to microservice is blocked. Requests must be routed through API Gateway (Port 8080) or provide valid internal secret."
                 }
                 """);
             return;
