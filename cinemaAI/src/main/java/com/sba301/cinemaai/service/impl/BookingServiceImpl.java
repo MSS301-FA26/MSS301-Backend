@@ -705,15 +705,10 @@ public class BookingServiceImpl implements BookingService {
         return rowSeats.get(partnerIndex);
     }
 
+    private record LogicalSeatUnit(int seatCount, boolean isOccupied) {}
+
     private void validateNoOrphanSeats(Showtime showtime, List<Seat> requestedSeats) {
         if (requestedSeats == null || requestedSeats.isEmpty()) {
-            return;
-        }
-
-        List<Seat> requestedSingles = requestedSeats.stream()
-                .filter(s -> s.getSeatType() == SeatType.SINGLE)
-                .toList();
-        if (requestedSingles.isEmpty()) {
             return;
         }
 
@@ -729,11 +724,10 @@ public class BookingServiceImpl implements BookingService {
 
         List<Seat> allRoomSeats = seatRepository.findByRoomId(showtime.getRoom().getId());
 
-        Map<String, List<Seat>> requestedByRow = requestedSingles.stream()
+        Map<String, List<Seat>> requestedByRow = requestedSeats.stream()
                 .collect(Collectors.groupingBy(Seat::getRowLabel));
 
         Map<String, List<Seat>> allSeatsByRow = allRoomSeats.stream()
-                .filter(s -> s.getSeatType() == SeatType.SINGLE)
                 .collect(Collectors.groupingBy(Seat::getRowLabel));
 
         for (Map.Entry<String, List<Seat>> entry : requestedByRow.entrySet()) {
@@ -770,21 +764,49 @@ public class BookingServiceImpl implements BookingService {
                         .anyMatch(s -> requestedSeatIds.contains(s.getId()));
                 if (!sectionTouched) continue;
 
-                int availableRunLength = 0;
-                for (Seat seat : section) {
-                    boolean isOccupied = occupiedSeatIds.contains(seat.getId())
-                            || requestedSeatIds.contains(seat.getId());
-                    if (isOccupied) {
-                        if (availableRunLength == 1) {
-                            throw new BadRequestException("INVALID_SEAT_GAP: Không thể để trống một ghế đơn lẻ giữa các ghế. Vui lòng chọn vị trí khác.");
-                        }
-                        availableRunLength = 0;
+                // Xây dựng logical units trong section: gom cặp ghế COUPLE liền nhau
+                List<LogicalSeatUnit> units = new ArrayList<>();
+                int idx = 0;
+                while (idx < section.size()) {
+                    Seat seat = section.get(idx);
+                    boolean isCouple = seat.getSeatType() == SeatType.COUPLE;
+                    if (isCouple && idx + 1 < section.size() && section.get(idx + 1).getSeatType() == SeatType.COUPLE) {
+                        Seat next = section.get(idx + 1);
+                        boolean isOcc = occupiedSeatIds.contains(seat.getId())
+                                || requestedSeatIds.contains(seat.getId())
+                                || occupiedSeatIds.contains(next.getId())
+                                || requestedSeatIds.contains(next.getId());
+                        units.add(new LogicalSeatUnit(2, isOcc));
+                        idx += 2;
                     } else {
-                        availableRunLength++;
+                        boolean isOcc = occupiedSeatIds.contains(seat.getId())
+                                || requestedSeatIds.contains(seat.getId());
+                        units.add(new LogicalSeatUnit(1, isOcc));
+                        idx += 1;
                     }
                 }
-                if (availableRunLength == 1) {
-                    throw new BadRequestException("INVALID_SEAT_GAP: Không thể để trống một ghế đơn lẻ giữa các ghế. Vui lòng chọn vị trí khác.");
+
+                // Quét tìm pattern: OCCUPIED - AVAILABLE(1 ghế) - OCCUPIED
+                int u = 0;
+                while (u < units.size()) {
+                    if (!units.get(u).isOccupied()) {
+                        int runStart = u;
+                        int availableSeats = 0;
+                        while (u < units.size() && !units.get(u).isOccupied()) {
+                            availableSeats += units.get(u).seatCount();
+                            u++;
+                        }
+                        int runEnd = u - 1;
+
+                        boolean hasLeftOccupied = runStart > 0 && units.get(runStart - 1).isOccupied();
+                        boolean hasRightOccupied = runEnd < units.size() - 1 && units.get(runEnd + 1).isOccupied();
+
+                        if (hasLeftOccupied && hasRightOccupied && availableSeats == 1) {
+                            throw new BadRequestException("INVALID_SEAT_GAP: Không thể để trống 1 ghế đơn lẻ giữa các ghế đã chọn/đặt.");
+                        }
+                    } else {
+                        u++;
+                    }
                 }
             }
         }

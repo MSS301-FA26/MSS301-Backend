@@ -20,6 +20,7 @@ import com.sba301.cinemaai.exception.BadRequestException;
 import com.sba301.cinemaai.exception.ConflictException;
 import com.sba301.cinemaai.exception.NotFoundException;
 import com.sba301.cinemaai.mapper.CinemaMapper;
+import com.sba301.cinemaai.repository.BookingSeatRepository;
 import com.sba301.cinemaai.repository.RoomRepository;
 import com.sba301.cinemaai.repository.SeatRepository;
 import com.sba301.cinemaai.repository.SeatRowRepository;
@@ -29,7 +30,10 @@ import com.sba301.cinemaai.service.RoomService;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +45,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomRepository roomRepository;
     private final SeatRepository seatRepository;
     private final SeatRowRepository seatRowRepository;
+    private final BookingSeatRepository bookingSeatRepository;
     private final CinemaService cinemaService;
     private final CinemaMapper cinemaMapper;
     private final AuditLogService auditLogService;
@@ -130,11 +135,7 @@ public class RoomServiceImpl implements RoomService {
             throw new ConflictException("Room has no seats to replace; create seats first");
         }
         validateSeatLayout(room, request);
-        seatRepository.deleteAll(existingSeats);
-        seatRepository.flush();
-        seatRowRepository.deleteAll(seatRowRepository.findByRoom(room));
-        seatRowRepository.flush();
-        applySeatLayout(room, request);
+        syncSeatLayout(room, request);
         auditLogService.record(AuditActionType.UPDATE, "ROOM", room.getId(), room.getName() + " - thay sơ đồ ghế");
         return getSeats(roomId);
     }
@@ -164,7 +165,12 @@ public class RoomServiceImpl implements RoomService {
         Set<Integer> displayOrders = new HashSet<>();
         for (SeatRowGenerationRequest row : request.rows()) {
             SeatType rowSeatType = row.seatType() == null ? request.defaultSeatType() : row.seatType();
-            if (rowSeatType == SeatType.COUPLE && row.seatNumbers().size() % 2 != 0) {
+            if (row.seatTypes() != null && !row.seatTypes().isEmpty()) {
+                long coupleCount = row.seatTypes().stream().filter(t -> t == SeatType.COUPLE).count();
+                if (coupleCount % 2 != 0) {
+                    throw new BadRequestException("Couple seat row " + normalizeRowLabel(row.rowLabel()) + " must have an even number of couple seats");
+                }
+            } else if (rowSeatType == SeatType.COUPLE && row.seatNumbers().size() % 2 != 0) {
                 throw new BadRequestException("Couple seat row " + normalizeRowLabel(row.rowLabel()) + " must have an even number of seats");
             }
             if (row.displayOrder() > room.getRowCount()) {
@@ -301,11 +307,138 @@ public class RoomServiceImpl implements RoomService {
                 if (!seatNumbers.add(seatNumber)) {
                     throw new BadRequestException("Duplicate seat number " + seatNumber + " in row " + rowLabel);
                 }
-                int displayColumn = rowRequest.startColumn() + index;
+                int displayColumn = (rowRequest.displayColumns() != null && index < rowRequest.displayColumns().size() && rowRequest.displayColumns().get(index) != null)
+                        ? rowRequest.displayColumns().get(index)
+                        : rowRequest.startColumn() + index;
                 if (displayColumn > room.getColumnCount()) {
                     throw new BadRequestException("Seat layout exceeds room column count in row " + rowLabel);
                 }
-                seatRepository.save(new Seat(room, seatRow, seatNumber, displayColumn, rowSeatType));
+                SeatType seatType = (rowRequest.seatTypes() != null && index < rowRequest.seatTypes().size() && rowRequest.seatTypes().get(index) != null)
+                        ? rowRequest.seatTypes().get(index)
+                        : rowSeatType;
+                seatRepository.save(new Seat(room, seatRow, seatNumber, displayColumn, seatType));
+            }
+        }
+    }
+
+    private void syncSeatLayout(Room room, SeatLayoutRequest request) {
+        List<Seat> existingSeats = seatRepository.findByRoom(room);
+        List<SeatRow> existingRows = seatRowRepository.findByRoom(room);
+
+        Map<String, SeatRow> rowByLabel = existingRows.stream()
+                .collect(Collectors.toMap(SeatRow::getRowLabel, Function.identity(), (a, b) -> a));
+
+        Map<String, Seat> seatByKey = existingSeats.stream()
+                .collect(Collectors.toMap(
+                        s -> s.getRowLabel() + "_" + s.getSeatNumber(),
+                        Function.identity(),
+                        (a, b) -> a
+                ));
+
+        Set<Long> processedSeatIds = new HashSet<>();
+        Set<Long> usedRowIds = new HashSet<>();
+
+        if (request.rows() == null || request.rows().isEmpty()) {
+            SeatType defaultSeatType = request.defaultSeatType() != null ? request.defaultSeatType() : SeatType.STANDARD;
+            for (int r = 0; r < room.getRowCount(); r++) {
+                String rowLabel = rowLabel(r);
+                SeatRow seatRow = rowByLabel.get(rowLabel);
+                if (seatRow == null) {
+                    seatRow = seatRowRepository.save(new SeatRow(room, rowLabel, r + 1, 1, defaultSeatType));
+                } else {
+                    seatRow.setDisplayOrder(r + 1);
+                    seatRow.setStartColumn(1);
+                    seatRow.setRowType(defaultSeatType);
+                    seatRow = seatRowRepository.save(seatRow);
+                }
+                usedRowIds.add(seatRow.getId());
+
+                for (int col = 1; col <= room.getColumnCount(); col++) {
+                    String key = rowLabel + "_" + col;
+                    Seat seat = seatByKey.get(key);
+                    if (seat == null) {
+                        seat = seatRepository.save(new Seat(room, seatRow, col, col, defaultSeatType));
+                    } else {
+                        seat.setSeatRow(seatRow);
+                        seat.setDisplayColumn(col);
+                        seat.setSeatType(defaultSeatType);
+                        seat.setStatus(SeatStatus.AVAILABLE);
+                        seat = seatRepository.save(seat);
+                    }
+                    processedSeatIds.add(seat.getId());
+                }
+            }
+        } else {
+            for (SeatRowGenerationRequest rowReq : request.rows()) {
+                String rowLabel = normalizeRowLabel(rowReq.rowLabel());
+                SeatType rowSeatType = rowReq.seatType() == null ? request.defaultSeatType() : rowReq.seatType();
+                if (rowSeatType == null) rowSeatType = SeatType.STANDARD;
+
+                SeatRow seatRow = rowByLabel.get(rowLabel);
+                if (seatRow == null) {
+                    seatRow = seatRowRepository.save(new SeatRow(
+                            room,
+                            rowLabel,
+                            rowReq.displayOrder(),
+                            rowReq.startColumn(),
+                            rowSeatType
+                    ));
+                } else {
+                    seatRow.setDisplayOrder(rowReq.displayOrder());
+                    seatRow.setStartColumn(rowReq.startColumn());
+                    seatRow.setRowType(rowSeatType);
+                    seatRow = seatRowRepository.save(seatRow);
+                }
+                usedRowIds.add(seatRow.getId());
+
+                for (int i = 0; i < rowReq.seatNumbers().size(); i++) {
+                    int seatNumber = rowReq.seatNumbers().get(i);
+                    SeatType seatType = (rowReq.seatTypes() != null && i < rowReq.seatTypes().size() && rowReq.seatTypes().get(i) != null)
+                            ? rowReq.seatTypes().get(i)
+                            : rowSeatType;
+                    int displayColumn = (rowReq.displayColumns() != null && i < rowReq.displayColumns().size() && rowReq.displayColumns().get(i) != null)
+                            ? rowReq.displayColumns().get(i)
+                            : rowReq.startColumn() + i;
+
+                    String key = rowLabel + "_" + seatNumber;
+                    Seat seat = seatByKey.get(key);
+                    if (seat == null) {
+                        seat = seatRepository.save(new Seat(room, seatRow, seatNumber, displayColumn, seatType));
+                    } else {
+                        seat.setSeatRow(seatRow);
+                        seat.setDisplayColumn(displayColumn);
+                        seat.setSeatType(seatType);
+                        seat.setStatus(SeatStatus.AVAILABLE);
+                        seat = seatRepository.save(seat);
+                    }
+                    processedSeatIds.add(seat.getId());
+                }
+            }
+        }
+
+        // Soft-delete seats that have bookings to preserve DB foreign key integrity,
+        // and hard-delete seats without bookings
+        for (Seat existingSeat : existingSeats) {
+            if (!processedSeatIds.contains(existingSeat.getId())) {
+                boolean hasBookings = bookingSeatRepository.existsBySeat(existingSeat);
+                if (hasBookings) {
+                    existingSeat.setStatus(SeatStatus.UNAVAILABLE);
+                    seatRepository.save(existingSeat);
+                } else {
+                    seatRepository.delete(existingSeat);
+                }
+            }
+        }
+
+        // Clean up unused rows
+        for (SeatRow existingRow : existingRows) {
+            if (!usedRowIds.contains(existingRow.getId())) {
+                List<Seat> remaining = seatRepository.findByRoom(room).stream()
+                        .filter(s -> s.getSeatRow().getId().equals(existingRow.getId()))
+                        .toList();
+                if (remaining.isEmpty()) {
+                    seatRowRepository.delete(existingRow);
+                }
             }
         }
     }
