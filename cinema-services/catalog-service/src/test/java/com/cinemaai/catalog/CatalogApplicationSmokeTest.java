@@ -69,4 +69,11 @@ class CatalogApplicationSmokeTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void customerScheduleEndpointIsAccessible() throws Exception {
+        mvc.perform(get("/api/v1/showtimes/customer-schedule")
+                        .header("X-Gateway-Secret", "gateway-test-secret"))
+                .andExpect(status().isOk());
+    }
 }

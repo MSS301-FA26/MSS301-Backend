@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MovieController {
 
     private final MovieService movieService;
+    private final com.cinemaai.catalog.service.ShowtimeService showtimeService;
 
     @GetMapping
     public ApiResponse<PageResponse<MovieResponse>> searchMovies(
@@ -39,5 +40,13 @@ public class MovieController {
     @GetMapping("/{movieId}")
     public ApiResponse<MovieResponse> getMovie(@PathVariable Long movieId) {
         return ApiResponse.success(movieService.getPublic(movieId));
+    }
+
+    @GetMapping("/{movieId}/available-showtimes")
+    public ApiResponse<java.util.List<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse>> getAvailableShowtimes(
+            @PathVariable Long movieId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        return ApiResponse.success(showtimeService.getCustomerAvailableSlots(movieId, date));
     }
 }
