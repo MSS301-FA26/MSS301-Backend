@@ -121,6 +121,28 @@ class CheckoutQuoteServiceTest {
         assertThat(response.tickets().get(0).ticketType()).isEqualTo(TicketType.ADULT);
     }
 
+    @Test
+    void rejectsTicketQuantityThatDoesNotMatchSeatCount() {
+        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
+        var request = new CheckoutQuoteRequest(40L, List.of(100L),
+                List.of(new CheckoutQuoteRequest.Ticket(null, TicketType.ADULT, 30, 0)), List.of());
+
+        assertThatThrownBy(() -> service.quote(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Số lượng vé phải bằng số lượng ghế đã chọn.");
+    }
+
+    @Test
+    void rejectsNegativeTicketQuantity() {
+        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
+        var request = new CheckoutQuoteRequest(40L, List.of(100L),
+                List.of(new CheckoutQuoteRequest.Ticket(null, TicketType.ADULT, 30, -1)), List.of());
+
+        assertThatThrownBy(() -> service.quote(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Số lượng vé không được âm");
+    }
+
     private static <T> T withId(T entity, Long id) {
         ReflectionTestUtils.setField(entity, "id", id);
         return entity;

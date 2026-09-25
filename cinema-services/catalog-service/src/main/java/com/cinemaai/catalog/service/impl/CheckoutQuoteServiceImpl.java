@@ -54,8 +54,10 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                     .toList();
         }
 
+        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() == null || ticket.quantity() < 0))
+            throw new BadRequestException("Số lượng vé không được âm");
         if (effectiveTickets.stream().mapToLong(CheckoutQuoteRequest.Ticket::quantity).sum() != requested.size())
-            throw new BadRequestException("Ticket quantity must match the number of selected seats");
+            throw new BadRequestException("Số lượng vé phải bằng số lượng ghế đã chọn.");
         // Explicit assignments are reserved first, so subsequent batches cannot reuse them.
         Set<Long> assigned = new HashSet<>();
         for (var ticket : effectiveTickets) {

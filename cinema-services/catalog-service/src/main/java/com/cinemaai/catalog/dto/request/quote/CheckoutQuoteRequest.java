@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
@@ -31,13 +32,13 @@ public record CheckoutQuoteRequest(
             @Positive Long seatId,
             TicketType ticketType,
             Integer viewerAge,
-            Integer quantity
+            @PositiveOrZero Integer quantity
     ) {
         public Ticket(Long seatId, TicketType ticketType, Integer viewerAge, Integer quantity) {
             this.seatId = seatId;
             this.ticketType = ticketType != null ? ticketType : TicketType.ADULT;
             this.viewerAge = viewerAge != null ? viewerAge : 22;
-            this.quantity = quantity != null && quantity > 0 ? quantity : 1;
+            this.quantity = quantity != null ? quantity : 1;
         }
     }
 
