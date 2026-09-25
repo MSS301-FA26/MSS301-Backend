@@ -42,4 +42,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             Pageable pageable);
 
     List<Booking> findByShowtimeId(Long showtimeId);
+
+    Page<Booking> findByStatusOrderByCreatedAtDesc(BookingStatus status, Pageable pageable);
+
+    Page<Booking> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }

@@ -3,6 +3,7 @@ package com.cinemaai.catalog.service;
 import com.cinemaai.catalog.dto.request.cinema.BulkShowtimeRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
 import com.cinemaai.catalog.dto.response.PageResponse;
+import com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatMapResponse;
 import com.cinemaai.catalog.enums.ShowtimeStatus;
@@ -10,6 +11,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface ShowtimeService {
+
+    List<CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date);
+
+    CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId);
 
     PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, LocalDate date, int page, int size);
 
