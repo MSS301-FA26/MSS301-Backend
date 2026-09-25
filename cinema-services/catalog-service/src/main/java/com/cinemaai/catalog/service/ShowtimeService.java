@@ -36,4 +36,7 @@ public interface ShowtimeService {
 
     ShowtimeResponse cancelShowtime(Long id, String reason);
 
+    List<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date);
+
+    com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId);
 }

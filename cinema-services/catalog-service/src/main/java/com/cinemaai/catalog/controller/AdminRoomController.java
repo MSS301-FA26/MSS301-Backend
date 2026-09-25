@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/admin/rooms")
+@RequestMapping({"/api/v1/admin/rooms", "/api/v1/admin/rooms/"})
 @RequiredArgsConstructor
 @SecurityRequirement(name = "Bearer Authentication")
 @Tag(name = "Admin - Rooms", description = "Admin room management endpoints - requires ADMIN role")
@@ -37,7 +37,7 @@ public class AdminRoomController {
 
     private final RoomService roomService;
 
-    @GetMapping
+    @GetMapping({"", "/"})
     @Operation(summary = "Get configured cinema rooms (Admin)", description = "Get all rooms in the single configured cinema (Admin only)")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Rooms retrieved successfully"),

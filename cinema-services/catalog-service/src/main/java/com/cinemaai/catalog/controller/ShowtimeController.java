@@ -7,6 +7,7 @@ import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.service.ShowtimeService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShowtimeController {
 
     private final ShowtimeService showtimeService;
+
+    @GetMapping("/customer-schedule")
+    public ApiResponse<List<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse>> getCustomerSchedule(
+            @RequestParam(required = false) Long movieId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        return ApiResponse.success(showtimeService.getCustomerAvailableSlots(movieId, date));
+    }
+
+    @GetMapping("/{showtimeId}/resolve")
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse> resolveCustomerShowtime(@PathVariable Long showtimeId) {
+        return ApiResponse.success(showtimeService.resolveCustomerShowtime(showtimeId));
+    }
 
     @GetMapping
     public ApiResponse<PageResponse<ShowtimeResponse>> searchShowtimes(
