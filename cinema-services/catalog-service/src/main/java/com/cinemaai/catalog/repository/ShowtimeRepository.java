@@ -101,4 +101,36 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
 
     @Query("SELECT s FROM Showtime s WHERE s.status = 'OPEN' AND s.endTime <= :now")
     List<Showtime> findOpenReadyToComplete(@Param("now") LocalDateTime now);
+
+    @EntityGraph(attributePaths = {"movie", "room", "room.cinema"})
+    @Query("""
+            select s from Showtime s
+            where (:movieId is null or s.movie.id = :movieId)
+              and s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN
+              and s.room.status = com.cinemaai.catalog.enums.RoomStatus.ACTIVE
+              and s.movie.status <> com.cinemaai.catalog.enums.MovieStatus.INACTIVE
+              and s.startTime >= :from
+              and s.startTime < :to
+            order by s.startTime asc, s.id asc
+            """)
+    List<Showtime> findCustomerCandidateShowtimes(
+            @Param("movieId") Long movieId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to
+    );
+
+    @EntityGraph(attributePaths = {"movie", "room", "room.cinema"})
+    @Query("""
+            select s from Showtime s
+            where s.movie.id = :movieId
+              and s.startTime = :startTime
+              and s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN
+              and s.room.status = com.cinemaai.catalog.enums.RoomStatus.ACTIVE
+              and s.movie.status <> com.cinemaai.catalog.enums.MovieStatus.INACTIVE
+            order by s.id asc
+            """)
+    List<Showtime> findEquivalentCandidateShowtimes(
+            @Param("movieId") Long movieId,
+            @Param("startTime") LocalDateTime startTime
+    );
 }

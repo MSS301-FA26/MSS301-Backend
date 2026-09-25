@@ -26,4 +26,11 @@ public interface BookingService {
     BookingResponse getBookingByCode(String bookingCode);
 
     java.util.List<com.cinemaai.booking.dto.response.OccupiedSeatDto> getOccupiedSeats(Long showtimeId);
+
+    com.cinemaai.booking.dto.response.PageResponse<BookingResponse> getAdminBookings(
+            com.cinemaai.booking.enums.BookingStatus status, int page, int size);
+
+    BookingResponse getAdminBooking(Long bookingId);
+
+    BookingResponse cancelAdmin(Long bookingId, String reason);
 }
