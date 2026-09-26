@@ -27,6 +27,11 @@ public class CinemaController {
         return ApiResponse.success(cinemaService.getPublicCinema());
     }
 
+    @GetMapping("/cinemas")
+    public ApiResponse<List<CinemaResponse>> getCinemas() {
+        return ApiResponse.success(cinemaService.getPublicCinemas());
+    }
+
     @GetMapping("/cinemas/{cinemaId}")
     public ApiResponse<CinemaResponse> getCinemaById(@PathVariable Long cinemaId) {
         return ApiResponse.success(cinemaService.getCinema(cinemaId));

@@ -22,10 +22,10 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final MovieRepository movieRepository;
     private final RestTemplate restTemplate;
 
-    @Value("${recommendation.service.url:http://localhost:8000}")
+    @Value("${recommendation.service.url}")
     private String aiServiceUrl;
 
-    @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}")
+    @Value("${app.gateway.secret}")
     private String gatewaySecret;
 
     @Autowired

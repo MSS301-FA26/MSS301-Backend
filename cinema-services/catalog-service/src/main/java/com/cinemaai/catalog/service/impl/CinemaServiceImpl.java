@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CinemaServiceImpl implements CinemaService {
 
     private final CinemaRepository cinemaRepository;
+    private final com.cinemaai.catalog.repository.RoomRepository roomRepository;
     private final CinemaMapper cinemaMapper;
     private final AuditLogService auditLogService;
 
@@ -32,13 +33,62 @@ public class CinemaServiceImpl implements CinemaService {
     }
 
     @Transactional(readOnly = true)
+    public java.util.List<CinemaResponse> getPublicCinemas() {
+        return cinemaRepository.findByStatusOrderByIdAsc(CinemaStatus.ACTIVE)
+                .stream()
+                .map(cinemaMapper::toCinemaResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public CinemaResponse getAdminCinema() {
         return cinemaMapper.toCinemaResponse(findSingleton());
     }
 
     @Transactional(readOnly = true)
+    public java.util.List<CinemaResponse> getCinemas() {
+        return cinemaRepository.findAllByOrderByIdAsc()
+                .stream()
+                .map(cinemaMapper::toCinemaResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public CinemaResponse getCinema(Long id) {
         return cinemaMapper.toCinemaResponse(findById(id));
+    }
+
+    @Transactional
+    public CinemaResponse create(CinemaRequest request) {
+        cinemaRepository.findFirstByName(request.name()).ifPresent(c -> {
+            throw new ConflictException("Cinema name already exists");
+        });
+        Cinema cinema = new Cinema(
+                request.name(),
+                request.address(),
+                request.city(),
+                request.phone()
+        );
+        if (request.status() != null) {
+            cinema.setStatus(request.status());
+        }
+        Cinema saved = cinemaRepository.save(cinema);
+        auditLogService.record(AuditActionType.CREATE, "CINEMA", saved.getId(), saved.getName());
+        return cinemaMapper.toCinemaResponse(saved);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        Cinema cinema = findById(id);
+        long roomCount = roomRepository.findByCinema(cinema).size();
+        if (roomCount > 0) {
+            cinema.setStatus(CinemaStatus.INACTIVE);
+            cinemaRepository.save(cinema);
+            auditLogService.record(AuditActionType.UPDATE, "CINEMA", cinema.getId(), "Deactivated cinema with " + roomCount + " rooms");
+        } else {
+            cinemaRepository.delete(cinema);
+            auditLogService.record(AuditActionType.DELETE, "CINEMA", id, cinema.getName());
+        }
     }
 
     @Transactional
@@ -49,7 +99,7 @@ public class CinemaServiceImpl implements CinemaService {
     @Transactional
     public CinemaResponse update(Long id, CinemaRequest request) {
         Cinema cinema = findById(id);
-        cinemaRepository.findByName(request.name())
+        cinemaRepository.findFirstByName(request.name())
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
                     throw new ConflictException("Cinema name already exists");
@@ -83,7 +133,9 @@ public class CinemaServiceImpl implements CinemaService {
 
     public Cinema findSingleton() {
         return cinemaRepository.findFirstByOrderByIdAsc()
-                .orElseThrow(() -> new NotFoundException("No cinema configured"));
+                .orElseGet(() -> cinemaRepository.save(
+                        new Cinema("CinemaAI Central", "1 Cinema Street", "Ho Chi Minh City", "0900000000")
+                ));
     }
 
     public Cinema findSingletonById(Long id) {

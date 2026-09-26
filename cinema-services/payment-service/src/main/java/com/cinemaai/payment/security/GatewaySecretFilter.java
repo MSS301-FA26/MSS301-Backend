@@ -22,7 +22,7 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
     private final String gatewaySecret;
 
     public GatewaySecretFilter(
-            @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String gatewaySecret
+            @Value("${app.gateway.secret}") String gatewaySecret
     ) {
         this.gatewaySecret = gatewaySecret;
     }

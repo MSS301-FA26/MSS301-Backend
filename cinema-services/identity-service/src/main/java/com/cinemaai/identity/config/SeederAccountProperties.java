@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 public class SeederAccountProperties {
 
     private Account admin = new Account();
+    private Account manager = new Account();
     private Account staff = new Account();
 
     @Getter

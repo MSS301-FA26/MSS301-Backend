@@ -46,8 +46,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Transactional(readOnly = true)
     public List<RoomResponse> getRooms() {
-        Cinema cinema = cinemaService.findSingleton();
-        return roomRepository.findByCinema(cinema)
+        return roomRepository.findAll()
                 .stream()
                 .map(cinemaMapper::toRoomResponse)
                 .toList();
@@ -55,7 +54,10 @@ public class RoomServiceImpl implements RoomService {
 
     @Transactional(readOnly = true)
     public List<RoomResponse> getRoomsByCinema(Long cinemaId) {
-        Cinema cinema = cinemaService.findSingletonById(cinemaId);
+        if (cinemaId == null) {
+            return getRooms();
+        }
+        Cinema cinema = cinemaService.findById(cinemaId);
         return roomRepository.findByCinema(cinema)
                 .stream()
                 .map(cinemaMapper::toRoomResponse)
@@ -69,12 +71,24 @@ public class RoomServiceImpl implements RoomService {
 
     @Transactional
     public RoomResponse create(RoomRequest request) {
-        Cinema cinema = cinemaService.findSingleton();
+        Cinema cinema = request.cinemaId() != null
+                ? cinemaService.findById(request.cinemaId())
+                : cinemaService.findSingleton();
         String roomName = normalizeRoomName(request.name());
         roomRepository.findByCinemaAndNameIgnoreCase(cinema, roomName).ifPresent(room -> {
             throw new ConflictException("Room name already exists in this cinema");
         });
-        Room room = new Room(cinema, roomName, request.roomType(), request.rowCount(), request.columnCount());
+        Room room = new Room(
+                cinema,
+                roomName,
+                request.roomType(),
+                request.rowCount(),
+                request.columnCount(),
+                request.standardPrice(),
+                request.vipPrice(),
+                request.couplePrice(),
+                request.aislePosition() == null ? 0 : request.aislePosition()
+        );
         room.setStatus(request.status() == null ? RoomStatus.ACTIVE : request.status());
         Room saved = roomRepository.save(room);
         auditLogService.record(AuditActionType.CREATE, "ROOM", saved.getId(), saved.getName());
@@ -84,20 +98,103 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     public RoomResponse update(Long id, RoomRequest request) {
         Room room = findById(id);
-        Cinema cinema = room.getCinema();
+        Cinema cinema = request.cinemaId() != null
+                ? cinemaService.findById(request.cinemaId())
+                : room.getCinema();
         String roomName = normalizeRoomName(request.name());
         roomRepository.findByCinemaAndNameIgnoreCase(cinema, roomName)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
                     throw new ConflictException("Room name already exists in this cinema");
                 });
+        room.setCinema(cinema);
         room.setName(roomName);
         room.setRoomType(request.roomType());
         room.setRowCount(request.rowCount());
         room.setColumnCount(request.columnCount());
         room.setStatus(request.status() == null ? room.getStatus() : request.status());
+        if (request.standardPrice() != null) {
+            room.setStandardPrice(request.standardPrice());
+        }
+        if (request.vipPrice() != null) {
+            room.setVipPrice(request.vipPrice());
+        }
+        if (request.couplePrice() != null) {
+            room.setCouplePrice(request.couplePrice());
+        }
+        if (request.aislePosition() != null) {
+            room.setAislePosition(request.aislePosition());
+        }
         auditLogService.record(AuditActionType.UPDATE, "ROOM", room.getId(), room.getName());
         return cinemaMapper.toRoomResponse(room);
+    }
+
+    @Transactional(readOnly = true)
+    public com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse getRoomPricing(Long roomId) {
+        Room room = findById(roomId);
+        return new com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse(
+                room.getId(),
+                room.getName(),
+                room.getStandardPrice(),
+                room.getVipPrice(),
+                room.getCouplePrice()
+        );
+    }
+
+    @Transactional
+    public com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse updateRoomPricing(Long roomId, com.cinemaai.catalog.dto.request.cinema.RoomPricingRequest request) {
+        Room room = findById(roomId);
+        if (request.standardPrice() != null) {
+            room.setStandardPrice(request.standardPrice());
+        }
+        if (request.vipPrice() != null) {
+            room.setVipPrice(request.vipPrice());
+        }
+        if (request.couplePrice() != null) {
+            room.setCouplePrice(request.couplePrice());
+        }
+        auditLogService.record(AuditActionType.UPDATE, "ROOM", room.getId(), room.getName() + " - Cập nhật giá vé ghế");
+        return new com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse(
+                room.getId(),
+                room.getName(),
+                room.getStandardPrice(),
+                room.getVipPrice(),
+                room.getCouplePrice()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse getRoomLayoutConfig(Long roomId) {
+        Room room = findById(roomId);
+        return new com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse(
+                room.getId(),
+                room.getName(),
+                room.getRowCount(),
+                room.getColumnCount(),
+                room.getAislePosition()
+        );
+    }
+
+    @Transactional
+    public com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse updateRoomLayoutConfig(Long roomId, com.cinemaai.catalog.dto.request.cinema.RoomLayoutConfigRequest request) {
+        Room room = findById(roomId);
+        if (request.rowCount() != null) {
+            room.setRowCount(request.rowCount());
+        }
+        if (request.columnCount() != null) {
+            room.setColumnCount(request.columnCount());
+        }
+        if (request.aislePosition() != null) {
+            room.setAislePosition(request.aislePosition());
+        }
+        auditLogService.record(AuditActionType.UPDATE, "ROOM", room.getId(), room.getName() + " - Cập nhật cấu hình hàng ghế và lối đi");
+        return new com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse(
+                room.getId(),
+                room.getName(),
+                room.getRowCount(),
+                room.getColumnCount(),
+                room.getAislePosition()
+        );
     }
 
     @Transactional
