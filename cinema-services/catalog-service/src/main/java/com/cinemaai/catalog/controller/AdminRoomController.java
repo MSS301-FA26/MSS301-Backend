@@ -38,14 +38,17 @@ public class AdminRoomController {
     private final RoomService roomService;
 
     @GetMapping({"", "/"})
-    @Operation(summary = "Get configured cinema rooms (Admin)", description = "Get all rooms in the single configured cinema (Admin only)")
+    @Operation(summary = "Get cinema rooms (Admin)", description = "Get rooms optionally filtered by cinema ID (Admin only)")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Rooms retrieved successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Cinema not found")
     })
-    public ApiResponse<List<RoomResponse>> getRooms() {
+    public ApiResponse<List<RoomResponse>> getRooms(@RequestParam(required = false) Long cinemaId) {
+        if (cinemaId != null) {
+            return ApiResponse.success(roomService.getRoomsByCinema(cinemaId));
+        }
         return ApiResponse.success(roomService.getRooms());
     }
 
@@ -176,5 +179,35 @@ public class AdminRoomController {
     @DeleteMapping("/seats/{seatId}")
     public ApiResponse<SeatResponse> deleteSeat(@PathVariable Long seatId) {
         return ApiResponse.success(roomService.deleteSeat(seatId), "Seat deleted successfully");
+    }
+
+    @GetMapping("/{roomId}/pricing")
+    @Operation(summary = "Get room seat pricing (Admin)", description = "Get standard, VIP, and couple seat prices for a room.")
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse> getPricing(@PathVariable Long roomId) {
+        return ApiResponse.success(roomService.getRoomPricing(roomId));
+    }
+
+    @PutMapping("/{roomId}/pricing")
+    @Operation(summary = "Update room seat pricing (Admin)", description = "Update standard, VIP, and couple seat prices for a room.")
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse> updatePricing(
+            @PathVariable Long roomId,
+            @Valid @RequestBody com.cinemaai.catalog.dto.request.cinema.RoomPricingRequest request
+    ) {
+        return ApiResponse.success(roomService.updateRoomPricing(roomId, request), "Room pricing updated successfully");
+    }
+
+    @GetMapping("/{roomId}/layout-config")
+    @Operation(summary = "Get room layout configuration (Admin)", description = "Get row count, column count, and aisle position for a room.")
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse> getLayoutConfig(@PathVariable Long roomId) {
+        return ApiResponse.success(roomService.getRoomLayoutConfig(roomId));
+    }
+
+    @PutMapping("/{roomId}/layout-config")
+    @Operation(summary = "Update room layout configuration (Admin)", description = "Update row count, column count, and aisle position for a room.")
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse> updateLayoutConfig(
+            @PathVariable Long roomId,
+            @Valid @RequestBody com.cinemaai.catalog.dto.request.cinema.RoomLayoutConfigRequest request
+    ) {
+        return ApiResponse.success(roomService.updateRoomLayoutConfig(roomId, request), "Cập nhật cấu hình hàng ghế và lối đi thành công");
     }
 }

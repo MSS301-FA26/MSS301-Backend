@@ -9,9 +9,17 @@ public interface CinemaService {
 
         public CinemaResponse getPublicCinema();
 
+        public java.util.List<CinemaResponse> getPublicCinemas();
+
         public CinemaResponse getAdminCinema();
 
+        public java.util.List<CinemaResponse> getCinemas();
+
         public CinemaResponse getCinema(Long id);
+
+        public CinemaResponse create(CinemaRequest request);
+
+        public void delete(Long id);
 
         public CinemaResponse update(CinemaRequest request);
 

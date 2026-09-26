@@ -35,5 +35,13 @@ public interface RoomService {
 
         public SeatResponse deleteSeat(Long seatId);
 
+        public com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse getRoomPricing(Long roomId);
+
+        public com.cinemaai.catalog.dto.response.cinema.RoomPricingResponse updateRoomPricing(Long roomId, com.cinemaai.catalog.dto.request.cinema.RoomPricingRequest request);
+
+        public com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse getRoomLayoutConfig(Long roomId);
+
+        public com.cinemaai.catalog.dto.response.cinema.RoomLayoutConfigResponse updateRoomLayoutConfig(Long roomId, com.cinemaai.catalog.dto.request.cinema.RoomLayoutConfigRequest request);
+
         public Room findById(Long id);
 }

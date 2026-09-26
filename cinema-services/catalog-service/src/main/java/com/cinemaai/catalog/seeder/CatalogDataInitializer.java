@@ -45,11 +45,29 @@ public class CatalogDataInitializer implements CommandLineRunner {
     private final MovieRepository movieRepository;
     private final MovieGenreRepository movieGenreRepository;
     private final MovieActorRepository movieActorRepository;
+    private final com.cinemaai.catalog.repository.CinemaRepository cinemaRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional
     public void run(String... args) {
         log.info("Bắt đầu kiểm tra và khởi tạo dữ liệu mẫu Catalog Service...");
+        try {
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS standard_price NUMERIC(12,2) DEFAULT 60000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS vip_price NUMERIC(12,2) DEFAULT 90000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS couple_price NUMERIC(12,2) DEFAULT 150000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS aisle_position INTEGER DEFAULT 0;");
+            jdbcTemplate.execute("UPDATE rooms SET standard_price = 60000 WHERE standard_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET vip_price = 90000 WHERE vip_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET couple_price = 150000 WHERE couple_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET aisle_position = 0 WHERE aisle_position IS NULL;");
+            log.info("Đã đồng bộ các cột giá vé và lối đi cho bảng rooms thành công.");
+        } catch (Exception e) {
+            log.warn("Lưu ý khi cập nhật bảng rooms: {}", e.getMessage());
+        }
+
+        seedCinemas();
+
         Map<String, Genre> genreMap = seedGenres();
         Map<String, Actor> actorMap = seedActors();
         seedMovies(genreMap, actorMap);
@@ -399,5 +417,24 @@ public class CatalogDataInitializer implements CommandLineRunner {
             List<String> actors,
             List<String> mainActors
     ) {
+    }
+
+    private void seedCinemas() {
+        List<String[]> cinemaDefs = List.of(
+                new String[]{"CinemaAI Central - Q.1", "Tầng 3, Bitexco Financial Tower, Số 2 Hải Triều, P. Bến Nghé, Quận 1", "TP. Hồ Chí Minh", "0901234567"},
+                new String[]{"CinemaAI Landmark 81", "Tầng B1, Vincom Center Landmark 81, 720A Điện Biên Phủ, P. 22, Q. Bình Thạnh", "TP. Hồ Chí Minh", "0902345678"},
+                new String[]{"CinemaAI Tây Hồ - Hà Nội", "Tầng 4, Lotte Mall West Lake, 272 Võ Chí Công, Q. Tây Hồ", "Hà Nội", "0903456789"},
+                new String[]{"CinemaAI Dragon City", "Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà", "Đà Nẵng", "0904567890"}
+        );
+
+        for (String[] def : cinemaDefs) {
+            String name = def[0];
+            if (cinemaRepository.findFirstByName(name).isEmpty()) {
+                com.cinemaai.catalog.entity.Cinema c = cinemaRepository.save(
+                        new com.cinemaai.catalog.entity.Cinema(name, def[1], def[2], def[3])
+                );
+                log.info("Đã khởi tạo cụm rạp: {}", c.getName());
+            }
+        }
     }
 }
