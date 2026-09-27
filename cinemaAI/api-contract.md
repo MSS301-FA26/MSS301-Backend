@@ -146,8 +146,8 @@ Tất cả endpoint dưới đây có prefix `/api/v1/admin` và yêu cầu role
 | `DELETE /genres/{genreId}` | path | `Void` | `200` |
 | `GET /movies` | query `keyword,status,genreId,fromDate,toDate,page,size` | `PageResponse<MovieResponse>` | `200` |
 | `GET /movies/{movieId}` | path | `MovieResponse` | `200` |
-| `POST /movies` | `MovieCreateRequest` | `MovieResponse` | `201` |
-| `PUT /movies/{movieId}` | `MovieUpdateRequest` | `MovieResponse` | `200` |
+| `POST /movies` | `MovieCreateRequest`; Admin được duyệt và xuất bản trực tiếp | `MovieResponse` (`APPROVED`, `PUBLISHED`) | `201` |
+| `PUT /movies/{movieId}` | `MovieUpdateRequest`; thay đổi của Admin được xuất bản trực tiếp | `MovieResponse` (`APPROVED`, `PUBLISHED`) | `200` |
 | `PATCH /movies/{movieId}/status` | `MovieStatusUpdateRequest` | `MovieResponse` | `200` |
 | `DELETE /movies/{movieId}` | path | `Void` | `200` |
 
@@ -248,6 +248,10 @@ to `EXPIRED`.
 | `GET /users` | — | `List<UserProfileResponse>` | `200` |
 | `GET /users/{userId}` | path | `UserProfileResponse` | `200` |
 | `POST /users/staff` | `AdminStaffCreateRequest` | `UserProfileResponse` | `200` |
+| `GET /users/managers/cinemas` | — | `List<CinemaResponse>` | `200` |
+| `POST /users/managers` | `AdminManagerCreateRequest` (includes non-empty `cinemaIds`) | `UserProfileResponse` | `201` |
+| `GET /users/managers/{userId}/cinemas` | path | `List<Long>` | `200` |
+| `PATCH /users/managers/{userId}/cinemas` | `ManagerCinemaAssignmentRequest` | `List<Long>` | `200` |
 | `PATCH /users/{userId}/status` | `AdminUserStatusUpdateRequest` | `UserProfileResponse` | `200` |
 | `GET /loyalty/config` | — | `LoyaltyConfigurationResponse` | `200` |
 | `PUT /loyalty/config` | `LoyaltyConfigurationRequest` | `LoyaltyConfigurationResponse` | `200` |
@@ -270,6 +274,26 @@ to `EXPIRED`.
 | `GET /recommendations/users/{userId}/debug` | query `limit` | `RecommendationDebugResponse` | `200` |
 | `POST /uploads/images` | multipart `file`, query `folder` | `UploadedFileResponse` | `201` |
 
+Manager operations (role `MANAGER`, limited to cinemas assigned by an ADMIN):
+
+| Method + path | Request | Response | Success |
+|---|---|---|---|
+| `GET /manager/cinemas` | — | `List<CinemaResponse>` | `200` |
+| `GET /manager/cinemas/{cinemaId}/rooms` | path | room list | `200` |
+| `GET /manager/cinemas/{cinemaId}/rooms/{roomId}/seats` | path | seat list | `200` |
+| `PUT /manager/cinemas/{cinemaId}/seats/{seatId}/status` | `{ status, reason }` | `SeatResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes` | path | showtime list | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes/available-slots` | query `roomId,movieId,date` | available slots | `200` |
+| `POST /manager/cinemas/{cinemaId}/showtimes` | `ShowtimeRequest` | `ShowtimeResponse` | `200` |
+| `PUT /manager/cinemas/{cinemaId}/showtimes/{showtimeId}` | `ShowtimeRequest` | `ShowtimeResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/showtimes/{showtimeId}/seat-map` | path | `ShowtimeSeatMapResponse` | `200` |
+| `POST /manager/cinemas/{cinemaId}/showtimes/{showtimeId}/cancel` | query `reason` | `ShowtimeResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory` | path | inventory list | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/low-stock` | path | low/out-of-stock inventory list | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/summary` | path | `FoodInventorySummaryResponse` | `200` |
+| `GET /manager/cinemas/{cinemaId}/inventory/transactions` | path | inventory transaction list | `200` |
+| `POST /manager/cinemas/{cinemaId}/inventory/adjust` | `StockAdjustmentRequest` | inventory state | `200` |
+
 ## 6. Contract maintenance rule
 
 Khi endpoint thay đổi, cập nhật đồng thời:
@@ -280,4 +304,3 @@ Khi endpoint thay đổi, cập nhật đồng thời:
 4. integration hoặc endpoint inventory test;
 5. Postman collection nếu flow bị ảnh hưởng;
 6. file này.
-

@@ -49,6 +49,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             Collection<BookingStatus> statuses
     );
 
+    List<Booking> findByUserAndShowtimeAndStatusIn(
+            User user,
+            Showtime showtime,
+            Collection<BookingStatus> statuses
+    );
+
     List<Booking> findByStatus(BookingStatus status);
 
     @EntityGraph(attributePaths = {"user.profile", "showtime.movie", "showtime.room", "showtime.room.cinema"})
@@ -104,6 +110,27 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             GROUP BY s.room.id, s.room.name
             """)
     List<Object[]> soldSeatsByRoom(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @EntityGraph(attributePaths = {"user.profile", "showtime.movie", "showtime.room", "showtime.room.cinema"})
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.showtime.room.cinema.id = :cinemaId
+            AND (:keyword IS NULL OR :keyword = ''
+                 OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                 OR LOWER(b.user.email) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                 OR LOWER(b.user.profile.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            ORDER BY b.id DESC
+            """)
+    Page<Booking> searchByCinema(@Param("cinemaId") Long cinemaId, @Param("keyword") String keyword, Pageable pageable);
+
+    @Query("SELECT COUNT(bs) FROM BookingSeat bs JOIN bs.booking b WHERE b.showtime.room.cinema.id = :cinemaId AND b.status IN ('PAID','USED') AND b.paidAt BETWEEN :from AND :to")
+    long countTicketsSoldByCinema(@Param("cinemaId") Long cinemaId, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.showtime.room.cinema.id = :cinemaId AND b.status IN ('PAID','USED') AND b.paidAt BETWEEN :from AND :to")
+    long countBookingsByCinema(@Param("cinemaId") Long cinemaId, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("SELECT COALESCE(SUM(b.totalAmount), 0) FROM Booking b WHERE b.showtime.room.cinema.id = :cinemaId AND b.status IN ('PAID','USED') AND b.paidAt BETWEEN :from AND :to")
+    java.math.BigDecimal sumRevenueByCinema(@Param("cinemaId") Long cinemaId, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query("""
             SELECT st.room.id, st.room.name, COUNT(st), (st.room.rowCount * st.room.columnCount)

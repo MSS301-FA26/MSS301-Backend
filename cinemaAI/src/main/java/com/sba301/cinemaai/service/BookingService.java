@@ -26,6 +26,8 @@ public interface BookingService {
 
     BookingResponse cancel(String email, Long bookingId);
 
+    BookingResponse releaseHold(String email, Long bookingId);
+
     BookingResponse cancelAdmin(Long bookingId, String reason);
 
     BookingResponse checkIn(String qrCode);

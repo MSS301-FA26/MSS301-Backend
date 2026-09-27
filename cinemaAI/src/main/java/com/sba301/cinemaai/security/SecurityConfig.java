@@ -54,10 +54,13 @@ public class SecurityConfig {
                                 "/api/v1/showtimes/**",
                                 "/api/v1/reviews/movies/**",
                                 "/api/v1/foods/**",
+                                "/api/v1/promotions/**",
                                 "/api/v1/ticket-pricing/combos",
                                 "/api/v1/recommendation/content/**",
                                 "/api/v1/recommendation/stats"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/promotions/validate").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/catalog/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/chat").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(
@@ -65,9 +68,25 @@ public class SecurityConfig {
                                 "/api/v1/payments/vnpay/null",
                                 "/api/v1/payments/vnpay/ipn"
                         ).permitAll()
-                         .requestMatchers("/api/v1/admin/wallet/**").hasAnyRole("ADMIN", "STAFF")
-.requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers(
+                                "/api/v1/admin/movies/*/approve",
+                                "/api/v1/admin/movies/*/reject",
+                                "/api/v1/admin/movies/*/publish",
+                                "/api/v1/admin/movies/*/unpublish",
+                                "/api/v1/admin/movies/*/archive"
+                        ).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/movies", "/api/v1/admin/movies/*", "/api/v1/admin/movies/*/approval-history")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/movies", "/api/v1/admin/movies/*/submit", "/api/v1/admin/movies/*/withdraw")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/movies/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/v1/admin/movies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/uploads/images", "/api/v1/admin/uploads/videos")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/v1/admin/wallet/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/manager/**").hasRole("MANAGER")
+                        .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
