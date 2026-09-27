@@ -72,16 +72,69 @@ public class SecurityConfig {
                         writeError(mapper, request, response, 403, "Trusted service access required");
                         return;
                     }
+                    // Check headers from trusted Gateway or Bearer JWT Token
+                    String userIdHeader = request.getHeader("X-User-Id");
+                    String userRolesHeader = request.getHeader("X-User-Roles");
+                    String userCinemaHeader = request.getHeader("X-User-Cinema-Id");
                     String bearer = request.getHeader("Authorization");
-                    if (bearer != null && bearer.startsWith("Bearer ") && !internal) {
+
+                    if (userIdHeader != null && !userIdHeader.isBlank()) {
+                        try {
+                            Long uid = Long.parseLong(userIdHeader.trim());
+                            Long cinemaId = null;
+                            if (userCinemaHeader != null && !userCinemaHeader.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(userCinemaHeader.trim());
+                                } catch (Exception ignored) {}
+                            }
+                            java.util.List<SimpleGrantedAuthority> roles = new java.util.ArrayList<>();
+                            if (userRolesHeader != null && !userRolesHeader.isBlank()) {
+                                for (String role : userRolesHeader.split(",")) {
+                                    String r = role.trim();
+                                    if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
+                                    roles.add(new SimpleGrantedAuthority(r));
+                                }
+                            }
+                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), roles, cinemaId);
+                            SecurityContextHolder.getContext().setAuthentication(
+                                    new UsernamePasswordAuthenticationToken(user, null, roles));
+                        } catch (Exception ignored) {}
+                    } else if (bearer != null && bearer.startsWith("Bearer ") && !internal) {
                         try {
                             var claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(bearer.substring(7)).getPayload();
+                            Long uid = null;
+                            Object uidObj = claims.get("userId");
+                            if (uidObj instanceof Number num) {
+                                uid = num.longValue();
+                            } else if (claims.getSubject() != null) {
+                                try {
+                                    uid = Long.parseLong(claims.getSubject());
+                                } catch (Exception ignored) {}
+                            }
+
+                            Long cinemaId = null;
+                            Object cinemaObj = claims.get("cinemaId");
+                            if (cinemaObj instanceof Number cNum) {
+                                cinemaId = cNum.longValue();
+                            } else if (cinemaObj instanceof String cStr && !cStr.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(cStr.trim());
+                                } catch (Exception ignored) {}
+                            }
+
                             Object rawRoles = claims.get("roles");
                             List<SimpleGrantedAuthority> roles = rawRoles instanceof List<?> values ? values.stream()
                                     .filter(String.class::isInstance).map(String.class::cast)
                                     .map(role -> new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role)).toList() : List.of();
+
+                            String email = claims.get("email", String.class);
+                            if (email == null) {
+                                email = claims.getSubject();
+                            }
+
+                            AuthenticatedUser user = new AuthenticatedUser(uid, email, roles, cinemaId);
                             SecurityContextHolder.getContext().setAuthentication(
-                                    new UsernamePasswordAuthenticationToken(claims.getSubject(), null, roles));
+                                    new UsernamePasswordAuthenticationToken(user, null, roles));
                         } catch (RuntimeException exception) {
                             writeError(mapper, request, response, 401, "Invalid or expired access token");
                             return;

@@ -63,7 +63,12 @@ public record CheckoutQuoteResponse(
     public record MovieSummary(Long id, String title, String posterUrl, String ageRating, Integer durationMinutes) {}
     public record CinemaSummary(Long id, String name, String address, String roomName) {}
     public record ShowtimeSnapshot(Long showtimeId, Long movieId, String movieTitle, String posterUrl,
-            String cinemaName, String roomName, LocalDateTime startTime) {}
+            String cinemaName, String roomName, LocalDateTime startTime, Long cinemaId) {
+        public ShowtimeSnapshot(Long showtimeId, Long movieId, String movieTitle, String posterUrl,
+                String cinemaName, String roomName, LocalDateTime startTime) {
+            this(showtimeId, movieId, movieTitle, posterUrl, cinemaName, roomName, startTime, null);
+        }
+    }
     public record SeatSnapshot(Long seatId, String seatLabel, SeatType seatType, BigDecimal unitPrice) {}
     public record TicketSnapshot(Long seatId, TicketType ticketType, int quantity,
             BigDecimal unitPrice, BigDecimal lineTotal) {}

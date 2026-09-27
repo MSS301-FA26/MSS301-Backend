@@ -71,9 +71,10 @@ public class RoomServiceImpl implements RoomService {
 
     @Transactional
     public RoomResponse create(RoomRequest request) {
-        Cinema cinema = request.cinemaId() != null
-                ? cinemaService.findById(request.cinemaId())
-                : cinemaService.findSingleton();
+        if (request.cinemaId() == null) {
+            throw new BadRequestException("Cinema ID is required to create a room");
+        }
+        Cinema cinema = cinemaService.findById(request.cinemaId());
         String roomName = normalizeRoomName(request.name());
         roomRepository.findByCinemaAndNameIgnoreCase(cinema, roomName).ifPresent(room -> {
             throw new ConflictException("Room name already exists in this cinema");
@@ -222,14 +223,13 @@ public class RoomServiceImpl implements RoomService {
     public List<SeatResponse> replaceSeats(Long roomId, SeatLayoutRequest request) {
         Room room = findById(roomId);
         List<Seat> existingSeats = seatRepository.findByRoom(room);
-        if (existingSeats.isEmpty()) {
-            throw new ConflictException("Room has no seats to replace; create seats first");
-        }
         validateSeatLayout(room, request);
-        seatRepository.deleteAll(existingSeats);
-        seatRepository.flush();
-        seatRowRepository.deleteAll(seatRowRepository.findByRoom(room));
-        seatRowRepository.flush();
+        if (!existingSeats.isEmpty()) {
+            seatRepository.deleteAll(existingSeats);
+            seatRepository.flush();
+            seatRowRepository.deleteAll(seatRowRepository.findByRoom(room));
+            seatRowRepository.flush();
+        }
         applySeatLayout(room, request);
         auditLogService.record(AuditActionType.UPDATE, "ROOM", room.getId(), room.getName() + " - thay sơ đồ ghế");
         return getSeats(roomId);

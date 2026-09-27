@@ -28,6 +28,17 @@ public record AdminStaffCreateRequest(
 
         @Min(value = 1900, message = "Birth year must be after 1900")
         @Max(value = 2100, message = "Birth year is invalid")
-        Integer birthYear
+        Integer birthYear,
+
+        Long cinemaId
 ) {
+    public AdminStaffCreateRequest(
+            String email,
+            String password,
+            String fullName,
+            String phone,
+            Integer birthYear
+    ) {
+        this(email, password, fullName, phone, birthYear, null);
+    }
 }
