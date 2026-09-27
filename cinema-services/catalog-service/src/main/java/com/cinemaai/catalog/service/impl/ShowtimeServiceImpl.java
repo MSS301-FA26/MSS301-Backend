@@ -633,7 +633,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                 .orElseThrow(() -> new NotFoundException("Movie not found"));
     }
 
-    private Showtime findById(Long id) {
+    @Override
+    @Transactional(readOnly = true)
+    public Showtime findById(Long id) {
         return showtimeRepository.findWithDetailsById(id)
                 .orElseThrow(() -> new NotFoundException("Showtime not found"));
     }

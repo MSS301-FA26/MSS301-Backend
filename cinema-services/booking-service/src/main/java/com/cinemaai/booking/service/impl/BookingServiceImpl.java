@@ -120,6 +120,7 @@ public class BookingServiceImpl implements BookingService {
                 .movieTitleSnapshot(quote.showtime().movieTitle())
                 .moviePosterSnapshot(quote.showtime().posterUrl())
                 .cinemaNameSnapshot(quote.showtime().cinemaName())
+                .cinemaId(quote.showtime().cinemaId())
                 .roomNameSnapshot(quote.showtime().roomName())
                 .showtimeStartSnapshot(quote.showtime().startTime())
                 .subtotal(quote.subtotal())

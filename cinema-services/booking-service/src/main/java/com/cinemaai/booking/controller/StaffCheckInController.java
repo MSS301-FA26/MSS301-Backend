@@ -35,22 +35,25 @@ public class StaffCheckInController {
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
     private final FoodOrderRepository foodOrderRepository;
+    private final com.cinemaai.booking.security.CinemaSecurityService cinemaSecurityService;
 
     @Operation(summary = "Tra cứu thông tin vé để soát vé qua GET")
     @GetMapping("/lookup")
     @Transactional
     public ApiResponse<BookingResponse> lookupGet(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
             @RequestParam(required = false) String bookingCode,
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String qrCode
     ) {
-        return processLookup(bookingCode, code, qrCode);
+        return processLookup(user, bookingCode, code, qrCode);
     }
 
     @Operation(summary = "Tra cứu thông tin vé để soát vé qua POST")
     @PostMapping("/lookup")
     @Transactional
     public ApiResponse<BookingResponse> lookupPost(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
             @RequestParam(required = false) String bookingCode,
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String qrCode,
@@ -64,10 +67,15 @@ public class StaffCheckInController {
             if (queryCode == null || queryCode.isBlank()) queryCode = body.get("code");
             if (queryCode == null || queryCode.isBlank()) queryCode = body.get("qrCode");
         }
-        return processLookup(queryCode, null, null);
+        return processLookup(user, queryCode, null, null);
     }
 
-    private ApiResponse<BookingResponse> processLookup(String bookingCode, String code, String qrCode) {
+    private ApiResponse<BookingResponse> processLookup(
+            com.cinemaai.booking.security.AuthenticatedUser user,
+            String bookingCode,
+            String code,
+            String qrCode
+    ) {
         String queryCode = bookingCode;
         if (queryCode == null || queryCode.isBlank()) queryCode = code;
         if (queryCode == null || queryCode.isBlank()) queryCode = qrCode;
@@ -81,6 +89,8 @@ public class StaffCheckInController {
                 .or(() -> bookingSeatRepository.findByTicketCode(targetCode).map(BookingSeat::getBooking))
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy thông tin đặt vé cho mã: " + targetCode));
 
+        cinemaSecurityService.validateCinemaAccess(user, booking.getCinemaId(), true);
+
         try {
             ensureSeatTicketCodes(booking);
         } catch (Exception ex) {
@@ -93,7 +103,10 @@ public class StaffCheckInController {
     @Operation(summary = "Xác nhận Check-in toàn bộ vé của booking vào rạp (Chống check-in lặp)")
     @PostMapping
     @Transactional
-    public ApiResponse<BookingResponse> checkIn(@RequestBody Map<String, String> payload) {
+    public ApiResponse<BookingResponse> checkIn(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestBody Map<String, String> payload
+    ) {
         String input = payload.get("bookingCode");
         if (input == null || input.isBlank()) input = payload.get("code");
         if (input == null || input.isBlank()) input = payload.get("qrCode");
@@ -107,12 +120,22 @@ public class StaffCheckInController {
                 .or(() -> bookingSeatRepository.findByTicketCode(bookingCode).map(BookingSeat::getBooking))
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + bookingCode));
 
+        cinemaSecurityService.validateCinemaAccess(user, booking.getCinemaId(), true);
+
         if (booking.getStatus() == BookingStatus.USED) {
             throw new ConflictException("Cảnh báo: Vé này đã được check-in vào lúc " + booking.getCheckedInAt());
         }
 
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new BadRequestException("Vé đã bị hủy, không thể check-in vào rạp.");
+        }
+
+        if (booking.getStatus() == BookingStatus.REFUNDED) {
+            throw new BadRequestException("Vé đã được hoàn tiền, không thể check-in vào rạp.");
+        }
+
         if (booking.getStatus() != BookingStatus.PAID) {
-            throw new BadRequestException("Vé chưa thanh toán hoặc đã bị hủy. Trạng thái hiện tại: " + booking.getStatus());
+            throw new BadRequestException("Vé chưa thanh toán. Trạng thái hiện tại: " + booking.getStatus());
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -134,7 +157,10 @@ public class StaffCheckInController {
     @Operation(summary = "Check-in theo từng ghế được chọn (Partial check-in)")
     @PostMapping("/seats")
     @Transactional
-    public ApiResponse<BookingResponse> checkInSeats(@RequestBody Map<String, Object> payload) {
+    public ApiResponse<BookingResponse> checkInSeats(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestBody Map<String, Object> payload
+    ) {
         String bookingCode = (String) payload.get("bookingCode");
         if (bookingCode == null || bookingCode.isBlank()) {
             bookingCode = (String) payload.get("code");
@@ -154,8 +180,16 @@ public class StaffCheckInController {
                 .or(() -> bookingSeatRepository.findByTicketCode(targetCode).map(BookingSeat::getBooking))
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + targetCode));
 
+        cinemaSecurityService.validateCinemaAccess(user, booking.getCinemaId(), true);
+
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new BadRequestException("Vé đã bị hủy, không thể check-in.");
+        }
+        if (booking.getStatus() == BookingStatus.REFUNDED) {
+            throw new BadRequestException("Vé đã được hoàn tiền, không thể check-in.");
+        }
         if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.USED) {
-            throw new BadRequestException("Vé chưa thanh toán hoặc đã bị hủy. Trạng thái hiện tại: " + booking.getStatus());
+            throw new BadRequestException("Vé chưa thanh toán. Trạng thái hiện tại: " + booking.getStatus());
         }
 
         ensureSeatTicketCodes(booking);
@@ -195,10 +229,14 @@ public class StaffCheckInController {
     @Operation(summary = "Lấy danh sách vé đã thanh toán / check-in gần đây")
     @GetMapping("/recent")
     @Transactional(readOnly = true)
-    public ApiResponse<List<BookingResponse>> getRecentBookings(@RequestParam(defaultValue = "8") int limit) {
+    public ApiResponse<List<BookingResponse>> getRecentBookings(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestParam(defaultValue = "8") int limit
+    ) {
+        Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(user, null, true);
         Pageable pageable = PageRequest.of(0, Math.min(Math.max(limit, 1), 50));
-        List<Booking> list = bookingRepository.findRecentForCheckIn(
-                List.of(BookingStatus.PAID, BookingStatus.USED), pageable);
+        List<Booking> list = bookingRepository.findRecentForCheckInByCinema(
+                List.of(BookingStatus.PAID, BookingStatus.USED), enforcedCinemaId, pageable);
         List<BookingResponse> responses = list.stream().map(BookingMapper::toResponse).toList();
         return ApiResponse.success(responses, "Lấy danh sách vé gần đây thành công");
     }
@@ -206,8 +244,15 @@ public class StaffCheckInController {
     @Operation(summary = "Lấy danh sách vé theo suất chiếu")
     @GetMapping("/showtimes/{showtimeId}/bookings")
     @Transactional(readOnly = true)
-    public ApiResponse<List<BookingResponse>> getBookingsByShowtime(@PathVariable Long showtimeId) {
+    public ApiResponse<List<BookingResponse>> getBookingsByShowtime(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @PathVariable Long showtimeId
+    ) {
+        Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(user, null, true);
         List<Booking> list = bookingRepository.findByShowtimeId(showtimeId);
+        if (enforcedCinemaId != null) {
+            list = list.stream().filter(b -> enforcedCinemaId.equals(b.getCinemaId())).toList();
+        }
         List<BookingResponse> responses = list.stream().map(BookingMapper::toResponse).toList();
         return ApiResponse.success(responses, "Lấy danh sách vé theo suất chiếu thành công");
     }

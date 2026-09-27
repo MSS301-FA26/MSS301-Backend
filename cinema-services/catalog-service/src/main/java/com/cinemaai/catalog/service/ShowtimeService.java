@@ -39,4 +39,6 @@ public interface ShowtimeService {
     List<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date);
 
     com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId);
+
+    com.cinemaai.catalog.entity.Showtime findById(Long id);
 }

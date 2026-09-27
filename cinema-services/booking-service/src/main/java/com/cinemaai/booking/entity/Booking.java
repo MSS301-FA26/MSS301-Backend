@@ -50,6 +50,9 @@ public class Booking extends BaseEntity {
     @Column(name = "cinema_name_snapshot", nullable = false, length = 150)
     private String cinemaNameSnapshot;
 
+    @Column(name = "cinema_id")
+    private Long cinemaId;
+
     @Column(name = "room_name_snapshot", nullable = false, length = 100)
     private String roomNameSnapshot;
 

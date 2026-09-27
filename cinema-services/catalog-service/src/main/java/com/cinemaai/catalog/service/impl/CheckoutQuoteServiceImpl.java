@@ -155,7 +155,8 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 movie.getPosterUrl(),
                 cinema.getName(),
                 room.getName(),
-                showtime.getStartTime()
+                showtime.getStartTime(),
+                cinema.getId()
         );
 
         return new CheckoutQuoteResponse(

@@ -41,5 +41,74 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses,
             Pageable pageable);
 
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT b FROM Booking b
+            WHERE b.status IN :statuses
+              AND (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+            ORDER BY
+                CASE
+                    WHEN b.checkedInAt IS NOT NULL THEN b.checkedInAt
+                    WHEN b.paidAt IS NOT NULL THEN b.paidAt
+                    ELSE b.createdAt
+                END DESC,
+                b.id DESC
+            """)
+    List<Booking> findRecentForCheckInByCinema(
+            @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses,
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query(
+            value = """
+                    SELECT b FROM Booking b
+                    WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+                      AND (:status IS NULL OR b.status = :status)
+                      AND (:search IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', :search, '%'))
+                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', :search, '%'))
+                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', :search, '%')))
+                    ORDER BY b.createdAt DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(b) FROM Booking b
+                    WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+                      AND (:status IS NULL OR b.status = :status)
+                      AND (:search IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', :search, '%'))
+                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', :search, '%'))
+                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', :search, '%')))
+                    """
+    )
+    Page<Booking> findBookingsForAdmin(
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            @org.springframework.data.repository.query.Param("status") BookingStatus status,
+            @org.springframework.data.repository.query.Param("search") String search,
+            Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COUNT(b) FROM Booking b
+            WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+              AND b.status IN :statuses
+            """)
+    long countByCinemaIdAndStatusIn(
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COALESCE(SUM(b.totalAmount), 0) FROM Booking b
+            WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+              AND b.status IN :statuses
+            """)
+    java.math.BigDecimal sumRevenueByCinemaIdAndStatusIn(
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT b.cinemaId, COUNT(b), COALESCE(SUM(b.totalAmount), 0)
+            FROM Booking b
+            WHERE b.status IN :statuses
+            GROUP BY b.cinemaId
+            """)
+    List<Object[]> findRevenueByCinemaGroupByCinemaId(
+            @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses);
+
     List<Booking> findByShowtimeId(Long showtimeId);
 }

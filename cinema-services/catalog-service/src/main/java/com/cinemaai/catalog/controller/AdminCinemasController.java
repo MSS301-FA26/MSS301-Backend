@@ -4,6 +4,9 @@ import com.cinemaai.catalog.dto.request.cinema.CinemaRequest;
 import com.cinemaai.catalog.dto.response.cinema.CinemaResponse;
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.enums.CinemaStatus;
+import com.cinemaai.catalog.exception.ForbiddenException;
+import com.cinemaai.catalog.security.AuthenticatedUser;
+import com.cinemaai.catalog.security.CinemaSecurityService;
 import com.cinemaai.catalog.service.CinemaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -13,6 +16,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,15 +37,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminCinemasController {
 
     private final CinemaService cinemaService;
+    private final CinemaSecurityService cinemaSecurityService;
 
     @GetMapping({"", "/"})
-    @Operation(summary = "Get all cinemas (Admin)", description = "Get list of all cinemas in the system")
+    @Operation(summary = "Get all cinemas (Admin) or assigned cinema (Manager)", description = "Get list of cinemas in the system. Manager only sees their assigned cinema.")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Cinemas retrieved successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN or MANAGER role")
     })
-    public ApiResponse<List<CinemaResponse>> getCinemas() {
+    public ApiResponse<List<CinemaResponse>> getCinemas(@AuthenticationPrincipal AuthenticatedUser user) {
+        if (user != null && user.isManager() && !user.isAdmin()) {
+            Long cinemaId = user.cinemaId();
+            if (cinemaId == null) {
+                throw new ForbiddenException("Tài khoản Quản lý chưa được phân công cụm rạp cụ thể.");
+            }
+            return ApiResponse.success(List.of(cinemaService.getCinema(cinemaId)));
+        }
         return ApiResponse.success(cinemaService.getCinemas());
     }
 
@@ -60,14 +72,18 @@ public class AdminCinemasController {
     }
 
     @GetMapping("/{cinemaId}")
-    @Operation(summary = "Get cinema by ID (Admin)", description = "Get cinema details by ID (Admin only)")
+    @Operation(summary = "Get cinema by ID (Admin / Manager of that cinema)", description = "Get cinema details by ID (Admin or Manager assigned to this cinema)")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Cinema retrieved successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have permission for this cinema"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Cinema not found")
     })
-    public ApiResponse<CinemaResponse> getCinema(@PathVariable Long cinemaId) {
+    public ApiResponse<CinemaResponse> getCinema(
+            @PathVariable Long cinemaId,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        cinemaSecurityService.validateCinemaAccess(user, cinemaId);
         return ApiResponse.success(cinemaService.getCinema(cinemaId));
     }
 
