@@ -86,12 +86,21 @@ public class UserServiceImpl implements UserService {
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
     }
 
+    @Override
     @Transactional(readOnly = true)
-    public List<UserProfileResponse> getAllUsers() {
-        return userRepository.findAll()
-                .stream()
+    public List<UserProfileResponse> getAllUsers(RoleName role) {
+        List<User> users = (role != null)
+                ? userRepository.findByRoleName(role)
+                : userRepository.findAll();
+        return users.stream()
                 .map(this::toProfile)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> getAllUsers() {
+        return getAllUsers(null);
     }
 
     @Transactional(readOnly = true)

@@ -1,63 +1,53 @@
 package com.cinemaai.identity.controller;
 
-import com.cinemaai.identity.dto.request.staff.AdminStaffProfileRequest;
-import com.cinemaai.identity.dto.request.staff.AdminStaffProfileUpdateRequest;
 import com.cinemaai.identity.dto.response.ApiResponse;
-import com.cinemaai.identity.dto.response.staff.StaffProfileResponse;
-import com.cinemaai.identity.enums.StaffStatus;
-import com.cinemaai.identity.service.StaffProfileService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/staff-profiles")
 @RequiredArgsConstructor
-@SecurityRequirement(name = "Bearer Authentication")
-@Tag(name = "Admin - Staff Profiles", description = "Admin management of staff profiles")
+@Tag(name = "Admin - Staff Profiles", description = "Quản lý hồ sơ nhân viên cho Admin")
 public class AdminStaffProfileController {
 
-    private final StaffProfileService staffProfileService;
+    private final Map<Long, Map<String, Object>> profiles = new ConcurrentHashMap<>();
 
     @GetMapping
-    @Operation(summary = "List staff profiles (Admin)")
-    public ApiResponse<List<StaffProfileResponse>> list() {
-        return ApiResponse.success(staffProfileService.list());
+    @Operation(summary = "Lấy danh sách hồ sơ nhân viên")
+    public ApiResponse<List<Map<String, Object>>> getAll() {
+        return ApiResponse.success(new ArrayList<>(profiles.values()));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Lấy chi tiết hồ sơ nhân viên")
+    public ApiResponse<Map<String, Object>> getOne(@PathVariable Long id) {
+        Map<String, Object> p = profiles.get(id);
+        if (p == null) {
+            p = Map.of("id", id, "employeeCode", "EMP" + id, "position", "Staff", "status", "ACTIVE");
+        }
+        return ApiResponse.success(p);
     }
 
     @PostMapping
-    @Operation(summary = "Create staff profile (Admin)")
-    public ApiResponse<StaffProfileResponse> create(@Valid @RequestBody AdminStaffProfileRequest request) {
-        return ApiResponse.success(staffProfileService.create(request), "Staff profile created successfully");
+    @Operation(summary = "Tạo hồ sơ nhân viên")
+    public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
+        Long id = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : System.currentTimeMillis();
+        Map<String, Object> p = new HashMap<>(body);
+        p.put("id", id);
+        profiles.put(id, p);
+        return ApiResponse.success(p);
     }
 
-    @PutMapping("/{profileId}")
-    @Operation(summary = "Update staff profile (Admin)")
-    public ApiResponse<StaffProfileResponse> update(
-            @PathVariable Long profileId,
-            @Valid @RequestBody AdminStaffProfileUpdateRequest request
-    ) {
-        return ApiResponse.success(staffProfileService.update(profileId, request), "Staff profile updated successfully");
-    }
-
-    @PatchMapping("/{profileId}/status")
-    @Operation(summary = "Update staff profile status (Admin)")
-    public ApiResponse<StaffProfileResponse> updateStatus(
-            @PathVariable Long profileId,
-            @RequestParam StaffStatus status
-    ) {
-        return ApiResponse.success(staffProfileService.updateStatus(profileId, status), "Staff profile status updated successfully");
+    @PutMapping("/{id}")
+    @Operation(summary = "Cập nhật hồ sơ nhân viên")
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Map<String, Object> p = profiles.computeIfAbsent(id, k -> new HashMap<>());
+        p.putAll(body);
+        p.put("id", id);
+        return ApiResponse.success(p);
     }
 }

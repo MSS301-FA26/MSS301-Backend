@@ -7,7 +7,7 @@
 
 ## MỤC LỤC
 1. [Chuẩn 1: Quản lý cấu hình & Biến môi trường (.env & application.properties)](#1-chuẩn-1-quản-lý-cấu-hình--biến-môi-trường-env--applicationproperties)
-2. [Chuẩn 2: Kiến trúc Gateway & Bảo mật mạng (Network Isolation & Port Locking)](#2-chuẩn-2-kiến-trúc-gateway--bảo-mật-mạng-network-isolation--port-locking)
+2. [Chuẩn 2: Kiến trúc Gateway & Chặn truy cập trực tiếp vào Microservices (Zero-Trust & Port Locking)](#2-chuẩn-2-kiến-trúc-gateway--chặn-truy-cập-trực-tiếp-vào-microservices-zero-trust--port-locking)
 3. [Chuẩn 3: Thiết kế mã nguồn (Interface-Driven Development & Clean Architecture)](#3-chuẩn-3-thiết-kế-mã-nguồn-interface-driven-development--clean-architecture)
 4. [Chuẩn 4: Thiết kế DTO & Xác thực dữ liệu (Request Validation & Immutability)](#4-chuẩn-4-thiết-kế-dto--xác-thực-dữ-liệu-request-validation--immutability)
 5. [Chuẩn 5: Chuẩn hóa phản hồi API & Xử lý ngoại lệ (Envelope & Exception Handling)](#5-chuẩn-5-chuẩn-hóa-phản-hồi-api--xử-lý-ngoại-lệ-envelope--exception-handling)
@@ -49,30 +49,143 @@
 
 ---
 
-## 2. Chuẩn 2: Kiến trúc Gateway & Bảo mật mạng (Network Isolation & Port Locking)
+## 2. Chuẩn 2: Kiến trúc Gateway & Chặn truy cập trực tiếp vào Microservices (Zero-Trust & Port Locking)
 
 ### 2.1. Điểm truy cập duy nhất (Single Entry Point)
-- **Cổng duy nhất được công khai (Public)**: API Gateway chạy trên cổng **`8080`**.
-- Mọi Client (Web Frontend, Mobile App, Postman, đối tác thứ ba) **BẮT BUỘC** phải gọi qua `http://<domain_or_host>:8080`.
-- Không một client nào được phép gọi trực tiếp tới cổng nội bộ của các microservice (`8081`, `8082`, `8083`, `8084`, `8000`).
+- **Cổng công khai duy nhất (Public Gateway)**: Toàn bộ hệ sinh thái chỉ mở công khai một cổng duy nhất là **`8080`** của `api-gateway`.
+- Mọi Client (Web Frontend, Mobile App, Postman, đối tác ngoài) **BẮT BUỘC** phải gửi request qua Gateway (`http://<domain_or_host>:8080`).
+- **NGHIÊM CẤM TUYỆT ĐỐI**: Không một client nào từ bên ngoài được phép gọi trực tiếp tới cổng nội bộ của các microservice con (`8081`, `8082`, `8083`, `8084`, `8000`).
 
-### 2.2. Cơ chế chặn truy cập trực tiếp vào Microservices (Port Locking)
-Để ngăn chặn tấn công bypass Gateway hoặc truy cập trái phép, dự án áp dụng mô hình bảo vệ 2 lớp (**Defense in Depth**):
+---
 
-1. **Lớp 1: Khóa ở mức Mạng (Network / Docker Isolation)**
-   - Trong môi trường Docker Compose / Kubernetes: Các microservice backend nằm hoàn toàn trong mạng nội bộ (`internal-network`), **không dùng directive `ports:`** để export port ra host máy chủ.
-   - Chỉ duy nhất container `api-gateway` được khai báo `ports: ["8080:8080"]` để mở ra ngoài Internet/Host.
-   - Khi chạy local ngoài Docker: Các microservice con chỉ bind vào interface loopback `127.0.0.1` thay vì `0.0.0.0` (`server.address=127.0.0.1`).
+### 2.2. Mô hình bảo vệ 2 lớp chống truy cập trực tiếp (Defense-in-Depth)
+Để ngăn chặn hoàn toàn việc kẻ tấn công "lách luật" gọi thẳng vào các cổng dịch vụ nội bộ (Bypass Gateway), toàn bộ hệ thống phải áp dụng mô hình 2 lớp bảo vệ độc lập:
 
-2. **Lớp 2: Khóa ở mức Ứng dụng (Gateway Secret Token Header)**
-   - API Gateway tự động sinh hoặc cấu hình 1 mã bí mật nội bộ `INTERNAL_GATEWAY_SECRET` (khai báo trong `.env`).
-   - Mọi request khi đi qua Gateway sẽ được Gateway tự động đính kèm thêm header nội bộ:
-     ```http
-     X-Gateway-Secret: ${INTERNAL_GATEWAY_SECRET}
-     ```
-   - Tất cả các Microservice con cài đặt một `GatewaySecurityFilter` (hoặc cấu hình Security):
-     - Nếu request **không có** hoặc **sai** header `X-Gateway-Secret`, microservice sẽ lập tức từ chối với mã phản hồi **`403 Forbidden`** và log cảnh báo an ninh.
-     - Điều này đảm bảo dù kẻ tấn công có quét thấy cổng của service nội bộ cũng không thể gửi request trực tiếp được.
+```text
+[CLIENT (Web/Mobile)]
+        │
+        ▼ (Port 8080 Public)
+┌─────────────────────────────────────────────────────────┐
+│                    API GATEWAY (8080)                   │
+│  - Tự động inject: X-Gateway-Secret                     │
+│  - Tự động xóa header giả mạo: X-Internal-Service-Secret│
+│  - Chặn triệt để mọi request gọi vào /internal/**       │
+└─────────────────────────────────────────────────────────┘
+        │
+        ├─────────────────────────────┬─────────────────────────────┐
+        ▼ (Mạng nội bộ Docker)         ▼ (Mạng nội bộ Docker)        ▼
+┌───────────────────────────┐ ┌───────────────────────────┐ ┌───────────────────────────┐
+│   IDENTITY-SERVICE (8081) │ │    CATALOG-SERVICE (8082) │ │    BOOKING-SERVICE (8083) │
+│ - Cổng đóng (No Host Port)│ │ - Cổng đóng (No Host Port)│ │ - Cổng đóng (No Host Port)│
+│ - Filter kiểm tra Secret  │ │ - Filter kiểm tra Secret  │ │ - Filter kiểm tra Secret  │
+└───────────────────────────┘ └───────────────────────────┘ └───────────────────────────┘
+```
+
+#### Lớp 1: Khóa ở mức Mạng & Hạ tầng (Network & Docker Isolation)
+1. **Trong file `docker-compose.yml` (Môi trường Deploy/Production)**:
+   - Các service nội bộ (`identity-service`, `catalog-service`, `booking-service`, `payment-service`, `recommendation-service`, và các Database PostgreSQL) **TUYỆT ĐỐI KHÔNG DÙNG chỉ thị `ports:`** để map ra máy chủ Host.
+   - Chỉ dùng chỉ thị `expose:` để các container nội bộ nhìn thấy nhau trong mạng `cinema-network`.
+   - **Chỉ container duy nhất `api-gateway`** được phép khai báo `ports: ["8080:8080"]`.
+2. **Khi chạy local (Local Development ngoài Docker)**:
+   - Nếu chạy trực tiếp file JAR/IDE trên máy local, khuyến khích cấu hình bind vào `server.address=127.0.0.1` để ngăn chặn các thiết bị khác trong cùng mạng LAN truy cập thẳng vào cổng con.
+
+#### Lớp 2: Khóa ở mức Ứng dụng (Application-Level Secret Token Validation)
+1. **Cơ chế Secret Token**:
+   - Khai báo 2 biến môi trường bí mật trong `.env`:
+     - `INTERNAL_GATEWAY_SECRET`: Dùng để xác thực request xuất phát từ API Gateway hợp pháp.
+     - `INTERNAL_SERVICE_SECRET`: Dùng để xác thực giao tiếp trực tiếp giữa các service nội bộ (Service-to-Service qua đường dẫn `/internal/**`).
+2. **Trách nhiệm của API Gateway**:
+   - Mọi request khi đi qua Gateway đều được tự động chèn header: `X-Gateway-Secret: ${INTERNAL_GATEWAY_SECRET}`.
+   - Gateway **bắt buộc phải xóa (strip)** header `X-Internal-Service-Secret` nếu client gửi lên để ngăn chặn hành vi giả mạo lệnh gọi nội bộ.
+   - Gateway **chặn toàn bộ request bắt đầu bằng `/internal/`** từ Internet (trả về mã `404 Not Found`).
+3. **Trách nhiệm của từng Microservice con**:
+   - **100% Microservice con BẮT BUỘC** phải cài đặt bộ lọc bảo mật để kiểm tra Header trước khi request vào đến Controller:
+     - Với các request công khai (`/api/v1/**`): Bắt buộc phải có header `X-Gateway-Secret` trùng khớp với `INTERNAL_GATEWAY_SECRET`.
+     - Với các request nội bộ (`/internal/**`): Bắt buộc phải có header `X-Internal-Service-Secret` trùng khớp với `INTERNAL_SERVICE_SECRET`.
+     - Nếu thiếu hoặc sai Header: **Lập tức từ chối với HTTP 403 Forbidden**, không thực thi bất kỳ logic nghiệp vụ nào.
+
+---
+
+### 2.3. Quy chuẩn mã nguồn Filter kiểm tra Secret tại Microservice
+Tất cả các Microservice con phải triển khai bộ lọc an ninh tương đương mẫu chuẩn hóa dưới đây (tích hợp trong Spring Security FilterChain):
+
+```java
+// Ví dụ chuẩn hóa cài đặt trong SecurityConfig của Microservice con
+var gatewaySecretFilter = new OncePerRequestFilter() {
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+        
+        String path = request.getRequestURI();
+
+        // 1. Ngoại lệ DUY NHẤT: Healthcheck cho Docker/K8s không cần secret
+        if (path.equals("/actuator/health")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 2. Phân định luồng nội bộ và luồng từ Gateway
+        boolean isInternalPath = path.startsWith("/internal/");
+        String headerName = isInternalPath ? "X-Internal-Service-Secret" : "X-Gateway-Secret";
+        String expectedSecret = isInternalPath ? internalSecret : gatewaySecret;
+        String suppliedSecret = request.getHeader(headerName);
+
+        // 3. Kiểm tra bằng MessageDigest.isEqual để chống tấn công Timing Attack
+        if (suppliedSecret == null || !MessageDigest.isEqual(
+                expectedSecret.getBytes(StandardCharsets.UTF_8),
+                suppliedSecret.getBytes(StandardCharsets.UTF_8))) {
+            
+            log.warn("Cảnh báo an ninh: Phát hiện truy cập trực tiếp trái phép vào [{}] từ IP [{}]",
+                    path, request.getRemoteAddr());
+            
+            // 4. Trả về đúng mã lỗi 403 Forbidden kèm JSON chuẩn ApiResponse
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            
+            ErrorResponse error = new ErrorResponse(
+                    false,
+                    "Trusted service access required",
+                    path,
+                    List.of(),
+                    LocalDateTime.now().toString()
+            );
+            mapper.writeValue(response.getWriter(), error);
+            return;
+        }
+
+        filterChain.doFilter(request, response);
+    }
+};
+```
+
+---
+
+### 2.4. Danh sách ngoại lệ (Whitelisted Endpoints)
+Chỉ duy nhất các endpoint sau đây được phép bỏ qua kiểm tra `X-Gateway-Secret`:
+1. `GET /actuator/health`: Endpoint kiểm tra sức khỏe container phục vụ `docker-compose` healthcheck và Kubernetes liveness probe.
+*(Lưu ý: `/swagger-ui/**` và `/v3/api-docs/**` trên service con khi chạy độc lập có thể mở trong profile `local`, nhưng khi đã chạy qua Gateway thì Swagger UI phải truy cập qua cổng 8080).*
+
+---
+
+### 2.5. Kịch bản kiểm thử nghiệm thu bắt buộc (Verification Checklist)
+Trước khi merge code vào nhánh `dev` hoặc `main`, lập trình viên phải chạy 3 bài test sau:
+
+1. **Test 1: Gọi trực tiếp không qua Gateway (Phải thất bại)**
+   ```powershell
+   curl -I -X GET http://localhost:<SERVICE_PORT>/api/v1/<endpoint>
+   # Kết quả bắt buộc: HTTP/1.1 403 Forbidden kèm message "Trusted service access required"
+   ```
+2. **Test 2: Gọi xuyên qua Gateway (Phải thành công)**
+   ```powershell
+   curl -I -X GET http://localhost:8080/api/v1/<endpoint>
+   # Kết quả bắt buộc: HTTP/1.1 200 OK (hoặc 400/401 tuỳ payload), Gateway tự inject header thành công
+   ```
+3. **Test 3: Thử lách luật gọi API `/internal/**` từ ngoài Gateway (Phải bị chặn)**
+   ```powershell
+   curl -I -X POST http://localhost:8080/internal/v1/...
+   # Kết quả bắt buộc: HTTP/1.1 404 Not Found do Gateway chủ động chặn tuyến đường nội bộ
+   ```
 
 ---
 

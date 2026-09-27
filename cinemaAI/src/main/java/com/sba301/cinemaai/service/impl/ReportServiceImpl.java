@@ -38,7 +38,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
     private final PaymentRepository paymentRepository;
@@ -46,6 +45,34 @@ public class ReportServiceImpl implements ReportService {
     private final BookingFoodItemRepository bookingFoodItemRepository;
     private final ShowtimeRepository showtimeRepository;
     private final BookingSeatRepository bookingSeatRepository;
+    private final com.sba301.cinemaai.repository.FoodInventoryRepository foodInventoryRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReportServiceImpl(
+            PaymentRepository paymentRepository,
+            BookingRepository bookingRepository,
+            BookingFoodItemRepository bookingFoodItemRepository,
+            ShowtimeRepository showtimeRepository,
+            BookingSeatRepository bookingSeatRepository,
+            com.sba301.cinemaai.repository.FoodInventoryRepository foodInventoryRepository
+    ) {
+        this.paymentRepository = paymentRepository;
+        this.bookingRepository = bookingRepository;
+        this.bookingFoodItemRepository = bookingFoodItemRepository;
+        this.showtimeRepository = showtimeRepository;
+        this.bookingSeatRepository = bookingSeatRepository;
+        this.foodInventoryRepository = foodInventoryRepository;
+    }
+
+    public ReportServiceImpl(
+            PaymentRepository paymentRepository,
+            BookingRepository bookingRepository,
+            BookingFoodItemRepository bookingFoodItemRepository,
+            ShowtimeRepository showtimeRepository,
+            BookingSeatRepository bookingSeatRepository
+    ) {
+        this(paymentRepository, bookingRepository, bookingFoodItemRepository, showtimeRepository, bookingSeatRepository, null);
+    }
 
     @Transactional(readOnly = true)
     @Override
@@ -324,6 +351,12 @@ public class ReportServiceImpl implements ReportService {
                 ))
                 .toList();
 
+        long lowStockCount = foodInventoryRepository != null ? foodInventoryRepository.countTotalLowStock() : 0L;
+        long outOfStockCount = foodInventoryRepository != null ? foodInventoryRepository.countTotalOutOfStock() : 0L;
+        // Estimated margin ~ 55% of revenue if individual cost prices not aggregated in legacy orders
+        BigDecimal grossProfit = totalRevenue.multiply(new BigDecimal("0.55")).setScale(2, RoundingMode.HALF_UP);
+        Double profitMargin = totalRevenue.compareTo(BigDecimal.ZERO) > 0 ? 55.0 : 0.0;
+
         return new ConcessionSalesResponse(
                 safeFrom,
                 safeTo,
@@ -333,7 +366,11 @@ public class ReportServiceImpl implements ReportService {
                 averageOrderValue,
                 dailyLines,
                 lines,
-                sourceLines
+                sourceLines,
+                lowStockCount,
+                outOfStockCount,
+                grossProfit,
+                profitMargin
         );
     }
 

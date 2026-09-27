@@ -3,6 +3,7 @@ package com.sba301.cinemaai.service;
 import com.sba301.cinemaai.dto.request.cinema.RoomRequest;
 import com.sba301.cinemaai.dto.request.cinema.SeatLayoutRequest;
 import com.sba301.cinemaai.dto.request.cinema.SeatUpdateRequest;
+import com.sba301.cinemaai.dto.request.cinema.SeatOperationalStatusRequest;
 import com.sba301.cinemaai.dto.response.cinema.RoomResponse;
 import com.sba301.cinemaai.dto.response.cinema.SeatResponse;
 import com.sba301.cinemaai.entity.Room;
@@ -32,6 +33,10 @@ public interface RoomService {
         public SeatResponse getSeat(Long seatId);
 
         public SeatResponse updateSeat(Long seatId, SeatUpdateRequest request);
+
+        public Long getSeatCinemaId(Long seatId);
+
+        public SeatResponse updateSeatOperationalStatus(Long seatId, SeatOperationalStatusRequest request);
 
         public SeatResponse deleteSeat(Long seatId);
 
