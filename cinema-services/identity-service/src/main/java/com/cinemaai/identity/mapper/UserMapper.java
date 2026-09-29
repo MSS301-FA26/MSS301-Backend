@@ -10,6 +10,10 @@ import org.springframework.stereotype.Component;
 public class UserMapper {
 
     public UserProfileResponse toProfile(User user, List<String> roles) {
+        return toProfile(user, roles, null);
+    }
+
+    public UserProfileResponse toProfile(User user, List<String> roles, Long cinemaId) {
         UserProfile profile = user.getProfile();
         if (profile == null) {
             return new UserProfileResponse(
@@ -23,6 +27,7 @@ public class UserMapper {
                     user.isEmailVerified(),
                     false,
                     roles,
+                    cinemaId,
                     user.getCreatedAt(),
                     user.getUpdatedAt()
             );
@@ -38,6 +43,7 @@ public class UserMapper {
                 user.isEmailVerified(),
                 profile.isPhoneVerified(),
                 roles,
+                cinemaId,
                 profile.getCreatedAt(),
                 profile.getUpdatedAt()
         );

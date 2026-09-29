@@ -68,13 +68,26 @@ public class TicketPricingServiceImpl implements TicketPricingService {
             int page,
             int size
     ) {
+        return searchRules(null, ticketType, roomType, seatType, active, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<TicketPricingRuleResponse> searchRules(
+            Long cinemaId,
+            TicketType ticketType,
+            com.cinemaai.catalog.enums.RoomType roomType,
+            SeatType seatType,
+            Boolean active,
+            int page,
+            int size
+    ) {
         var pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), 100),
                 Sort.by(Sort.Direction.DESC, "updatedAt")
         );
         return PageResponse.from(ticketPricingRuleRepository
-                .searchAdmin(ticketType, roomType, seatType, active, pageable)
+                .searchAdmin(cinemaId, ticketType, roomType, seatType, active, pageable)
                 .map(this::toRuleResponse));
     }
 
@@ -83,6 +96,7 @@ public class TicketPricingServiceImpl implements TicketPricingService {
         validateRulePolicy(request);
         validateUniqueActiveRule(null, request);
         TicketPricingRule rule = new TicketPricingRule(
+                request.cinemaId(),
                 request.ticketType(),
                 request.roomType(),
                 normalizeSeatType(request.seatType()),
@@ -243,13 +257,16 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     }
 
     private void applyRuleFields(TicketPricingRule rule, TicketPricingRuleRequest request) {
-        rule.setTicketType(request.ticketType());
-        rule.setRoomType(request.roomType());
+        rule.setCinemaId(request.cinemaId());
+        rule.setTicketType(request.ticketType() == null ? TicketType.ADULT : request.ticketType());
+        rule.setRoomType(request.roomType() == null ? com.cinemaai.catalog.enums.RoomType.STANDARD : request.roomType());
         rule.setSeatType(normalizeSeatType(request.seatType()) == null ? SeatType.STANDARD : normalizeSeatType(request.seatType()));
         rule.setWeekend(request.weekend());
         rule.setHoliday(request.holiday());
         rule.setPrice(request.price());
         rule.setActive(request.active() == null || request.active());
+        rule.setEffectiveFrom(request.effectiveFrom());
+        rule.setEffectiveTo(request.effectiveTo());
     }
 
     private void applyComboFields(TicketCombo combo, TicketComboRequest request) {
@@ -323,24 +340,47 @@ public class TicketPricingServiceImpl implements TicketPricingService {
         if (!requestedActive) {
             return;
         }
-        boolean exists = currentRuleId == null
-                ? ticketPricingRuleRepository.existsByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
-                        request.ticketType(),
-                        request.roomType(),
-                        normalizeSeatType(request.seatType()),
-                        request.weekend(),
-                        request.holiday()
-                )
-                : ticketPricingRuleRepository.existsByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
-                        request.ticketType(),
-                        request.roomType(),
-                        normalizeSeatType(request.seatType()),
-                        request.weekend(),
-                        request.holiday(),
-                        currentRuleId
-                );
+        SeatType seatType = normalizeSeatType(request.seatType()) == null ? SeatType.STANDARD : normalizeSeatType(request.seatType());
+        boolean exists;
+        if (request.cinemaId() != null) {
+            exists = currentRuleId == null
+                    ? ticketPricingRuleRepository.existsByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
+                            request.cinemaId(),
+                            request.ticketType(),
+                            request.roomType(),
+                            seatType,
+                            request.weekend(),
+                            request.holiday()
+                    )
+                    : ticketPricingRuleRepository.existsByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
+                            request.cinemaId(),
+                            request.ticketType(),
+                            request.roomType(),
+                            seatType,
+                            request.weekend(),
+                            request.holiday(),
+                            currentRuleId
+                    );
+        } else {
+            exists = currentRuleId == null
+                    ? ticketPricingRuleRepository.existsByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
+                            request.ticketType(),
+                            request.roomType(),
+                            seatType,
+                            request.weekend(),
+                            request.holiday()
+                    )
+                    : ticketPricingRuleRepository.existsByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
+                            request.ticketType(),
+                            request.roomType(),
+                            seatType,
+                            request.weekend(),
+                            request.holiday(),
+                            currentRuleId
+                    );
+        }
         if (exists) {
-            throw new ConflictException("Active ticket pricing rule already exists for this ticket type, room type, seat type, weekend, and holiday");
+            throw new ConflictException("Active ticket pricing rule already exists for this scope, ticket type, room type, seat type, weekend, and holiday");
         }
     }
 
@@ -348,7 +388,9 @@ public class TicketPricingServiceImpl implements TicketPricingService {
         return rule.getTicketType() + "/" + rule.getRoomType() + "/" + rule.getSeatType() + " = " + rule.getPrice();
     }
 
-    private TicketPricingRule findRule(Long id) {
+    @Override
+    @Transactional(readOnly = true)
+    public TicketPricingRule findRule(Long id) {
         return ticketPricingRuleRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Ticket pricing rule not found"));
     }
@@ -361,6 +403,7 @@ public class TicketPricingServiceImpl implements TicketPricingService {
     private TicketPricingRuleResponse toRuleResponse(TicketPricingRule rule) {
         return new TicketPricingRuleResponse(
                 rule.getId(),
+                rule.getCinemaId(),
                 rule.getTicketType(),
                 rule.getRoomType(),
                 rule.getSeatType(),
@@ -368,6 +411,8 @@ public class TicketPricingServiceImpl implements TicketPricingService {
                 rule.isHoliday(),
                 rule.getPrice(),
                 rule.isActive(),
+                rule.getEffectiveFrom(),
+                rule.getEffectiveTo(),
                 rule.getCreatedAt(),
                 rule.getUpdatedAt()
         );

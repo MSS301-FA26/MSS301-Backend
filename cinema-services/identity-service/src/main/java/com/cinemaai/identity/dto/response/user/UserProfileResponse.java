@@ -15,7 +15,24 @@ public record UserProfileResponse(
         boolean emailVerified,
         boolean phoneVerified,
         List<String> roles,
+        Long cinemaId,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    public UserProfileResponse(
+            Long id,
+            String email,
+            String fullName,
+            String phone,
+            String avatarUrl,
+            Integer birthYear,
+            UserStatus status,
+            boolean emailVerified,
+            boolean phoneVerified,
+            List<String> roles,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(id, email, fullName, phone, avatarUrl, birthYear, status, emailVerified, phoneVerified, roles, null, createdAt, updatedAt);
+    }
 }

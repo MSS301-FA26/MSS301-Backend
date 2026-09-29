@@ -48,13 +48,29 @@ public class CatalogDataInitializer implements CommandLineRunner {
     private final MovieRepository movieRepository;
     private final MovieGenreRepository movieGenreRepository;
     private final MovieActorRepository movieActorRepository;
-    private final CinemaRepository cinemaRepository;
+    private final com.cinemaai.catalog.repository.CinemaRepository cinemaRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional
     public void run(String... args) {
         log.info("Bắt đầu kiểm tra và khởi tạo dữ liệu mẫu Catalog Service...");
-        seedCinema();
+        try {
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS standard_price NUMERIC(12,2) DEFAULT 60000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS vip_price NUMERIC(12,2) DEFAULT 90000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS couple_price NUMERIC(12,2) DEFAULT 150000;");
+            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS aisle_position INTEGER DEFAULT 0;");
+            jdbcTemplate.execute("UPDATE rooms SET standard_price = 60000 WHERE standard_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET vip_price = 90000 WHERE vip_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET couple_price = 150000 WHERE couple_price IS NULL;");
+            jdbcTemplate.execute("UPDATE rooms SET aisle_position = 0 WHERE aisle_position IS NULL;");
+            log.info("Đã đồng bộ các cột giá vé và lối đi cho bảng rooms thành công.");
+        } catch (Exception e) {
+            log.warn("Lưu ý khi cập nhật bảng rooms: {}", e.getMessage());
+        }
+
+        seedCinemas();
+
         Map<String, Genre> genreMap = seedGenres();
         Map<String, Actor> actorMap = seedActors();
         seedMovies(genreMap, actorMap);
@@ -149,8 +165,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.T18,
                         "Trấn Thành",
-                        "https://m.media-amazon.com/images/M/MV5BMGUyMjM0MDctZDE2OS00MzNmLTk5OTAtZTBmNjI1ZDY4OTU3XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BMGUyMjM0MDctZDE2OS00MzNmLTk5OTAtZTBmNjI1ZDY4OTU3XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg",
+                        "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=780&q=80",
+                        "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=780&q=80",
                         "https://www.youtube.com/watch?v=F3Q7dIu7j7I",
                         "Tiếng Việt",
                         "Tiếng Anh",
@@ -167,8 +183,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.K,
                         "Lý Hải",
-                        "https://m.media-amazon.com/images/M/MV5BYzA2ZDczMjctZWE0OC00Y2ZhLWEwM2UtNTMyN2JmNGUzNmRhXkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BYzA2ZDczMjctZWE0OC00Y2ZhLWEwM2UtNTMyN2JmNGUzNmRhXkEyXkFqcGc@._V1_.jpg",
+                        "https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?auto=format&fit=crop&w=780&q=80",
+                        "https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?auto=format&fit=crop&w=780&q=80",
                         "https://www.youtube.com/watch?v=d_kH1Bv8QoQ",
                         "Tiếng Việt",
                         "Tiếng Anh",
@@ -185,8 +201,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.T16,
                         "Denis Villeneuve",
-                        "https://m.media-amazon.com/images/M/MV5BN2QyZGU4ZDctOWMzMy00NTc5LThlOGQtODhmNDI1NmY5YzAwXkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BN2QyZGU4ZDctOWMzMy00NTc5LThlOGQtODhmNDI1NmY5YzAwXkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
+                        "https://image.tmdb.org/t/p/w780/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
                         "https://www.youtube.com/watch?v=Way9Dexny3w",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -203,8 +219,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.T18,
                         "Christopher Nolan",
-                        "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
+                        "https://image.tmdb.org/t/p/w780/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
                         "https://www.youtube.com/watch?v=uYPbbksJxIg",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -221,8 +237,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.T18,
                         "Shawn Levy",
-                        "https://m.media-amazon.com/images/M/MV5BNzRiMjg0MzUtNTQ1Mi00Y2Q5LWEwM2MtMzUwZDU5NmVjN2NkXkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BNzRiMjg0MzUtNTQ1Mi00Y2Q5LWEwM2MtMzUwZDU5NmVjN2NkXkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg",
+                        "https://image.tmdb.org/t/p/w780/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg",
                         "https://www.youtube.com/watch?v=73_1biulkYk",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -239,8 +255,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.P,
                         "Kelsey Mann",
-                        "https://m.media-amazon.com/images/M/MV5BYWY3ODE4NDQtOGY5NS00MDZhLTlhZmMtODc3ZWM4Y2UwZjYxXkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BYWY3ODE4NDQtOGY5NS00MDZhLTlhZmMtODc3ZWM4Y2UwZjYxXkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg",
+                        "https://image.tmdb.org/t/p/w780/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg",
                         "https://www.youtube.com/watch?v=LEjhY15eCx0",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -257,8 +273,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.UPCOMING,
                         AgeRating.T13,
                         "James Cameron",
-                        "https://m.media-amazon.com/images/M/MV5BYjhiNjBlODctY2ZiOC00YjVlLWFlNzAtNTVhNzM1YjI1NzMxXkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BYjhiNjBlODctY2ZiOC00YjVlLWFlNzAtNTVhNzM1YjI1NzMxXkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg",
+                        "https://image.tmdb.org/t/p/w780/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg",
                         "https://www.youtube.com/watch?v=d9MyW72ELq0",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -275,8 +291,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.UPCOMING,
                         AgeRating.P,
                         "Joaquim Dos Santos",
-                        "https://m.media-amazon.com/images/M/MV5BNzA1Njg4NzYxOV5BMl5BanBnXkFtZTgwODk5NjU3MzI@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BNzA1Njg4NzYxOV5BMl5BanBnXkFtZTgwODk5NjU3MzI@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg",
+                        "https://image.tmdb.org/t/p/w780/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg",
                         "https://www.youtube.com/watch?v=cqGjhVJWtEg",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -293,8 +309,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.UPCOMING,
                         AgeRating.T18,
                         "Todd Phillips",
-                        "https://m.media-amazon.com/images/M/MV5BNTRlYjM0ZTYtYzM5Ny00YmU2LTg4NDEtNDU0ZTFhNDM3OGY0XkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BNTRlYjM0ZTYtYzM5Ny00YmU2LTg4NDEtNDU0ZTFhNDM3OGY0XkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/if8QiqCI7WAGImKcJCfzp6VTyKA.jpg",
+                        "https://image.tmdb.org/t/p/w780/if8QiqCI7WAGImKcJCfzp6VTyKA.jpg",
                         "https://www.youtube.com/watch?v=_OKAwz2NiOI",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -311,8 +327,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.UPCOMING,
                         AgeRating.T18,
                         "Ridley Scott",
-                        "https://m.media-amazon.com/images/M/MV5BMDY3Y2E1Y2QtZGVjOS00MWZhLWI4N2YtYjBmOGNhMGQ3OTI0XkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BMDY3Y2E1Y2QtZGVjOS00MWZhLWI4N2YtYjBmOGNhMGQ3OTI0XkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/2cxhvwyEwRlysAmRH4iodkvo0z5.jpg",
+                        "https://image.tmdb.org/t/p/w780/2cxhvwyEwRlysAmRH4iodkvo0z5.jpg",
                         "https://www.youtube.com/watch?v=4rgYUipGJNo",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -329,8 +345,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.NOW_SHOWING,
                         AgeRating.T13,
                         "Christopher Nolan",
-                        "https://m.media-amazon.com/images/M/MV5BYzdjMDAxZGItMjI2My00ODA1LTlkNzItOWFjMDU5ZDJlYWY3XkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BYzdjMDAxZGItMjI2My00ODA1LTlkNzItOWFjMDU5ZDJlYWY3XkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+                        "https://image.tmdb.org/t/p/w780/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
                         "https://www.youtube.com/watch?v=zSWdZVtXT7E",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -347,8 +363,8 @@ public class CatalogDataInitializer implements CommandLineRunner {
                         MovieStatus.UPCOMING,
                         AgeRating.T13,
                         "Russo Brothers",
-                        "https://m.media-amazon.com/images/M/MV5BNDYxNjQyMjAtNTdiOS00NGYwLWFmNTAtNThmYjU5ZGI2YTI1XkEyXkFqcGc@._V1_.jpg",
-                        "https://m.media-amazon.com/images/M/MV5BNDYxNjQyMjAtNTdiOS00NGYwLWFmNTAtNThmYjU5ZGI2YTI1XkEyXkFqcGc@._V1_.jpg",
+                        "https://image.tmdb.org/t/p/w780/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
+                        "https://image.tmdb.org/t/p/w780/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
                         "https://www.youtube.com/watch?v=6ZfuNTqbHE8",
                         "Tiếng Anh",
                         "Tiếng Việt",
@@ -416,5 +432,24 @@ public class CatalogDataInitializer implements CommandLineRunner {
             List<String> actors,
             List<String> mainActors
     ) {
+    }
+
+    private void seedCinemas() {
+        List<String[]> cinemaDefs = List.of(
+                new String[]{"CinemaAI Central - Q.1", "Tầng 3, Bitexco Financial Tower, Số 2 Hải Triều, P. Bến Nghé, Quận 1", "TP. Hồ Chí Minh", "0901234567"},
+                new String[]{"CinemaAI Landmark 81", "Tầng B1, Vincom Center Landmark 81, 720A Điện Biên Phủ, P. 22, Q. Bình Thạnh", "TP. Hồ Chí Minh", "0902345678"},
+                new String[]{"CinemaAI Tây Hồ - Hà Nội", "Tầng 4, Lotte Mall West Lake, 272 Võ Chí Công, Q. Tây Hồ", "Hà Nội", "0903456789"},
+                new String[]{"CinemaAI Dragon City", "Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà", "Đà Nẵng", "0904567890"}
+        );
+
+        for (String[] def : cinemaDefs) {
+            String name = def[0];
+            if (cinemaRepository.findFirstByName(name).isEmpty()) {
+                com.cinemaai.catalog.entity.Cinema c = cinemaRepository.save(
+                        new com.cinemaai.catalog.entity.Cinema(name, def[1], def[2], def[3])
+                );
+                log.info("Đã khởi tạo cụm rạp: {}", c.getName());
+            }
+        }
     }
 }

@@ -63,7 +63,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException exception, HttpServletRequest request) {
+        log.warn("Conflict at {}: {}", request.getRequestURI(), exception.getMessage());
         return build(HttpStatus.CONFLICT, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(
+            org.springframework.dao.DataIntegrityViolationException exception,
+            HttpServletRequest request
+    ) {
+        log.warn("Data integrity conflict at {}: {}", request.getRequestURI(), exception.getMessage());
+        return build(HttpStatus.CONFLICT, "Dữ liệu bị trùng lặp hoặc vi phạm ràng buộc dữ liệu trong hệ thống.", request);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -80,6 +90,14 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return build(HttpStatus.NOT_FOUND, "Resource not found", request);
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.BAD_REQUEST, "Tham số đường dẫn hoặc truy vấn không hợp lệ: " + exception.getName(), request);
     }
 
     @ExceptionHandler(Exception.class)
