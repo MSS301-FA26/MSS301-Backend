@@ -5,6 +5,7 @@ import com.cinemaai.catalog.dto.request.cinema.ShowtimePreviewRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimePricePreviewResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
+import com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatMapResponse;
 import com.cinemaai.catalog.enums.ShowtimeStatus;
