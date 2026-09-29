@@ -17,7 +17,7 @@ public record CinemaRequest(
         String city,
 
         @Size(max = 20, message = "Phone must be at most 20 characters")
-        @Pattern(regexp = "^\\+?[0-9]{10,15}$", message = "Phone is invalid")
+        @Pattern(regexp = "^(\\+?[0-9]{10,15})?$", message = "Phone is invalid")
         String phone,
 
         CinemaStatus status

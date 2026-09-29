@@ -68,13 +68,15 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
             select s from Showtime s
             where (:movieId is null or s.movie.id = :movieId)
               and (:roomId is null or s.room.id = :roomId)
-              and s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN
+              and (:cinemaId is null or s.room.cinema.id = :cinemaId)
+              and (s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN or s.status = com.cinemaai.catalog.enums.ShowtimeStatus.SCHEDULED)
               and s.startTime >= :from
               and s.startTime < :to
             """)
     Page<Showtime> searchPublic(
             @Param("movieId") Long movieId,
             @Param("roomId") Long roomId,
+            @Param("cinemaId") Long cinemaId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             Pageable pageable
@@ -106,7 +108,7 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
     @Query("""
             select s from Showtime s
             where (:movieId is null or s.movie.id = :movieId)
-              and s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN
+              and (s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN or s.status = com.cinemaai.catalog.enums.ShowtimeStatus.SCHEDULED)
               and s.room.status = com.cinemaai.catalog.enums.RoomStatus.ACTIVE
               and s.movie.status <> com.cinemaai.catalog.enums.MovieStatus.INACTIVE
               and s.startTime >= :from
@@ -124,7 +126,7 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Long> {
             select s from Showtime s
             where s.movie.id = :movieId
               and s.startTime = :startTime
-              and s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN
+              and (s.status = com.cinemaai.catalog.enums.ShowtimeStatus.OPEN or s.status = com.cinemaai.catalog.enums.ShowtimeStatus.SCHEDULED)
               and s.room.status = com.cinemaai.catalog.enums.RoomStatus.ACTIVE
               and s.movie.status <> com.cinemaai.catalog.enums.MovieStatus.INACTIVE
             order by s.id asc

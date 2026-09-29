@@ -6,8 +6,11 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 
 public record RoomRequest(
+        Long cinemaId,
+
         @NotBlank(message = "Room name is required")
         String name,
 
@@ -22,6 +25,11 @@ public record RoomRequest(
         @Max(value = 50, message = "Column count must be at most 50")
         int columnCount,
 
-        RoomStatus status
+        RoomStatus status,
+
+        BigDecimal standardPrice,
+        BigDecimal vipPrice,
+        BigDecimal couplePrice,
+        Integer aislePosition
 ) {
 }

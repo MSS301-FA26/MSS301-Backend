@@ -28,12 +28,20 @@ public class JwtService {
     }
 
     public String generateAccessToken(Long userId, String email, Collection<String> roles) {
+        return generateAccessToken(userId, email, roles, null);
+    }
+
+    public String generateAccessToken(Long userId, String email, Collection<String> roles, Long cinemaId) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(email)
                 .claim(USER_ID_CLAIM, userId)
                 .claim(EMAIL_CLAIM, email)
-                .claim(ROLES_CLAIM, roles)
+                .claim(ROLES_CLAIM, roles);
+        if (cinemaId != null) {
+            builder.claim("cinemaId", cinemaId);
+        }
+        return builder
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(properties.accessExpirationMs())))
                 .signWith(signingKey)
@@ -56,6 +64,14 @@ public class JwtService {
     public Long getUserId(String token) {
         Object userIdObj = parseClaims(token).get(USER_ID_CLAIM);
         if (userIdObj instanceof Number number) {
+            return number.longValue();
+        }
+        return null;
+    }
+
+    public Long getCinemaId(String token) {
+        Object cinemaIdObj = parseClaims(token).get("cinemaId");
+        if (cinemaIdObj instanceof Number number) {
             return number.longValue();
         }
         return null;
