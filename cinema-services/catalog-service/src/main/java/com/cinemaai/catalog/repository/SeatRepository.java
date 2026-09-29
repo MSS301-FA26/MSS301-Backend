@@ -13,6 +13,8 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     List<Seat> findByRoom(Room room);
 
+    List<Seat> findByRoomInAndStatus(List<Room> rooms, com.cinemaai.catalog.enums.SeatStatus status);
+
     Optional<Seat> findByRoomAndRowLabelAndSeatNumber(Room room, String rowLabel, int seatNumber);
 
     boolean existsByRoomAndRowLabelAndSeatNumber(Room room, String rowLabel, int seatNumber);

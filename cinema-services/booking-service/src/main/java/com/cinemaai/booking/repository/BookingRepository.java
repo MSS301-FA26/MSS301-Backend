@@ -129,4 +129,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @org.springframework.data.repository.query.Param("statuses") Collection<BookingStatus> statuses);
 
     List<Booking> findByShowtimeId(Long showtimeId);
+
+    Page<Booking> findByStatusOrderByCreatedAtDesc(BookingStatus status, Pageable pageable);
+
+    Page<Booking> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }

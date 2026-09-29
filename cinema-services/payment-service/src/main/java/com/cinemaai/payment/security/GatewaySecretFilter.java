@@ -64,7 +64,7 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
                 {
                     "success": false,
                     "code": "DIRECT_ACCESS_FORBIDDEN",
-                    "message": "Direct access to microservice is blocked. Requests must be routed through API Gateway (Port 8080)."
+                    "message": "Direct access to microservice is blocked. Requests must be routed through API Gateway (Port 8080) or provide valid internal secret."
                 }
                 """);
             return;
