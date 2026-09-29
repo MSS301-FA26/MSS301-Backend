@@ -1,7 +1,9 @@
 package com.cinemaai.catalog.service;
 
 import com.cinemaai.catalog.dto.request.cinema.BulkShowtimeRequest;
+import com.cinemaai.catalog.dto.request.cinema.ShowtimePreviewRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
+import com.cinemaai.catalog.dto.response.cinema.ShowtimePricePreviewResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatMapResponse;
@@ -11,7 +13,7 @@ import java.util.List;
 
 public interface ShowtimeService {
 
-    PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, LocalDate date, int page, int size);
+    PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, Long cinemaId, LocalDate date, int page, int size);
 
     PageResponse<ShowtimeResponse> searchAdmin(Long movieId, Long roomId, Long cinemaId,
                                                ShowtimeStatus status, LocalDate date, int page, int size);
@@ -41,4 +43,8 @@ public interface ShowtimeService {
     com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId);
 
     com.cinemaai.catalog.entity.Showtime findById(Long id);
+
+    /** Preview ticket prices for draft slots without persisting any records. */
+    List<ShowtimePricePreviewResponse> previewPrices(ShowtimePreviewRequest request);
 }
+

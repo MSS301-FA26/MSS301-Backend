@@ -16,6 +16,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,6 +58,7 @@ public class AdminCinemasController {
         return ApiResponse.success(cinemaService.getCinemas());
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping({"", "/"})
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create cinema (Admin)", description = "Create a new cinema complex (Admin only)")
@@ -87,6 +89,7 @@ public class AdminCinemasController {
         return ApiResponse.success(cinemaService.getCinema(cinemaId));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{cinemaId}")
     @Operation(summary = "Update cinema by ID (Admin)", description = "Update cinema details by ID (Admin only)")
     @ApiResponses(value = {
@@ -101,6 +104,7 @@ public class AdminCinemasController {
         return ApiResponse.success(cinemaService.update(cinemaId, request), "Cinema updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{cinemaId}/status")
     @Operation(summary = "Update cinema status by ID (Admin)", description = "Update status of cinema by ID (Admin only)")
     @ApiResponses(value = {
@@ -113,6 +117,7 @@ public class AdminCinemasController {
         return ApiResponse.success(cinemaService.updateStatus(cinemaId, status), "Cinema status updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{cinemaId}")
     @Operation(summary = "Delete or deactivate cinema (Admin)", description = "Delete cinema if empty, or deactivate if has rooms (Admin only)")
     @ApiResponses(value = {
@@ -124,5 +129,49 @@ public class AdminCinemasController {
     public ApiResponse<Void> deleteCinema(@PathVariable Long cinemaId) {
         cinemaService.delete(cinemaId);
         return ApiResponse.success(null, "Cinema deleted successfully");
+    }
+
+    // -------------------------------------------------------------------------
+    // AUDIENCE PRICE MANAGEMENT
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/{cinemaId}/audience-prices")
+    @Operation(
+            summary = "Get audience price surcharges for a cinema (Admin / Manager)",
+            description = "Returns up to 3 rows (CHILD, STUDENT, ADULT) with the additional price per audience type for this cinema."
+    )
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Audience prices retrieved"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Cinema not found")
+    })
+    public ApiResponse<List<com.cinemaai.catalog.dto.response.cinema.AudiencePriceResponse>> getAudiencePrices(
+            @PathVariable Long cinemaId,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        cinemaSecurityService.validateCinemaAccess(user, cinemaId);
+        return ApiResponse.success(cinemaService.getAudiencePrices(cinemaId));
+    }
+
+    @PutMapping("/{cinemaId}/audience-prices")
+    @Operation(
+            summary = "Upsert audience price surcharge for a cinema (Admin / Manager)",
+            description = "Creates or updates the additional price for a single audience type at this cinema. " +
+                    "Send one request per audience type (CHILD, STUDENT, ADULT)."
+    )
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Audience price upserted"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Not allowed for this cinema"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Cinema not found")
+    })
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.AudiencePriceResponse> upsertAudiencePrice(
+            @PathVariable Long cinemaId,
+            @Valid @RequestBody com.cinemaai.catalog.dto.request.cinema.AudiencePriceRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        cinemaSecurityService.validateCinemaAccess(user, cinemaId);
+        return ApiResponse.success(cinemaService.upsertAudiencePrice(cinemaId, request), "Audience price updated successfully");
     }
 }

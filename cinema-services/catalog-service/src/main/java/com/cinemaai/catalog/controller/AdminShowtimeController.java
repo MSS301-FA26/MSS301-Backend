@@ -1,7 +1,9 @@
 package com.cinemaai.catalog.controller;
 
 import com.cinemaai.catalog.dto.request.cinema.BulkShowtimeRequest;
+import com.cinemaai.catalog.dto.request.cinema.ShowtimePreviewRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
+import com.cinemaai.catalog.dto.response.cinema.ShowtimePricePreviewResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
 import java.util.List;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
@@ -295,4 +297,36 @@ public class AdminShowtimeController {
         cinemaSecurityService.validateCinemaAccess(user, showtime.getRoom().getCinema().getId());
         showtimeService.delete(showtimeId);
     }
+
+    // -------------------------------------------------------------------------
+    // PRICE PREVIEW (no persistence)
+    // -------------------------------------------------------------------------
+
+    @PostMapping("/preview-prices")
+    @Operation(
+            summary = "Preview ticket prices for draft showtime slots (Admin / Manager)",
+            description = "Calculates the full ticket price matrix (seat type x audience type) for a set of draft slots. " +
+                    "Does NOT create any showtime records in the database. " +
+                    "Manager can only preview slots for rooms in their assigned cinema."
+    )
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Price matrix calculated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - Not allowed for other cinema"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Movie or room not found")
+    })
+    public ApiResponse<List<ShowtimePricePreviewResponse>> previewPrices(
+            @Valid @RequestBody ShowtimePreviewRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        if (request.slots() != null) {
+            for (var slot : request.slots()) {
+                Room room = roomService.findById(slot.roomId());
+                cinemaSecurityService.validateCinemaAccess(user, room.getCinema().getId());
+            }
+        }
+        return ApiResponse.success(showtimeService.previewPrices(request), "Price preview calculated");
+    }
 }
+

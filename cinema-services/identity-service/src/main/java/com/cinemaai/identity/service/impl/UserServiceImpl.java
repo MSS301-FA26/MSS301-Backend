@@ -1,5 +1,6 @@
 package com.cinemaai.identity.service.impl;
 
+import com.cinemaai.identity.client.CatalogClient;
 import com.cinemaai.identity.dto.request.user.AdminManagerCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminStaffCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminUserStatusUpdateRequest;
@@ -43,6 +44,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
+    private final CatalogClient catalogClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -188,6 +190,7 @@ public class UserServiceImpl implements UserService {
         if (request.cinemaId() == null) {
             throw new BadRequestException("Vui lòng chọn cụm rạp cho tài khoản Manager.");
         }
+        catalogClient.validateActiveCinema(request.cinemaId());
 
         validateUniqueEmailAndPhone(request.email(), request.phone());
 
@@ -244,6 +247,7 @@ public class UserServiceImpl implements UserService {
         }
 
         validateUniqueEmailAndPhone(request.email(), request.phone());
+        catalogClient.validateActiveCinema(targetCinemaId);
 
         User staff = userRepository.save(new User(
                 request.email(),
@@ -268,6 +272,7 @@ public class UserServiceImpl implements UserService {
         if (cinemaId == null) {
             throw new BadRequestException("Cinema ID is required.");
         }
+        catalogClient.validateActiveCinema(cinemaId);
         User user = findById(userId);
         User actor = actorEmail != null ? getByEmail(actorEmail) : null;
 

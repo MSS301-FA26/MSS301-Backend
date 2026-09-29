@@ -45,7 +45,11 @@ public class AdminBookingServiceImpl implements AdminBookingService {
     @Transactional(readOnly = true)
     public Page<BookingResponse> getBookings(AuthenticatedUser actor, Long requestedCinemaId, BookingStatus status, String search, Pageable pageable) {
         Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(actor, requestedCinemaId, false);
-        return bookingRepository.findBookingsForAdmin(enforcedCinemaId, status, search, pageable)
+        if (search == null || search.trim().isEmpty()) {
+            return bookingRepository.findBookingsByCinemaAndStatus(enforcedCinemaId, status, pageable)
+                    .map(BookingMapper::toResponse);
+        }
+        return bookingRepository.findBookingsForAdmin(enforcedCinemaId, status, search.trim(), pageable)
                 .map(BookingMapper::toResponse);
     }
 
@@ -226,7 +230,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
 
         // 7. Pending refund tickets (CANCELLED bookings that might need refund attention)
         List<BookingResponse> pendingRefund = bookingRepository
-                .findBookingsForAdmin(enforcedCinemaId, BookingStatus.CANCELLED, null, PageRequest.of(0, 5))
+                .findBookingsByCinemaAndStatus(enforcedCinemaId, BookingStatus.CANCELLED, PageRequest.of(0, 5))
                 .getContent()
                 .stream()
                 .map(BookingMapper::toResponse)
