@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 public class SeederAccountProperties {
 
     private Account admin = new Account();
+    private Account staff = new Account();
 
     @Getter
     @Setter
@@ -20,5 +21,6 @@ public class SeederAccountProperties {
         private String password;
         private String fullName;
         private String phone;
+        private Long cinemaId;
     }
 }

@@ -4,6 +4,7 @@ import com.cinemaai.catalog.dto.request.quote.CheckoutQuoteRequest;
 import com.cinemaai.catalog.dto.response.quote.CheckoutQuoteResponse;
 import com.cinemaai.catalog.dto.response.quote.CheckoutQuoteResponse.*;
 import com.cinemaai.catalog.entity.Seat;
+import com.cinemaai.catalog.entity.Showtime;
 import com.cinemaai.catalog.enums.*;
 import com.cinemaai.catalog.exception.BadRequestException;
 import com.cinemaai.catalog.repository.*;
@@ -16,6 +17,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import com.cinemaai.catalog.enums.AudienceType;
+import com.cinemaai.catalog.entity.CinemaAudiencePrice;
+import com.cinemaai.catalog.entity.Room;
+import com.cinemaai.catalog.repository.CinemaAudiencePriceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +32,16 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
     private final SeatRepository seats;
     private final FoodItemRepository items;
     private final FoodComboRepository combos;
+    private final TicketPricingRuleRepository pricingRules;
+    private final CinemaAudiencePriceRepository audiencePrices;
     @Value("${app.quote.ttl-seconds}") private long ttlSeconds;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CheckoutQuoteResponse quote(CheckoutQuoteRequest request) {
         var showtime = showtimes.findWithDetailsById(request.showtimeId())
                 .orElseThrow(() -> new BadRequestException("Showtime does not exist"));
-        if (showtime.getStatus() != ShowtimeStatus.OPEN || !showtime.getStartTime().isAfter(LocalDateTime.now()))
+        if ((showtime.getStatus() != ShowtimeStatus.OPEN && showtime.getStatus() != ShowtimeStatus.SCHEDULED)
+                || !showtime.getStartTime().isAfter(LocalDateTime.now()))
             throw new BadRequestException("Showtime is not open for booking");
         if (showtime.getMovie().getStatus() == MovieStatus.INACTIVE || showtime.getRoom().getStatus() != RoomStatus.ACTIVE
                 || showtime.getRoom().getCinema().getStatus() != CinemaStatus.ACTIVE)
@@ -74,7 +82,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 throw new BadRequestException("Viewer age is not eligible for ticket type or movie age rating");
             for (int i = 0; i < ticket.quantity(); i++) {
                 Seat seat = found.get(ticket.seatId() != null ? ticket.seatId() : unassigned.next());
-                BigDecimal price = showtime.getPriceForTicketAndSeatType(ticket.ticketType(), seat.getSeatType());
+                BigDecimal price = resolveTicketPrice(showtime, seat, ticket.ticketType());
                 if (price == null || price.signum() < 0) throw new BadRequestException("Ticket price is not configured");
                 seatLines.add(new SeatSnapshot(seat.getId(), seat.getRowLabel() + String.format("%02d", seat.getSeatNumber()), seat.getSeatType(), price));
                 ticketLines.add(new TicketSnapshot(seat.getId(), ticket.ticketType(), 1, price, price));
@@ -179,5 +187,56 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 movieSummary,
                 cinemaSummary
         );
+    }
+
+    private BigDecimal resolveTicketPrice(Showtime showtime, Seat seat, TicketType ticketType) {
+        Long cinemaId = showtime.getRoom().getCinema().getId();
+        RoomType roomType = showtime.getRoom().getRoomType();
+        SeatType seatType = seat.getSeatType();
+        java.time.DayOfWeek dow = showtime.getStartTime().getDayOfWeek();
+        boolean weekend = dow == java.time.DayOfWeek.SATURDAY || dow == java.time.DayOfWeek.SUNDAY;
+        boolean holiday = showtime.isHolidaySurcharge();
+
+        // 1. Priority 1: Cinema audience price surcharge + room seat base price formula
+        // Standard/VIP seat: finalPrice = roomSeatBasePrice + additionalPrice(audienceType)
+        // Couple seat (pair): finalPrice = coupleBasePrice + 2 * additionalPrice(audienceType)
+        try {
+            AudienceType aType = AudienceType.valueOf(ticketType.name());
+            Optional<CinemaAudiencePrice> audPrice = audiencePrices.findByCinemaIdAndAudienceType(cinemaId, aType);
+            if (audPrice.isPresent()) {
+                BigDecimal surcharge = audPrice.get().getAdditionalPrice() != null ? audPrice.get().getAdditionalPrice() : BigDecimal.ZERO;
+                Room room = showtime.getRoom();
+                BigDecimal base = switch (seatType) {
+                    case VIP -> room.getVipPrice() != null ? room.getVipPrice() : showtime.getVipPrice();
+                    case COUPLE -> room.getCouplePrice() != null ? room.getCouplePrice() : showtime.getCouplePrice();
+                    default -> room.getStandardPrice() != null ? room.getStandardPrice() : showtime.getBasePrice();
+                };
+                if (base != null) {
+                    BigDecimal calculated = seatType == SeatType.COUPLE
+                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2)))
+                            : base.add(surcharge);
+                    return calculated.add(showtime.getSurchargeAmount());
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Priority 2: Cinema-specific local override rule
+        Optional<com.cinemaai.catalog.entity.TicketPricingRule> cinemaRule = pricingRules
+                .findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                        cinemaId, ticketType, roomType, seatType, weekend, holiday);
+        if (cinemaRule.isPresent()) {
+            return cinemaRule.get().getPrice();
+        }
+
+        // 3. Priority 3: Global default rule
+        Optional<com.cinemaai.catalog.entity.TicketPricingRule> globalRule = pricingRules
+                .findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                        ticketType, roomType, seatType, weekend, holiday);
+        if (globalRule.isPresent()) {
+            return globalRule.get().getPrice();
+        }
+
+        // 4. Priority 4: Fallback to showtime/room configured price
+        return showtime.getPriceForTicketAndSeatType(ticketType, seatType);
     }
 }

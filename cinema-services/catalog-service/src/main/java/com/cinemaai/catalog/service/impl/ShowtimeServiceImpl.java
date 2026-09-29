@@ -2,6 +2,11 @@ package com.cinemaai.catalog.service.impl;
 
 import com.cinemaai.catalog.dto.request.cinema.BulkShowtimeRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
+import com.cinemaai.catalog.dto.request.cinema.ShowtimePreviewRequest;
+import com.cinemaai.catalog.dto.response.cinema.ShowtimePricePreviewResponse;
+import com.cinemaai.catalog.entity.CinemaAudiencePrice;
+import com.cinemaai.catalog.enums.AudienceType;
+import com.cinemaai.catalog.repository.CinemaAudiencePriceRepository;
 import com.cinemaai.catalog.dto.response.PageResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatMapResponse;
@@ -63,6 +68,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     private final CinemaMapper cinemaMapper;
     private final AuditLogService auditLogService;
     private final com.cinemaai.catalog.client.BookingClient bookingClient;
+    private final CinemaAudiencePriceRepository audiencePriceRepository;
 
 
     // -------------------------------------------------------------------------
@@ -74,7 +80,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
      * SCHEDULED is an internal admin state — customers cannot book it.
      */
     @Transactional(readOnly = true)
-    public PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, LocalDate date, int page, int size) {
+    public PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, Long cinemaId, LocalDate date, int page, int size) {
         LocalDateTime from = date == null ? LocalDate.now().atStartOfDay() : date.atStartOfDay();
         LocalDateTime to = date == null ? LocalDate.now().plusYears(1).atStartOfDay() : date.plusDays(1).atStartOfDay();
         LocalDateTime now = LocalDateTime.now();
@@ -83,7 +89,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
 
         org.springframework.data.domain.Page<Showtime> showtimePage =
-                showtimeRepository.searchPublic(movieId, roomId, from, to,
+                showtimeRepository.searchPublic(movieId, roomId, cinemaId, from, to,
                         pageable(page, size, Sort.by("startTime").ascending()));
 
         // Batch-fetch genres for all movies on this page
@@ -142,7 +148,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Transactional(readOnly = true)
     public ShowtimeResponse get(Long id) {
         Showtime showtime = findById(id);
-        if (showtime.getStatus() != ShowtimeStatus.OPEN || showtime.getMovie().getStatus() == MovieStatus.INACTIVE) {
+        if ((showtime.getStatus() != ShowtimeStatus.OPEN && showtime.getStatus() != ShowtimeStatus.SCHEDULED)
+                || showtime.getMovie().getStatus() == MovieStatus.INACTIVE) {
             throw new NotFoundException("Showtime not found");
         }
         return cinemaMapper.toShowtimeResponse(showtime);
@@ -258,6 +265,10 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             }
             if (!slot.startTime().isAfter(LocalDateTime.now())) {
                 throw new BadRequestException(slotLabel + ": start time must be in the future");
+            }
+            LocalDate tomorrow = LocalDate.now().plusDays(1);
+            if (slot.startTime().toLocalDate().isBefore(tomorrow)) {
+                throw new BadRequestException(slotLabel + ": Showtime must be scheduled at least 1 day in advance (from tomorrow onwards)");
             }
             validateShowtimeWithinMovieReleaseWindow(movie, slot.startTime(), slotLabel + ": ");
             if (!roomStartTimesInRequest.add(slot.roomId() + "|" + slot.startTime())) {
@@ -424,6 +435,12 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
         if (!startTime.isAfter(LocalDateTime.now())) {
             throw new BadRequestException("Showtime start time must be in the future");
+        }
+        if (excludeId == null) {
+            LocalDate tomorrow = LocalDate.now().plusDays(1);
+            if (startTime.toLocalDate().isBefore(tomorrow)) {
+                throw new BadRequestException("Showtime must be scheduled at least 1 day in advance (from tomorrow onwards)");
+            }
         }
         if (!endTime.isAfter(startTime)) {
             throw new BadRequestException("Showtime end time must be after start time");
@@ -597,15 +614,35 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             boolean holidaySurcharge,
             java.math.BigDecimal lateNightSurchargeAmount
     ) {
-        java.math.BigDecimal adultStandard = defaultMoney(adultStandardPrice, showtime.getBasePrice());
-        java.math.BigDecimal childStandard = defaultMoney(childStandardPrice, adultStandard);
-        java.math.BigDecimal studentStandard = defaultMoney(studentStandardPrice, adultStandard);
-        java.math.BigDecimal adultVip = defaultMoney(adultVipPrice, adultStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal childVip = defaultMoney(childVipPrice, childStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal studentVip = defaultMoney(studentVipPrice, studentStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, adultStandard.add(java.math.BigDecimal.valueOf(30_000)));
-        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, childStandard.add(java.math.BigDecimal.valueOf(30_000)));
-        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, studentStandard.add(java.math.BigDecimal.valueOf(30_000)));
+        Room room = showtime.getRoom();
+        Long cinemaId = room != null && room.getCinema() != null ? room.getCinema().getId() : null;
+
+        java.math.BigDecimal baseStd = room != null && room.getStandardPrice() != null ? room.getStandardPrice() : defaultMoney(showtime.getBasePrice(), java.math.BigDecimal.valueOf(60_000));
+        java.math.BigDecimal baseVip = room != null && room.getVipPrice() != null ? room.getVipPrice() : baseStd.add(java.math.BigDecimal.valueOf(20_000));
+        java.math.BigDecimal baseCpl = room != null && room.getCouplePrice() != null ? room.getCouplePrice() : baseStd.add(java.math.BigDecimal.valueOf(30_000));
+
+        java.math.BigDecimal surChild = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal surStudent = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal surAdult = java.math.BigDecimal.ZERO;
+
+        if (cinemaId != null && audiencePriceRepository != null) {
+            var audMap = audiencePriceRepository.findByCinemaId(cinemaId);
+            for (var ap : audMap) {
+                if (ap.getAudienceType() == AudienceType.CHILD && ap.getAdditionalPrice() != null) surChild = ap.getAdditionalPrice();
+                else if (ap.getAudienceType() == AudienceType.STUDENT && ap.getAdditionalPrice() != null) surStudent = ap.getAdditionalPrice();
+                else if (ap.getAudienceType() == AudienceType.ADULT && ap.getAdditionalPrice() != null) surAdult = ap.getAdditionalPrice();
+            }
+        }
+
+        java.math.BigDecimal adultStandard = defaultMoney(adultStandardPrice, baseStd.add(surAdult));
+        java.math.BigDecimal childStandard = defaultMoney(childStandardPrice, baseStd.add(surChild));
+        java.math.BigDecimal studentStandard = defaultMoney(studentStandardPrice, baseStd.add(surStudent));
+        java.math.BigDecimal adultVip = defaultMoney(adultVipPrice, baseVip.add(surAdult));
+        java.math.BigDecimal childVip = defaultMoney(childVipPrice, baseVip.add(surChild));
+        java.math.BigDecimal studentVip = defaultMoney(studentVipPrice, baseVip.add(surStudent));
+        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, baseCpl.add(surAdult.multiply(java.math.BigDecimal.valueOf(2))));
+        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, baseCpl.add(surChild.multiply(java.math.BigDecimal.valueOf(2))));
+        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, baseCpl.add(surStudent.multiply(java.math.BigDecimal.valueOf(2))));
 
         showtime.setAdultStandardPrice(adultStandard);
         showtime.setChildStandardPrice(childStandard);
@@ -733,7 +770,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         Showtime showtime = findById(showtimeId);
         LocalDateTime cutoff = LocalDateTime.now().plusMinutes(10);
 
-        boolean isSelfValid = showtime.getStatus() == ShowtimeStatus.OPEN
+        boolean isSelfValid = (showtime.getStatus() == ShowtimeStatus.OPEN || showtime.getStatus() == ShowtimeStatus.SCHEDULED)
                 && showtime.getRoom().getStatus() == RoomStatus.ACTIVE
                 && showtime.getMovie().getStatus() != MovieStatus.INACTIVE
                 && showtime.getStartTime().isAfter(cutoff);
@@ -853,4 +890,118 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
         return result;
     }
+
+    // =========================================================================
+    // PRICE PREVIEW (NO PERSISTENCE)
+    // =========================================================================
+
+    /**
+     * Computes the full ticket price matrix for a set of draft showtime slots.
+     * Does NOT persist any data; safe to call multiple times without side effects.
+     *
+     * <p>Formula:
+     * <pre>
+     *   standardPrice(audience) = room.standardPrice + audience.additionalPrice
+     *   vipPrice(audience)      = room.vipPrice      + audience.additionalPrice
+     *   couplePrice(a1, a2)     = room.couplePrice   + a1.additionalPrice + a2.additionalPrice
+     * </pre>
+     */
+    @Transactional(readOnly = true)
+    public List<ShowtimePricePreviewResponse> previewPrices(ShowtimePreviewRequest request) {
+        Movie movie = movieRepository.findById(request.movieId())
+                .orElseThrow(() -> new NotFoundException("Movie not found: " + request.movieId()));
+
+        List<ShowtimePricePreviewResponse> results = new ArrayList<>();
+
+        for (ShowtimePreviewRequest.PreviewSlot slot : request.slots()) {
+            Room room = roomService.findById(slot.roomId());
+            Long cinemaId = room.getCinema().getId();
+
+            // Load audience surcharges for this cinema
+            Map<AudienceType, java.math.BigDecimal> surchargeMap = audiencePriceRepository
+                    .findByCinemaId(cinemaId)
+                    .stream()
+                    .collect(Collectors.toMap(
+                            CinemaAudiencePrice::getAudienceType,
+                            CinemaAudiencePrice::getAdditionalPrice
+                    ));
+
+            boolean audiencePriceMissing = surchargeMap.size() < 3
+                    || !surchargeMap.containsKey(AudienceType.CHILD)
+                    || !surchargeMap.containsKey(AudienceType.STUDENT)
+                    || !surchargeMap.containsKey(AudienceType.ADULT);
+
+            java.math.BigDecimal childAdd   = surchargeMap.getOrDefault(AudienceType.CHILD,   java.math.BigDecimal.ZERO);
+            java.math.BigDecimal studentAdd = surchargeMap.getOrDefault(AudienceType.STUDENT, java.math.BigDecimal.ZERO);
+            java.math.BigDecimal adultAdd   = surchargeMap.getOrDefault(AudienceType.ADULT,   java.math.BigDecimal.ZERO);
+
+            // Room base prices (fall back to 0 if null)
+            java.math.BigDecimal roomStd    = room.getStandardPrice() != null ? room.getStandardPrice() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal roomVip    = room.getVipPrice()      != null ? room.getVipPrice()      : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal roomCouple = room.getCouplePrice()   != null ? room.getCouplePrice()   : java.math.BigDecimal.ZERO;
+
+            // Standard seat prices
+            java.math.BigDecimal childStd   = roomStd.add(childAdd);
+            java.math.BigDecimal studentStd = roomStd.add(studentAdd);
+            java.math.BigDecimal adultStd   = roomStd.add(adultAdd);
+
+            // VIP seat prices
+            java.math.BigDecimal childVip   = roomVip.add(childAdd);
+            java.math.BigDecimal studentVip = roomVip.add(studentAdd);
+            java.math.BigDecimal adultVip   = roomVip.add(adultAdd);
+
+            // Couple seat prices (all combinations: price per seat-pair = room base + surcharge1 + surcharge2)
+            java.math.BigDecimal ccCouple  = roomCouple.add(childAdd).add(childAdd);
+            java.math.BigDecimal csCouple  = roomCouple.add(childAdd).add(studentAdd);
+            java.math.BigDecimal caCouple  = roomCouple.add(childAdd).add(adultAdd);
+            java.math.BigDecimal ssCouple  = roomCouple.add(studentAdd).add(studentAdd);
+            java.math.BigDecimal saCouple  = roomCouple.add(studentAdd).add(adultAdd);
+            java.math.BigDecimal aaCouple  = roomCouple.add(adultAdd).add(adultAdd);
+
+            // Calculate end time
+            LocalDateTime endTime = calculateEndTime(movie, slot.startTime());
+
+            List<String> warnings = new ArrayList<>();
+            if (audiencePriceMissing) {
+                warnings.add("Rạp chưa cấu hình đủ giá vé theo đối tượng (CHILD/STUDENT/ADULT). Cần thiết lập trước khi lưu.");
+            }
+            if (slot.startTime().isBefore(LocalDateTime.now())) {
+                warnings.add("Thời gian bắt đầu đã qua hiện tại.");
+            }
+
+            results.add(new ShowtimePricePreviewResponse(
+                    slot.tempId(),
+                    movie.getId(),
+                    movie.getTitle(),
+                    room.getId(),
+                    room.getName(),
+                    cinemaId,
+                    room.getCinema().getName(),
+                    slot.startTime(),
+                    endTime,
+                    roomStd,
+                    roomVip,
+                    roomCouple,
+                    childAdd,
+                    studentAdd,
+                    adultAdd,
+                    childStd,
+                    studentStd,
+                    adultStd,
+                    childVip,
+                    studentVip,
+                    adultVip,
+                    ccCouple,
+                    csCouple,
+                    caCouple,
+                    ssCouple,
+                    saCouple,
+                    aaCouple,
+                    audiencePriceMissing,
+                    warnings
+            ));
+        }
+        return results;
+    }
 }
+

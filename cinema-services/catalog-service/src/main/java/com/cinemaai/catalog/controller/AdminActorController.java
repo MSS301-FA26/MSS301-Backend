@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,6 +42,7 @@ public class AdminActorController {
         return ApiResponse.success(actorService.searchAdminActors(keyword, page, size));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create actor (Admin)", description = "Create a new actor")
@@ -48,6 +50,7 @@ public class AdminActorController {
         return ApiResponse.success(actorService.create(request), "Actor created successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{actorId}")
     @Operation(summary = "Update actor (Admin)", description = "Update actor information")
     public ApiResponse<ActorResponse> updateActor(
@@ -57,6 +60,7 @@ public class AdminActorController {
         return ApiResponse.success(actorService.update(actorId, request), "Actor updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{actorId}")
     @Operation(summary = "Delete actor (Admin)", description = "Delete actor when not linked to movies")
     public ApiResponse<Void> deleteActor(@PathVariable Long actorId) {

@@ -255,7 +255,7 @@ class AdminBookingServiceTest {
         when(ticketAuditLogRepository.sumAmountByCinemaIdAndActionAndStatus(cinemaAId, "REFUND", "SUCCESS"))
                 .thenReturn(new BigDecimal("100000.00"));
         when(ticketAuditLogRepository.findAllByOrderByCreatedAtDesc(any())).thenReturn(org.springframework.data.domain.Page.empty());
-        when(bookingRepository.findBookingsForAdmin(eq(cinemaAId), eq(BookingStatus.CANCELLED), isNull(), any()))
+        when(bookingRepository.findBookingsByCinemaAndStatus(eq(cinemaAId), eq(BookingStatus.CANCELLED), any()))
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
         CinemaDashboardResponse metrics = adminBookingService.getDashboardMetrics(manager, null);

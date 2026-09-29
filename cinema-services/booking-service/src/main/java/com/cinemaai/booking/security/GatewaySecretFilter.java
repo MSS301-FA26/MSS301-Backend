@@ -14,17 +14,21 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Enforces Zero-Trust architecture: Blocks direct access to booking-service (port 8083).
- * Only requests routed through API Gateway (port 8080) with a valid X-Gateway-Secret header are accepted.
+ * Only requests routed through API Gateway (port 8080) with a valid X-Gateway-Secret header,
+ * or internal requests from other microservices with a valid X-Internal-Service-Secret header, are accepted.
  */
 @Component
 public class GatewaySecretFilter extends OncePerRequestFilter {
 
     private final String gatewaySecret;
+    private final String internalSecret;
 
     public GatewaySecretFilter(
-            @Value("${app.gateway.secret}") String gatewaySecret
+            @Value("${app.gateway.secret}") String gatewaySecret,
+            @Value("${app.internal.secret}") String internalSecret
     ) {
         this.gatewaySecret = gatewaySecret;
+        this.internalSecret = internalSecret;
     }
 
     @Override
@@ -32,15 +36,23 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = request.getRequestURI();
 
-        // Whitelisted endpoints: Docker/K8s health check
-        if (path.startsWith("/actuator/health")) {
+        // Whitelisted endpoints: Docker/K8s health check, swagger, preflight
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                || path.startsWith("/actuator/health")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/error")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String supplied = request.getHeader("X-Gateway-Secret");
+        boolean isInternal = path.startsWith("/internal/");
+        String headerName = isInternal ? "X-Internal-Service-Secret" : "X-Gateway-Secret";
+        String expectedSecret = isInternal ? internalSecret : gatewaySecret;
+        String supplied = request.getHeader(headerName);
+
         if (supplied == null || !MessageDigest.isEqual(
-                gatewaySecret.getBytes(StandardCharsets.UTF_8),
+                expectedSecret.getBytes(StandardCharsets.UTF_8),
                 supplied.getBytes(StandardCharsets.UTF_8))) {
 
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);

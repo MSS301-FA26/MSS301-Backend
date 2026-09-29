@@ -1,5 +1,6 @@
 package com.cinemaai.identity.service;
 
+import com.cinemaai.identity.client.CatalogClient;
 import com.cinemaai.identity.dto.request.user.AdminManagerCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminStaffCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminUserStatusUpdateRequest;
@@ -9,6 +10,7 @@ import com.cinemaai.identity.enums.RoleName;
 import com.cinemaai.identity.enums.UserStatus;
 import com.cinemaai.identity.exception.BadRequestException;
 import com.cinemaai.identity.exception.ForbiddenException;
+import com.cinemaai.identity.exception.NotFoundException;
 import com.cinemaai.identity.mapper.UserMapper;
 import com.cinemaai.identity.repository.UserProfileRepository;
 import com.cinemaai.identity.repository.UserRepository;
@@ -44,6 +46,8 @@ class UserServiceCinemaAssignmentTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private CatalogClient catalogClient;
 
     private UserServiceImpl userService;
 
@@ -56,7 +60,8 @@ class UserServiceCinemaAssignmentTest {
                 userCinemaAssignmentService,
                 userMapper,
                 passwordEncoder,
-                auditLogService
+                auditLogService,
+                catalogClient
         );
     }
 
@@ -190,5 +195,47 @@ class UserServiceCinemaAssignmentTest {
 
         // Manager cannot lock or edit another Manager
         assertThrows(ForbiddenException.class, () -> userService.updateStatusForActor(targetManagerId, req, managerEmail));
+    }
+
+    @Test
+    void testAdminCreateManager_NonexistentCinema_ThrowsNotFoundException() {
+        String adminEmail = "admin@cinemaai.com";
+        Long nonExistentCinemaId = 9999L;
+
+        AdminManagerCreateRequest req = new AdminManagerCreateRequest(
+                "mgr_invalid@cinemaai.com",
+                "Password@123",
+                "Manager Nonexistent Cinema",
+                "0987654321",
+                null,
+                nonExistentCinemaId
+        );
+
+        doThrow(new NotFoundException("Cụm rạp ID #9999 không tồn tại"))
+                .when(catalogClient).validateActiveCinema(nonExistentCinemaId);
+
+        assertThrows(NotFoundException.class, () -> userService.createManager(req, adminEmail));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void testAdminCreateManager_InactiveCinema_ThrowsBadRequestException() {
+        String adminEmail = "admin@cinemaai.com";
+        Long inactiveCinemaId = 101L;
+
+        AdminManagerCreateRequest req = new AdminManagerCreateRequest(
+                "mgr_inactive@cinemaai.com",
+                "Password@123",
+                "Manager Inactive Cinema",
+                "0987654321",
+                null,
+                inactiveCinemaId
+        );
+
+        doThrow(new BadRequestException("Cụm rạp hiện không hoạt động"))
+                .when(catalogClient).validateActiveCinema(inactiveCinemaId);
+
+        assertThrows(BadRequestException.class, () -> userService.createManager(req, adminEmail));
+        verify(userRepository, never()).save(any(User.class));
     }
 }

@@ -63,18 +63,36 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                     SELECT b FROM Booking b
                     WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
                       AND (:status IS NULL OR b.status = :status)
-                      AND (:search IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', :search, '%'))
-                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', :search, '%'))
-                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', :search, '%')))
                     ORDER BY b.createdAt DESC
                     """,
             countQuery = """
                     SELECT COUNT(b) FROM Booking b
                     WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
                       AND (:status IS NULL OR b.status = :status)
-                      AND (:search IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', :search, '%'))
-                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', :search, '%'))
-                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', :search, '%')))
+                    """
+    )
+    Page<Booking> findBookingsByCinemaAndStatus(
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            @org.springframework.data.repository.query.Param("status") BookingStatus status,
+            Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query(
+            value = """
+                    SELECT b FROM Booking b
+                    WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+                      AND (:status IS NULL OR b.status = :status)
+                      AND (cast(:search as string) IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
+                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
+                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%')))
+                    ORDER BY b.createdAt DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(b) FROM Booking b
+                    WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
+                      AND (:status IS NULL OR b.status = :status)
+                      AND (cast(:search as string) IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
+                           OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
+                           OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%')))
                     """
     )
     Page<Booking> findBookingsForAdmin(

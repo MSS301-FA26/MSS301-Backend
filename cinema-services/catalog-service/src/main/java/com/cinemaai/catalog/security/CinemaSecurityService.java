@@ -9,6 +9,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class CinemaSecurityService {
 
+    public boolean isAdmin(AuthenticatedUser user) {
+        return user != null && user.isAdmin();
+    }
+
+    public Long getAssignedCinemaId(AuthenticatedUser user) {
+        return user != null ? user.cinemaId() : null;
+    }
+
     public void validateCinemaAccess(AuthenticatedUser user, Long targetCinemaId) {
         if (user == null) {
             throw new UnauthorizedException("Yêu cầu xác thực tài khoản");
