@@ -35,8 +35,21 @@ public class CatalogQuoteDto {
                 String posterUrl,
                 String cinemaName,
                 String roomName,
-                LocalDateTime startTime
-        ) {}
+                LocalDateTime startTime,
+                Long cinemaId
+        ) {
+            public ShowtimeSnapshot(
+                    Long showtimeId,
+                    Long movieId,
+                    String movieTitle,
+                    String posterUrl,
+                    String cinemaName,
+                    String roomName,
+                    LocalDateTime startTime
+            ) {
+                this(showtimeId, movieId, movieTitle, posterUrl, cinemaName, roomName, startTime, null);
+            }
+        }
 
         public record SeatSnapshot(
                 Long seatId,

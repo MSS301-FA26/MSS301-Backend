@@ -55,10 +55,27 @@ public class TicketPricingRule extends BaseEntity {
     private BigDecimal price;
 
     @Setter
+    @Column(name = "cinema_id")
+    private Long cinemaId;
+
+    @Setter
     @Column(nullable = false)
     private boolean active = true;
 
+    @Setter
+    @Column(name = "effective_from")
+    private java.time.LocalDateTime effectiveFrom;
+
+    @Setter
+    @Column(name = "effective_to")
+    private java.time.LocalDateTime effectiveTo;
+
     public TicketPricingRule(TicketType ticketType, RoomType roomType, SeatType seatType, boolean weekend, boolean holiday, BigDecimal price) {
+        this(null, ticketType, roomType, seatType, weekend, holiday, price);
+    }
+
+    public TicketPricingRule(Long cinemaId, TicketType ticketType, RoomType roomType, SeatType seatType, boolean weekend, boolean holiday, BigDecimal price) {
+        this.cinemaId = cinemaId;
         this.ticketType = ticketType;
         this.roomType = roomType;
         this.seatType = seatType == null ? SeatType.STANDARD : seatType;

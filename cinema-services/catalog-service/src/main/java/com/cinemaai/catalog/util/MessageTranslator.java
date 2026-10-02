@@ -247,6 +247,7 @@ public final class MessageTranslator {
             entry("Room id is required", "Mã phòng chiếu là bắt buộc"),
             entry("Start time is required", "Thời gian bắt đầu là bắt buộc"),
             entry("Start time must be in the future", "Thời gian bắt đầu phải ở tương lai"),
+            entry("Showtime must be scheduled at least 1 day in advance (from tomorrow onwards)", "Suất chiếu phải được tạo trước ít nhất 1 ngày (từ ngày mai trở đi)"),
             entry("Cinema name is required", "Tên rạp phim là bắt buộc"),
             entry("Address is required", "Địa chỉ là bắt buộc"),
             entry("Address must be at most 500 characters", "Địa chỉ tối đa 500 ký tự"),

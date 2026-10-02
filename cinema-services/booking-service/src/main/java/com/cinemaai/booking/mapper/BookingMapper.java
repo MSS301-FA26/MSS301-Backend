@@ -36,6 +36,7 @@ public class BookingMapper {
                 booking.getMoviePosterSnapshot(),
                 booking.getCinemaNameSnapshot(),
                 booking.getCinemaNameSnapshot(),
+                booking.getCinemaId(),
                 booking.getRoomNameSnapshot(),
                 booking.getRoomNameSnapshot(),
                 booking.getShowtimeStartSnapshot(),

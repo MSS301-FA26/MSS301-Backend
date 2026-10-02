@@ -14,7 +14,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Enforces Zero-Trust architecture: Blocks direct access to booking-service (port 8083).
- * Only requests routed through API Gateway (port 8080) with a valid X-Gateway-Secret header are accepted.
+ * Only requests routed through API Gateway (port 8080) with a valid X-Gateway-Secret header,
+ * or internal requests from other microservices with a valid X-Internal-Service-Secret header, are accepted.
  */
 @Component
 public class GatewaySecretFilter extends OncePerRequestFilter {
@@ -23,8 +24,8 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
     private final String internalSecret;
 
     public GatewaySecretFilter(
-            @Value("${app.gateway.secret:8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}") String gatewaySecret,
-            @Value("${app.internal.secret:CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}") String internalSecret
+            @Value("${app.gateway.secret}") String gatewaySecret,
+            @Value("${app.internal.secret}") String internalSecret
     ) {
         this.gatewaySecret = gatewaySecret;
         this.internalSecret = internalSecret;
@@ -35,15 +36,19 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = request.getRequestURI();
 
-        // Whitelisted endpoints: Docker/K8s health check
-        if (path.startsWith("/actuator/health")) {
+        // Whitelisted endpoints: Docker/K8s health check, swagger, preflight
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                || path.startsWith("/actuator/health")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/error")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        boolean isInternalPath = path.startsWith("/internal/");
-        String headerName = isInternalPath ? "X-Internal-Service-Secret" : "X-Gateway-Secret";
-        String expectedSecret = isInternalPath ? internalSecret : gatewaySecret;
+        boolean isInternal = path.startsWith("/internal/");
+        String headerName = isInternal ? "X-Internal-Service-Secret" : "X-Gateway-Secret";
+        String expectedSecret = isInternal ? internalSecret : gatewaySecret;
         String supplied = request.getHeader(headerName);
 
         if (supplied == null || !MessageDigest.isEqual(
