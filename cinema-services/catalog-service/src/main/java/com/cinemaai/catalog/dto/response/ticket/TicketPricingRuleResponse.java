@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 
 public record TicketPricingRuleResponse(
         Long id,
+        Long cinemaId,
         TicketType ticketType,
         RoomType roomType,
         SeatType seatType,
@@ -15,7 +16,23 @@ public record TicketPricingRuleResponse(
         boolean holiday,
         BigDecimal price,
         boolean active,
+        LocalDateTime effectiveFrom,
+        LocalDateTime effectiveTo,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
+    public TicketPricingRuleResponse(
+            Long id,
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday,
+            BigDecimal price,
+            boolean active,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(id, null, ticketType, roomType, seatType, weekend, holiday, price, active, null, null, createdAt, updatedAt);
+    }
 }

@@ -28,13 +28,15 @@ class CheckoutQuoteServiceTest {
     @Mock SeatRepository seats;
     @Mock FoodItemRepository items;
     @Mock FoodComboRepository combos;
+    @Mock TicketPricingRuleRepository pricingRules;
+    @Mock com.cinemaai.catalog.repository.CinemaAudiencePriceRepository audiencePrices;
     private CheckoutQuoteServiceImpl service;
     private Showtime showtime;
     private Seat standardSeat;
 
     @BeforeEach
     void setUp() {
-        service = new CheckoutQuoteServiceImpl(showtimes, seats, items, combos);
+        service = new CheckoutQuoteServiceImpl(showtimes, seats, items, combos, pricingRules, audiencePrices);
         ReflectionTestUtils.setField(service, "ttlSeconds", 300L);
 
         Cinema cinema = withId(new Cinema("CinemaAI Central", "Address", "City", "0123"), 1L);
@@ -141,6 +143,46 @@ class CheckoutQuoteServiceTest {
         assertThatThrownBy(() -> service.quote(request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Số lượng vé không được âm");
+    }
+
+    @Test
+    void cinemaLocalRuleOverridesGlobalRule() {
+        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
+
+        TicketPricingRule localRule = withId(new TicketPricingRule(1L, TicketType.ADULT, RoomType.STANDARD, SeatType.STANDARD, false, false, new BigDecimal("120000")), 111L);
+        when(pricingRules.findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                any(), any(), any(), any(), any(Boolean.class), any(Boolean.class)))
+                .thenReturn(Optional.of(localRule));
+
+        var request = new CheckoutQuoteRequest(40L, List.of(100L),
+                List.of(new CheckoutQuoteRequest.Ticket(100L, TicketType.ADULT, 30, 1)), List.of());
+
+        var response = service.quote(request);
+        assertThat(response.ticketSubtotal()).isEqualByComparingTo(new BigDecimal("120000"));
+        assertThat(response.tickets().get(0).unitPrice()).isEqualByComparingTo(new BigDecimal("120000"));
+    }
+
+    @Test
+    void otherCinemaDoesNotReceiveLocalOverride_UsesGlobalRule() {
+        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
+
+        // No local rule for cinema
+        when(pricingRules.findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                any(), any(), any(), any(), any(Boolean.class), any(Boolean.class)))
+                .thenReturn(Optional.empty());
+
+        // Global rule exists
+        TicketPricingRule globalRule = withId(new TicketPricingRule(null, TicketType.ADULT, RoomType.STANDARD, SeatType.STANDARD, false, false, new BigDecimal("100000")), 222L);
+        when(pricingRules.findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                any(), any(), any(), any(Boolean.class), any(Boolean.class)))
+                .thenReturn(Optional.of(globalRule));
+
+        var request = new CheckoutQuoteRequest(40L, List.of(100L),
+                List.of(new CheckoutQuoteRequest.Ticket(100L, TicketType.ADULT, 30, 1)), List.of());
+
+        var response = service.quote(request);
+        assertThat(response.ticketSubtotal()).isEqualByComparingTo(new BigDecimal("100000"));
+        assertThat(response.tickets().get(0).unitPrice()).isEqualByComparingTo(new BigDecimal("100000"));
     }
 
     private static <T> T withId(T entity, Long id) {

@@ -13,5 +13,7 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
     List<Room> findByCinema(Cinema cinema);
 
+    List<Room> findByCinemaId(Long cinemaId);
+
     List<Room> findByStatus(RoomStatus status);
 }

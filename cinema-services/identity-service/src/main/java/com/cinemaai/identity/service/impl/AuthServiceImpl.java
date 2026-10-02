@@ -25,6 +25,7 @@ import com.cinemaai.identity.service.EmailVerificationService;
 import com.cinemaai.identity.service.GoogleTokenVerifier;
 import com.cinemaai.identity.service.MailService;
 import com.cinemaai.identity.service.RefreshTokenService;
+import com.cinemaai.identity.service.UserCinemaAssignmentService;
 import com.cinemaai.identity.service.UserRoleService;
 import com.cinemaai.identity.service.UserService;
 import java.security.SecureRandom;
@@ -57,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final EmailVerificationService emailVerificationService;
     private final UserRoleService userRoleService;
     private final UserService userService;
+    private final UserCinemaAssignmentService userCinemaAssignmentService;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final MailService mailService;
 
@@ -262,8 +264,9 @@ public class AuthServiceImpl implements AuthService {
     private AuthResponse createAuthResponse(User user) {
         List<String> roles = userRoleService.getRoleNames(user.getId());
         RefreshToken refreshToken = refreshTokenService.create(user);
+        Long cinemaId = userCinemaAssignmentService.getCinemaIdByUserId(user.getId()).orElse(null);
         return new AuthResponse(
-                jwtService.generateAccessToken(user.getId(), user.getEmail(), roles),
+                jwtService.generateAccessToken(user.getId(), user.getEmail(), roles, cinemaId),
                 refreshToken.getToken(),
                 "Bearer",
                 jwtProperties.accessExpirationMs(),
