@@ -16,11 +16,20 @@ class CatalogMigrationTest {
                 .load()
                 .migrate();
 
-        try (var connection = DriverManager.getConnection(url, "sa", "");
-             var result = connection.createStatement().executeQuery(
-                     "select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'showtimes'")) {
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            assertCountAtLeast(connection, "cinemas", 1);
+            assertCountAtLeast(connection, "rooms", 1);
+            assertCountAtLeast(connection, "seat_rows", 1);
+            assertCountAtLeast(connection, "seats", 1);
+            assertCountAtLeast(connection, "showtimes", 1);
+            assertCountAtLeast(connection, "ticket_pricing_rules", 1);
+        }
+    }
+
+    private void assertCountAtLeast(java.sql.Connection connection, String table, int expectedMinimum) throws Exception {
+        try (var result = connection.createStatement().executeQuery("select count(*) from " + table)) {
             assertThat(result.next()).isTrue();
-            assertThat(result.getInt(1)).isEqualTo(1);
+            assertThat(result.getInt(1)).isGreaterThanOrEqualTo(expectedMinimum);
         }
     }
 }
