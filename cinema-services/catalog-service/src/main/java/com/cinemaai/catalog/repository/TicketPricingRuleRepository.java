@@ -16,6 +16,23 @@ public interface TicketPricingRuleRepository extends JpaRepository<TicketPricing
 
     List<TicketPricingRule> findByActiveTrue();
 
+    Optional<TicketPricingRule> findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+            Long cinemaId,
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday
+    );
+
+    Optional<TicketPricingRule> findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday
+    );
+
     Optional<TicketPricingRule> findFirstByTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
             TicketType ticketType,
             RoomType roomType,
@@ -41,14 +58,52 @@ public interface TicketPricingRuleRepository extends JpaRepository<TicketPricing
             Long id
     );
 
+    boolean existsByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
+            Long cinemaId,
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday
+    );
+
+    boolean existsByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrue(
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday
+    );
+
+    boolean existsByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
+            Long cinemaId,
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday,
+            Long id
+    );
+
+    boolean existsByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueAndIdNot(
+            TicketType ticketType,
+            RoomType roomType,
+            SeatType seatType,
+            boolean weekend,
+            boolean holiday,
+            Long id
+    );
+
     @Query("""
             select rule from TicketPricingRule rule
-            where (:ticketType is null or rule.ticketType = :ticketType)
+            where (:cinemaId is null or rule.cinemaId = :cinemaId)
+              and (:ticketType is null or rule.ticketType = :ticketType)
               and (:roomType is null or rule.roomType = :roomType)
               and (:seatType is null or rule.seatType = :seatType)
               and (:active is null or rule.active = :active)
             """)
     Page<TicketPricingRule> searchAdmin(
+            @Param("cinemaId") Long cinemaId,
             @Param("ticketType") TicketType ticketType,
             @Param("roomType") RoomType roomType,
             @Param("seatType") SeatType seatType,

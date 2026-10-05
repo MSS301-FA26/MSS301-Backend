@@ -33,4 +33,6 @@ public interface BookingService {
     BookingResponse getAdminBooking(Long bookingId);
 
     BookingResponse cancelAdmin(Long bookingId, String reason);
+
+    com.cinemaai.booking.dto.response.BookingEligibilityResponse checkReviewEligibility(Long userId, Long movieId);
 }

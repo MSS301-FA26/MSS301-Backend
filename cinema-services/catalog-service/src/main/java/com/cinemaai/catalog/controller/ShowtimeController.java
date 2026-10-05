@@ -26,7 +26,7 @@ public class ShowtimeController {
     private final ShowtimeService showtimeService;
 
     @GetMapping("/customer-schedule")
-    public ApiResponse<List<CustomerShowtimeSlotResponse>> getCustomerSchedule(
+    public ApiResponse<List<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse>> getCustomerSchedule(
             @RequestParam(required = false) Long movieId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
@@ -34,7 +34,7 @@ public class ShowtimeController {
     }
 
     @GetMapping("/{showtimeId}/resolve")
-    public ApiResponse<CustomerShowtimeSlotResponse> resolveCustomerShowtime(@PathVariable Long showtimeId) {
+    public ApiResponse<com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse> resolveCustomerShowtime(@PathVariable Long showtimeId) {
         return ApiResponse.success(showtimeService.resolveCustomerShowtime(showtimeId));
     }
 
@@ -42,11 +42,12 @@ public class ShowtimeController {
     public ApiResponse<PageResponse<ShowtimeResponse>> searchShowtimes(
             @RequestParam(required = false) Long movieId,
             @RequestParam(required = false) Long roomId,
+            @RequestParam(required = false) Long cinemaId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(showtimeService.searchPublic(movieId, roomId, date, page, size));
+        return ApiResponse.success(showtimeService.searchPublic(movieId, roomId, cinemaId, date, page, size));
     }
 
     @GetMapping("/{showtimeId}")

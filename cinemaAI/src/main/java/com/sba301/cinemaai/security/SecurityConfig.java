@@ -60,6 +60,13 @@ public class SecurityConfig {
                                 "/api/v1/recommendation/stats"
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/promotions/validate").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/hero-banners/*/impression", "/api/v1/hero-banners/*/click").permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/hero-banners",
+                                "/api/v1/hero-banners/**",
+                                "/api/v1/public/hero-banners/**"
+                        ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/catalog/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/chat").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
@@ -83,6 +90,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/admin/movies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/uploads/images", "/api/v1/admin/uploads/videos")
                                 .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/v1/admin/hero-banners/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/v1/admin/wallet/**").hasAnyRole("ADMIN", "STAFF")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/manager/**").hasRole("MANAGER")
