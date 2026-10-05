@@ -452,4 +452,42 @@ public class BookingServiceImpl implements BookingService {
         log.info("Admin cancelled booking #{} reason: {}", bookingId, reason);
         return BookingMapper.toResponse(saved);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.cinemaai.booking.dto.response.BookingEligibilityResponse checkReviewEligibility(Long userId, Long movieId) {
+        java.util.List<BookingStatus> validStatuses = java.util.List.of(BookingStatus.PAID, BookingStatus.USED);
+        java.util.List<Booking> bookings = bookingRepository.findByUserIdAndMovieIdAndStatusIn(userId, movieId, validStatuses);
+        if (bookings.isEmpty()) {
+            return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(false, null, null, null, null, null);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Booking watchedBooking = bookings.stream()
+                .filter(b -> b.getStatus() == BookingStatus.USED ||
+                        (b.getShowtimeStartSnapshot() != null && b.getShowtimeStartSnapshot().isBefore(now)))
+                .findFirst()
+                .orElse(null);
+
+        if (watchedBooking != null) {
+            return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(
+                    true,
+                    watchedBooking.getId(),
+                    watchedBooking.getBookingCode(),
+                    watchedBooking.getShowtimeStartSnapshot(),
+                    watchedBooking.getCinemaNameSnapshot(),
+                    watchedBooking.getStatus().name()
+            );
+        }
+
+        Booking futureBooking = bookings.get(0);
+        return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(
+                false,
+                futureBooking.getId(),
+                futureBooking.getBookingCode(),
+                futureBooking.getShowtimeStartSnapshot(),
+                futureBooking.getCinemaNameSnapshot(),
+                futureBooking.getStatus().name()
+        );
+    }
 }

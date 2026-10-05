@@ -23,6 +23,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByUserIdAndShowtimeIdAndStatusIn(
             Long userId, Long showtimeId, Collection<BookingStatus> statuses);
 
+    List<Booking> findByUserIdAndMovieIdAndStatusIn(
+            Long userId, Long movieId, Collection<BookingStatus> statuses);
+
     List<Booking> findByStatusInAndHoldExpiresAtBefore(
             Collection<BookingStatus> statuses, LocalDateTime time);
 
