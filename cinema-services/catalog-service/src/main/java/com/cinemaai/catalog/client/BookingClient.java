@@ -23,9 +23,18 @@ public class BookingClient {
             LocalDateTime holdExpiresAt
     ) {}
 
+    public record BookingEligibilityDto(
+            boolean hasWatched,
+            Long bookingId,
+            String bookingCode,
+            LocalDateTime showtimeStart,
+            String cinemaName,
+            String status
+    ) {}
+
     public BookingClient(
-            @Value("${booking.service.url:http://localhost:8083}") String bookingServiceUrl,
-            @Value("${app.internal.secret:CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}") String internalSecret
+            @Value("${booking.service.url}") String bookingServiceUrl,
+            @Value("${app.internal.secret}") String internalSecret
     ) {
         this.internalSecret = internalSecret;
         this.restClient = RestClient.builder().baseUrl(bookingServiceUrl).build();
@@ -47,5 +56,27 @@ public class BookingClient {
                     showtimeId, ex.getMessage());
         }
         return Collections.emptyList();
+    }
+
+    public java.util.Optional<BookingEligibilityDto> checkBookingEligibility(Long userId, Long movieId) {
+        try {
+            ApiResponse<BookingEligibilityDto> response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/internal/v1/bookings/verify-eligibility")
+                            .queryParam("userId", userId)
+                            .queryParam("movieId", movieId)
+                            .build())
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<BookingEligibilityDto>>() {});
+
+            if (response != null && response.data() != null) {
+                return java.util.Optional.of(response.data());
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to check booking eligibility for userId={} movieId={} from booking-service: {}",
+                    userId, movieId, ex.getMessage());
+        }
+        return java.util.Optional.empty();
     }
 }

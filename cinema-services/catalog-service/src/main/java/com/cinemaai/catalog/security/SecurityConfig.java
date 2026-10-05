@@ -72,16 +72,69 @@ public class SecurityConfig {
                         writeError(mapper, request, response, 403, "Trusted service access required");
                         return;
                     }
+                    // Check headers from trusted Gateway or Bearer JWT Token
+                    String userIdHeader = request.getHeader("X-User-Id");
+                    String userRolesHeader = request.getHeader("X-User-Roles");
+                    String userCinemaHeader = request.getHeader("X-User-Cinema-Id");
                     String bearer = request.getHeader("Authorization");
-                    if (bearer != null && bearer.startsWith("Bearer ") && !internal) {
+
+                    if (userIdHeader != null && !userIdHeader.isBlank()) {
+                        try {
+                            Long uid = Long.parseLong(userIdHeader.trim());
+                            Long cinemaId = null;
+                            if (userCinemaHeader != null && !userCinemaHeader.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(userCinemaHeader.trim());
+                                } catch (Exception ignored) {}
+                            }
+                            java.util.List<SimpleGrantedAuthority> roles = new java.util.ArrayList<>();
+                            if (userRolesHeader != null && !userRolesHeader.isBlank()) {
+                                for (String role : userRolesHeader.split(",")) {
+                                    String r = role.trim();
+                                    if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
+                                    roles.add(new SimpleGrantedAuthority(r));
+                                }
+                            }
+                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), roles, cinemaId);
+                            SecurityContextHolder.getContext().setAuthentication(
+                                    new UsernamePasswordAuthenticationToken(user, null, roles));
+                        } catch (Exception ignored) {}
+                    } else if (bearer != null && bearer.startsWith("Bearer ") && !internal) {
                         try {
                             var claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(bearer.substring(7)).getPayload();
+                            Long uid = null;
+                            Object uidObj = claims.get("userId");
+                            if (uidObj instanceof Number num) {
+                                uid = num.longValue();
+                            } else if (claims.getSubject() != null) {
+                                try {
+                                    uid = Long.parseLong(claims.getSubject());
+                                } catch (Exception ignored) {}
+                            }
+
+                            Long cinemaId = null;
+                            Object cinemaObj = claims.get("cinemaId");
+                            if (cinemaObj instanceof Number cNum) {
+                                cinemaId = cNum.longValue();
+                            } else if (cinemaObj instanceof String cStr && !cStr.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(cStr.trim());
+                                } catch (Exception ignored) {}
+                            }
+
                             Object rawRoles = claims.get("roles");
                             List<SimpleGrantedAuthority> roles = rawRoles instanceof List<?> values ? values.stream()
                                     .filter(String.class::isInstance).map(String.class::cast)
                                     .map(role -> new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role)).toList() : List.of();
+
+                            String email = claims.get("email", String.class);
+                            if (email == null) {
+                                email = claims.getSubject();
+                            }
+
+                            AuthenticatedUser user = new AuthenticatedUser(uid, email, roles, cinemaId);
                             SecurityContextHolder.getContext().setAuthentication(
-                                    new UsernamePasswordAuthenticationToken(claims.getSubject(), null, roles));
+                                    new UsernamePasswordAuthenticationToken(user, null, roles));
                         } catch (RuntimeException exception) {
                             writeError(mapper, request, response, 401, "Invalid or expired access token");
                             return;
@@ -100,10 +153,31 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/internal/v1/catalog/checkout-quote").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/cinemas", "/api/v1/admin/cinemas/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/cinemas/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/movies", "/api/v1/admin/movies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/movies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/movies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/movies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/genres", "/api/v1/admin/genres/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/genres/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/genres/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/actors", "/api/v1/admin/actors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/actors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/actors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/directors", "/api/v1/admin/directors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/directors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/directors/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/system-settings", "/api/v1/admin/system-settings/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/reviews", "/api/v1/admin/reviews/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/reviews/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/reviews/**").authenticated()
+                        .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/internal/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/ticket-pricing/validate", "/api/v1/catalog/checkout-quote").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/ticket-pricing/validate", "/api/v1/catalog/checkout-quote", "/api/v1/hero-banners/**").permitAll()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> writeError(mapper, request, response, 401, "Authentication required"))

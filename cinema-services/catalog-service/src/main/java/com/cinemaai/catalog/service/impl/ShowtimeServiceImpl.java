@@ -1,12 +1,16 @@
 package com.cinemaai.catalog.service.impl;
 
 import com.cinemaai.catalog.dto.request.cinema.BulkShowtimeRequest;
+import com.cinemaai.catalog.dto.request.cinema.ShowtimePreviewRequest;
 import com.cinemaai.catalog.dto.request.cinema.ShowtimeRequest;
 import com.cinemaai.catalog.dto.response.PageResponse;
+import com.cinemaai.catalog.dto.response.cinema.AvailableSlotResponse;
 import com.cinemaai.catalog.dto.response.cinema.CustomerShowtimeSlotResponse;
+import com.cinemaai.catalog.dto.response.cinema.ShowtimePricePreviewResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatMapResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatResponse;
+import com.cinemaai.catalog.entity.CinemaAudiencePrice;
 import com.cinemaai.catalog.entity.Movie;
 import com.cinemaai.catalog.entity.Room;
 import com.cinemaai.catalog.entity.Seat;
@@ -17,13 +21,12 @@ import com.cinemaai.catalog.exception.ConflictException;
 import com.cinemaai.catalog.exception.NotFoundException;
 import com.cinemaai.catalog.mapper.CinemaMapper;
 import com.cinemaai.catalog.repository.*;
-import com.cinemaai.catalog.dto.response.cinema.AvailableSlotResponse;
 import com.cinemaai.catalog.service.AuditLogService;
 import com.cinemaai.catalog.service.RoomService;
 import com.cinemaai.catalog.service.ShowtimeService;
-import java.time.LocalTime;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -64,196 +67,16 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     private final CinemaMapper cinemaMapper;
     private final AuditLogService auditLogService;
     private final com.cinemaai.catalog.client.BookingClient bookingClient;
+    private final CinemaAudiencePriceRepository audiencePriceRepository;
 
 
-    // -------------------------------------------------------------------------
-    // PUBLIC (customer-facing)
-    // -------------------------------------------------------------------------
-
-    @Transactional(readOnly = true)
-    public List<CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date) {
-        LocalDateTime cutoff = LocalDateTime.now().plusMinutes(10);
-        LocalDateTime from = date == null ? cutoff : date.atStartOfDay();
-        if (from.isBefore(cutoff)) {
-            from = cutoff;
-        }
-        LocalDateTime to = date == null ? LocalDate.now().plusYears(1).atStartOfDay() : date.plusDays(1).atStartOfDay();
-        if (to.isBefore(from)) {
-            return Collections.emptyList();
-        }
-
-        List<Showtime> candidates = showtimeRepository.findCustomerCandidateShowtimes(movieId, from, to);
-        if (candidates.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        Map<Long, Integer> availableSeatsMap = computeAvailableSeatsForShowtimes(candidates);
-
-        List<ShowtimeAvailability> validShowtimes = candidates.stream()
-                .map(st -> new ShowtimeAvailability(st, availableSeatsMap.getOrDefault(st.getId(), 0)))
-                .filter(sa -> sa.availableSeats() > 0)
-                .toList();
-
-        if (validShowtimes.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        Map<String, List<ShowtimeAvailability>> grouped = validShowtimes.stream()
-                .collect(Collectors.groupingBy(
-                        sa -> sa.showtime().getStartTime().toString() + "_" + resolveFormat(sa.showtime().getRoom().getRoomType()),
-                        LinkedHashMap::new,
-                        Collectors.toList()
-                ));
-
-        List<CustomerShowtimeSlotResponse> responses = new ArrayList<>();
-        for (List<ShowtimeAvailability> slotList : grouped.values()) {
-            ShowtimeAvailability best = slotList.stream()
-                    .sorted(Comparator.comparingInt(ShowtimeAvailability::availableSeats).reversed()
-                            .thenComparingLong(sa -> sa.showtime().getId()))
-                    .findFirst()
-                    .orElse(null);
-
-            if (best == null) continue;
-
-            java.math.BigDecimal minPrice = slotList.stream()
-                    .map(sa -> sa.showtime().getBasePrice())
-                    .filter(Objects::nonNull)
-                    .min(java.math.BigDecimal::compareTo)
-                    .orElse(best.showtime().getBasePrice());
-
-            responses.add(new CustomerShowtimeSlotResponse(
-                    best.showtime().getId(),
-                    best.showtime().getMovie().getId(),
-                    best.showtime().getMovie().getTitle(),
-                    best.showtime().getStartTime(),
-                    best.showtime().getEndTime(),
-                    resolveFormat(best.showtime().getRoom().getRoomType()),
-                    minPrice,
-                    best.availableSeats(),
-                    best.showtime().getRoom().getId()
-            ));
-        }
-
-        responses.sort(Comparator.comparing(CustomerShowtimeSlotResponse::startTime));
-        return responses;
-    }
-
-    @Transactional(readOnly = true)
-    public CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId) {
-        Showtime showtime = findById(showtimeId);
-        LocalDateTime cutoff = LocalDateTime.now().plusMinutes(10);
-
-        boolean isSelfValid = showtime.getStatus() == ShowtimeStatus.OPEN
-                && showtime.getRoom().getStatus() == RoomStatus.ACTIVE
-                && showtime.getMovie().getStatus() != MovieStatus.INACTIVE
-                && showtime.getStartTime().isAfter(cutoff);
-
-        if (isSelfValid) {
-            Map<Long, Integer> seatsMap = computeAvailableSeatsForShowtimes(List.of(showtime));
-            int availableSeats = seatsMap.getOrDefault(showtime.getId(), 0);
-            if (availableSeats > 0) {
-                return new CustomerShowtimeSlotResponse(
-                        showtime.getId(),
-                        showtime.getMovie().getId(),
-                        showtime.getMovie().getTitle(),
-                        showtime.getStartTime(),
-                        showtime.getEndTime(),
-                        resolveFormat(showtime.getRoom().getRoomType()),
-                        showtime.getBasePrice(),
-                        availableSeats,
-                        showtime.getRoom().getId()
-                );
-            }
-        }
-
-        if (!showtime.getStartTime().isAfter(cutoff)) {
-            throw new BadRequestException("Khung giờ này vừa hết chỗ. Vui lòng chọn khung giờ khác.");
-        }
-
-        List<Showtime> candidates = showtimeRepository.findEquivalentCandidateShowtimes(
-                showtime.getMovie().getId(),
-                showtime.getStartTime()
-        );
-
-        if (!candidates.isEmpty()) {
-            Map<Long, Integer> seatsMap = computeAvailableSeatsForShowtimes(candidates);
-            ShowtimeAvailability best = candidates.stream()
-                    .map(st -> new ShowtimeAvailability(st, seatsMap.getOrDefault(st.getId(), 0)))
-                    .filter(sa -> sa.availableSeats() > 0)
-                    .sorted(Comparator.comparingInt(ShowtimeAvailability::availableSeats).reversed()
-                            .thenComparingLong(sa -> sa.showtime().getId()))
-                    .findFirst()
-                    .orElse(null);
-
-            if (best != null) {
-                return new CustomerShowtimeSlotResponse(
-                        best.showtime().getId(),
-                        best.showtime().getMovie().getId(),
-                        best.showtime().getMovie().getTitle(),
-                        best.showtime().getStartTime(),
-                        best.showtime().getEndTime(),
-                        resolveFormat(best.showtime().getRoom().getRoomType()),
-                        best.showtime().getBasePrice(),
-                        best.availableSeats(),
-                        best.showtime().getRoom().getId()
-                );
-            }
-        }
-
-        throw new BadRequestException("Khung giờ này vừa hết chỗ. Vui lòng chọn khung giờ khác.");
-    }
-
-    private record ShowtimeAvailability(Showtime showtime, int availableSeats) {}
-
-    private String resolveFormat(RoomType roomType) {
-        if (roomType == null) return "2D";
-        return switch (roomType) {
-            case THREE_D -> "3D";
-            case IMAX -> "IMAX";
-            case VIP -> "VIP";
-            case TWO_D, STANDARD -> "2D";
-            default -> "2D";
-        };
-    }
-
-    private Map<Long, Integer> computeAvailableSeatsForShowtimes(List<Showtime> showtimes) {
-        if (showtimes == null || showtimes.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        List<Room> rooms = showtimes.stream()
-                .map(Showtime::getRoom)
-                .distinct()
-                .toList();
-
-        List<Seat> activeSeats = seatRepository.findByRoomInAndStatus(rooms, SeatStatus.AVAILABLE);
-        Map<Long, Long> totalSeatsByRoom = activeSeats.stream()
-                .collect(Collectors.groupingBy(s -> s.getRoom().getId(), Collectors.counting()));
-
-        Map<Long, Integer> result = new HashMap<>();
-        for (Showtime st : showtimes) {
-            int total = totalSeatsByRoom.getOrDefault(st.getRoom().getId(), 0L).intValue();
-            int occupied = 0;
-            try {
-                List<com.cinemaai.catalog.client.BookingClient.OccupiedSeat> occupiedSeats =
-                        bookingClient.getOccupiedSeats(st.getId());
-                if (occupiedSeats != null) {
-                    occupied = occupiedSeats.size();
-                }
-            } catch (Exception ex) {
-                log.warn("Could not fetch occupied seats for showtime {}: {}", st.getId(), ex.getMessage());
-            }
-            int available = Math.max(0, total - occupied);
-            result.put(st.getId(), available);
-        }
-        return result;
-    }
 
     /**
      * Public showtime search: only returns OPEN showtimes.
      * SCHEDULED is an internal admin state — customers cannot book it.
      */
     @Transactional(readOnly = true)
-    public PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, LocalDate date, int page, int size) {
+    public PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, Long cinemaId, LocalDate date, int page, int size) {
         LocalDateTime from = date == null ? LocalDate.now().atStartOfDay() : date.atStartOfDay();
         LocalDateTime to = date == null ? LocalDate.now().plusYears(1).atStartOfDay() : date.plusDays(1).atStartOfDay();
         LocalDateTime now = LocalDateTime.now();
@@ -262,7 +85,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
 
         org.springframework.data.domain.Page<Showtime> showtimePage =
-                showtimeRepository.searchPublic(movieId, roomId, from, to,
+                showtimeRepository.searchPublic(movieId, roomId, cinemaId, from, to,
                         pageable(page, size, Sort.by("startTime").ascending()));
 
         // Batch-fetch genres for all movies on this page
@@ -321,7 +144,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Transactional(readOnly = true)
     public ShowtimeResponse get(Long id) {
         Showtime showtime = findById(id);
-        if (showtime.getStatus() != ShowtimeStatus.OPEN || showtime.getMovie().getStatus() == MovieStatus.INACTIVE) {
+        if ((showtime.getStatus() != ShowtimeStatus.OPEN && showtime.getStatus() != ShowtimeStatus.SCHEDULED)
+                || showtime.getMovie().getStatus() == MovieStatus.INACTIVE) {
             throw new NotFoundException("Showtime not found");
         }
         return cinemaMapper.toShowtimeResponse(showtime);
@@ -437,6 +261,10 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             }
             if (!slot.startTime().isAfter(LocalDateTime.now())) {
                 throw new BadRequestException(slotLabel + ": start time must be in the future");
+            }
+            LocalDate tomorrow = LocalDate.now().plusDays(1);
+            if (slot.startTime().toLocalDate().isBefore(tomorrow)) {
+                throw new BadRequestException(slotLabel + ": Showtime must be scheduled at least 1 day in advance (from tomorrow onwards)");
             }
             validateShowtimeWithinMovieReleaseWindow(movie, slot.startTime(), slotLabel + ": ");
             if (!roomStartTimesInRequest.add(slot.roomId() + "|" + slot.startTime())) {
@@ -603,6 +431,12 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
         if (!startTime.isAfter(LocalDateTime.now())) {
             throw new BadRequestException("Showtime start time must be in the future");
+        }
+        if (excludeId == null) {
+            LocalDate tomorrow = LocalDate.now().plusDays(1);
+            if (startTime.toLocalDate().isBefore(tomorrow)) {
+                throw new BadRequestException("Showtime must be scheduled at least 1 day in advance (from tomorrow onwards)");
+            }
         }
         if (!endTime.isAfter(startTime)) {
             throw new BadRequestException("Showtime end time must be after start time");
@@ -776,15 +610,35 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             boolean holidaySurcharge,
             java.math.BigDecimal lateNightSurchargeAmount
     ) {
-        java.math.BigDecimal adultStandard = defaultMoney(adultStandardPrice, showtime.getBasePrice());
-        java.math.BigDecimal childStandard = defaultMoney(childStandardPrice, adultStandard);
-        java.math.BigDecimal studentStandard = defaultMoney(studentStandardPrice, adultStandard);
-        java.math.BigDecimal adultVip = defaultMoney(adultVipPrice, adultStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal childVip = defaultMoney(childVipPrice, childStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal studentVip = defaultMoney(studentVipPrice, studentStandard.add(java.math.BigDecimal.valueOf(20_000)));
-        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, adultStandard.add(java.math.BigDecimal.valueOf(30_000)));
-        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, childStandard.add(java.math.BigDecimal.valueOf(30_000)));
-        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, studentStandard.add(java.math.BigDecimal.valueOf(30_000)));
+        Room room = showtime.getRoom();
+        Long cinemaId = room != null && room.getCinema() != null ? room.getCinema().getId() : null;
+
+        java.math.BigDecimal baseStd = room != null && room.getStandardPrice() != null ? room.getStandardPrice() : defaultMoney(showtime.getBasePrice(), java.math.BigDecimal.valueOf(60_000));
+        java.math.BigDecimal baseVip = room != null && room.getVipPrice() != null ? room.getVipPrice() : baseStd.add(java.math.BigDecimal.valueOf(20_000));
+        java.math.BigDecimal baseCpl = room != null && room.getCouplePrice() != null ? room.getCouplePrice() : baseStd.add(java.math.BigDecimal.valueOf(30_000));
+
+        java.math.BigDecimal surChild = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal surStudent = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal surAdult = java.math.BigDecimal.ZERO;
+
+        if (cinemaId != null && audiencePriceRepository != null) {
+            var audMap = audiencePriceRepository.findByCinemaId(cinemaId);
+            for (var ap : audMap) {
+                if (ap.getAudienceType() == AudienceType.CHILD && ap.getAdditionalPrice() != null) surChild = ap.getAdditionalPrice();
+                else if (ap.getAudienceType() == AudienceType.STUDENT && ap.getAdditionalPrice() != null) surStudent = ap.getAdditionalPrice();
+                else if (ap.getAudienceType() == AudienceType.ADULT && ap.getAdditionalPrice() != null) surAdult = ap.getAdditionalPrice();
+            }
+        }
+
+        java.math.BigDecimal adultStandard = defaultMoney(adultStandardPrice, baseStd.add(surAdult));
+        java.math.BigDecimal childStandard = defaultMoney(childStandardPrice, baseStd.add(surChild));
+        java.math.BigDecimal studentStandard = defaultMoney(studentStandardPrice, baseStd.add(surStudent));
+        java.math.BigDecimal adultVip = defaultMoney(adultVipPrice, baseVip.add(surAdult));
+        java.math.BigDecimal childVip = defaultMoney(childVipPrice, baseVip.add(surChild));
+        java.math.BigDecimal studentVip = defaultMoney(studentVipPrice, baseVip.add(surStudent));
+        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, baseCpl.add(surAdult.multiply(java.math.BigDecimal.valueOf(2))));
+        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, baseCpl.add(surChild.multiply(java.math.BigDecimal.valueOf(2))));
+        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, baseCpl.add(surStudent.multiply(java.math.BigDecimal.valueOf(2))));
 
         showtime.setAdultStandardPrice(adultStandard);
         showtime.setChildStandardPrice(childStandard);
@@ -812,7 +666,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                 .orElseThrow(() -> new NotFoundException("Movie not found"));
     }
 
-    private Showtime findById(Long id) {
+    @Override
+    @Transactional(readOnly = true)
+    public Showtime findById(Long id) {
         return showtimeRepository.findWithDetailsById(id)
                 .orElseThrow(() -> new NotFoundException("Showtime not found"));
     }
@@ -822,4 +678,326 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         showtime.setCancelledAt(LocalDateTime.now());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date) {
+        LocalDateTime cutoff = LocalDateTime.now().plusMinutes(10);
+        LocalDateTime from = date == null ? cutoff : date.atStartOfDay();
+        if (from.isBefore(cutoff)) {
+            from = cutoff;
+        }
+        LocalDateTime to = date == null ? LocalDate.now().plusYears(1).atStartOfDay() : date.plusDays(1).atStartOfDay();
+        if (to.isBefore(from)) {
+            return Collections.emptyList();
+        }
+
+        List<Showtime> candidates = showtimeRepository.findCustomerCandidateShowtimes(movieId, from, to);
+        if (candidates.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, Integer> availableSeatsMap = computeAvailableSeatsForShowtimes(candidates);
+
+        List<ShowtimeAvailability> validShowtimes = candidates.stream()
+                .map(st -> new ShowtimeAvailability(st, availableSeatsMap.getOrDefault(st.getId(), 0)))
+                .filter(sa -> sa.availableSeats() > 0)
+                .toList();
+
+        if (validShowtimes.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, List<ShowtimeAvailability>> grouped = validShowtimes.stream()
+                .collect(Collectors.groupingBy(
+                        sa -> sa.showtime().getStartTime().toString() + "_" + resolveFormat(sa.showtime().getRoom().getRoomType()),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<CustomerShowtimeSlotResponse> responses = new ArrayList<>();
+        for (List<ShowtimeAvailability> slotList : grouped.values()) {
+            ShowtimeAvailability best = slotList.stream()
+                    .sorted(Comparator.comparingInt(ShowtimeAvailability::availableSeats).reversed()
+                            .thenComparingLong(sa -> sa.showtime().getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (best == null) continue;
+
+            java.math.BigDecimal minPrice = slotList.stream()
+                    .map(sa -> sa.showtime().getBasePrice())
+                    .filter(java.util.Objects::nonNull)
+                    .min(java.math.BigDecimal::compareTo)
+                    .orElse(best.showtime().getBasePrice());
+
+            responses.add(new CustomerShowtimeSlotResponse(
+                    best.showtime().getId(),
+                    best.showtime().getMovie().getId(),
+                    best.showtime().getMovie().getTitle(),
+                    best.showtime().getStartTime(),
+                    best.showtime().getEndTime(),
+                    resolveFormat(best.showtime().getRoom().getRoomType()),
+                    minPrice,
+                    best.availableSeats(),
+                    best.showtime().getRoom().getId(),
+                    best.showtime().getBasePrice(),
+                    best.showtime().getVipPrice(),
+                    best.showtime().getCouplePrice(),
+                    best.showtime().getAdultStandardPrice(),
+                    best.showtime().getChildStandardPrice(),
+                    best.showtime().getStudentStandardPrice(),
+                    best.showtime().getAdultVipPrice(),
+                    best.showtime().getChildVipPrice(),
+                    best.showtime().getStudentVipPrice(),
+                    best.showtime().getAdultCouplePrice(),
+                    best.showtime().getChildCouplePrice(),
+                    best.showtime().getStudentCouplePrice(),
+                    best.showtime().getSurchargeAmount()
+            ));
+        }
+
+        responses.sort(Comparator.comparing(CustomerShowtimeSlotResponse::startTime));
+        return responses;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId) {
+        Showtime showtime = findById(showtimeId);
+        LocalDateTime cutoff = LocalDateTime.now().plusMinutes(10);
+
+        boolean isSelfValid = (showtime.getStatus() == ShowtimeStatus.OPEN || showtime.getStatus() == ShowtimeStatus.SCHEDULED)
+                && showtime.getRoom().getStatus() == RoomStatus.ACTIVE
+                && showtime.getMovie().getStatus() != MovieStatus.INACTIVE
+                && showtime.getStartTime().isAfter(cutoff);
+
+        if (isSelfValid) {
+            Map<Long, Integer> seatsMap = computeAvailableSeatsForShowtimes(List.of(showtime));
+            int availableSeats = seatsMap.getOrDefault(showtime.getId(), 0);
+            if (availableSeats > 0) {
+                return new CustomerShowtimeSlotResponse(
+                        showtime.getId(),
+                        showtime.getMovie().getId(),
+                        showtime.getMovie().getTitle(),
+                        showtime.getStartTime(),
+                        showtime.getEndTime(),
+                        resolveFormat(showtime.getRoom().getRoomType()),
+                        showtime.getBasePrice(),
+                        availableSeats,
+                        showtime.getRoom().getId(),
+                        showtime.getBasePrice(),
+                        showtime.getVipPrice(),
+                        showtime.getCouplePrice(),
+                        showtime.getAdultStandardPrice(),
+                        showtime.getChildStandardPrice(),
+                        showtime.getStudentStandardPrice(),
+                        showtime.getAdultVipPrice(),
+                        showtime.getChildVipPrice(),
+                        showtime.getStudentVipPrice(),
+                        showtime.getAdultCouplePrice(),
+                        showtime.getChildCouplePrice(),
+                        showtime.getStudentCouplePrice(),
+                        showtime.getSurchargeAmount()
+                );
+            }
+        }
+
+        if (!showtime.getStartTime().isAfter(cutoff)) {
+            throw new BadRequestException("Khung giờ này vừa hết chỗ hoặc đã quá giờ đặt vé. Vui lòng chọn khung giờ khác.");
+        }
+
+        List<Showtime> candidates = showtimeRepository.findEquivalentCandidateShowtimes(
+                showtime.getMovie().getId(),
+                showtime.getStartTime()
+        );
+
+        if (!candidates.isEmpty()) {
+            Map<Long, Integer> seatsMap = computeAvailableSeatsForShowtimes(candidates);
+            ShowtimeAvailability best = candidates.stream()
+                    .map(st -> new ShowtimeAvailability(st, seatsMap.getOrDefault(st.getId(), 0)))
+                    .filter(sa -> sa.availableSeats() > 0)
+                    .sorted(Comparator.comparingInt(ShowtimeAvailability::availableSeats).reversed()
+                            .thenComparingLong(sa -> sa.showtime().getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (best != null) {
+                return new CustomerShowtimeSlotResponse(
+                        best.showtime().getId(),
+                        best.showtime().getMovie().getId(),
+                        best.showtime().getMovie().getTitle(),
+                        best.showtime().getStartTime(),
+                        best.showtime().getEndTime(),
+                        resolveFormat(best.showtime().getRoom().getRoomType()),
+                        best.showtime().getBasePrice(),
+                        best.availableSeats(),
+                        best.showtime().getRoom().getId(),
+                        best.showtime().getBasePrice(),
+                        best.showtime().getVipPrice(),
+                        best.showtime().getCouplePrice(),
+                        best.showtime().getAdultStandardPrice(),
+                        best.showtime().getChildStandardPrice(),
+                        best.showtime().getStudentStandardPrice(),
+                        best.showtime().getAdultVipPrice(),
+                        best.showtime().getChildVipPrice(),
+                        best.showtime().getStudentVipPrice(),
+                        best.showtime().getAdultCouplePrice(),
+                        best.showtime().getChildCouplePrice(),
+                        best.showtime().getStudentCouplePrice(),
+                        best.showtime().getSurchargeAmount()
+                );
+            }
+        }
+
+        throw new BadRequestException("Khung giờ này vừa hết chỗ. Vui lòng chọn khung giờ khác.");
+    }
+
+    private record ShowtimeAvailability(Showtime showtime, int availableSeats) {}
+
+    private String resolveFormat(RoomType roomType) {
+        if (roomType == null) return "2D";
+        return switch (roomType) {
+            case THREE_D -> "3D";
+            case IMAX -> "IMAX";
+            case VIP -> "VIP";
+            case TWO_D, STANDARD -> "2D";
+            default -> "2D";
+        };
+    }
+
+    private Map<Long, Integer> computeAvailableSeatsForShowtimes(List<Showtime> showtimes) {
+        if (showtimes == null || showtimes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Integer> result = new HashMap<>();
+        for (Showtime st : showtimes) {
+            int totalSeats = seatRepository.findByRoom(st.getRoom()).size();
+            int occupiedSeats = 0;
+            try {
+                List<com.cinemaai.catalog.client.BookingClient.OccupiedSeat> occupied =
+                        bookingClient.getOccupiedSeats(st.getId());
+                if (occupied != null) {
+                    occupiedSeats = occupied.size();
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to fetch occupied seats for showtime {}: {}", st.getId(), ex.getMessage());
+            }
+            result.put(st.getId(), Math.max(0, totalSeats - occupiedSeats));
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // PRICE PREVIEW (NO PERSISTENCE)
+    // =========================================================================
+
+    /**
+     * Computes the full ticket price matrix for a set of draft showtime slots.
+     * Does NOT persist any data; safe to call multiple times without side effects.
+     *
+     * <p>Formula:
+     * <pre>
+     *   standardPrice(audience) = room.standardPrice + audience.additionalPrice
+     *   vipPrice(audience)      = room.vipPrice      + audience.additionalPrice
+     *   couplePrice(a1, a2)     = room.couplePrice   + a1.additionalPrice + a2.additionalPrice
+     * </pre>
+     */
+    @Transactional(readOnly = true)
+    public List<ShowtimePricePreviewResponse> previewPrices(ShowtimePreviewRequest request) {
+        Movie movie = movieRepository.findById(request.movieId())
+                .orElseThrow(() -> new NotFoundException("Movie not found: " + request.movieId()));
+
+        List<ShowtimePricePreviewResponse> results = new ArrayList<>();
+
+        for (ShowtimePreviewRequest.PreviewSlot slot : request.slots()) {
+            Room room = roomService.findById(slot.roomId());
+            Long cinemaId = room.getCinema().getId();
+
+            // Load audience surcharges for this cinema
+            Map<AudienceType, java.math.BigDecimal> surchargeMap = audiencePriceRepository
+                    .findByCinemaId(cinemaId)
+                    .stream()
+                    .collect(Collectors.toMap(
+                            CinemaAudiencePrice::getAudienceType,
+                            CinemaAudiencePrice::getAdditionalPrice
+                    ));
+
+            boolean audiencePriceMissing = surchargeMap.size() < 3
+                    || !surchargeMap.containsKey(AudienceType.CHILD)
+                    || !surchargeMap.containsKey(AudienceType.STUDENT)
+                    || !surchargeMap.containsKey(AudienceType.ADULT);
+
+            java.math.BigDecimal childAdd   = surchargeMap.getOrDefault(AudienceType.CHILD,   java.math.BigDecimal.ZERO);
+            java.math.BigDecimal studentAdd = surchargeMap.getOrDefault(AudienceType.STUDENT, java.math.BigDecimal.ZERO);
+            java.math.BigDecimal adultAdd   = surchargeMap.getOrDefault(AudienceType.ADULT,   java.math.BigDecimal.ZERO);
+
+            // Room base prices (fall back to 0 if null)
+            java.math.BigDecimal roomStd    = room.getStandardPrice() != null ? room.getStandardPrice() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal roomVip    = room.getVipPrice()      != null ? room.getVipPrice()      : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal roomCouple = room.getCouplePrice()   != null ? room.getCouplePrice()   : java.math.BigDecimal.ZERO;
+
+            // Standard seat prices
+            java.math.BigDecimal childStd   = roomStd.add(childAdd);
+            java.math.BigDecimal studentStd = roomStd.add(studentAdd);
+            java.math.BigDecimal adultStd   = roomStd.add(adultAdd);
+
+            // VIP seat prices
+            java.math.BigDecimal childVip   = roomVip.add(childAdd);
+            java.math.BigDecimal studentVip = roomVip.add(studentAdd);
+            java.math.BigDecimal adultVip   = roomVip.add(adultAdd);
+
+            // Couple seat prices (all combinations: price per seat-pair = room base + surcharge1 + surcharge2)
+            java.math.BigDecimal ccCouple  = roomCouple.add(childAdd).add(childAdd);
+            java.math.BigDecimal csCouple  = roomCouple.add(childAdd).add(studentAdd);
+            java.math.BigDecimal caCouple  = roomCouple.add(childAdd).add(adultAdd);
+            java.math.BigDecimal ssCouple  = roomCouple.add(studentAdd).add(studentAdd);
+            java.math.BigDecimal saCouple  = roomCouple.add(studentAdd).add(adultAdd);
+            java.math.BigDecimal aaCouple  = roomCouple.add(adultAdd).add(adultAdd);
+
+            // Calculate end time
+            LocalDateTime endTime = calculateEndTime(movie, slot.startTime());
+
+            List<String> warnings = new ArrayList<>();
+            if (audiencePriceMissing) {
+                warnings.add("Rạp chưa cấu hình đủ giá vé theo đối tượng (CHILD/STUDENT/ADULT). Cần thiết lập trước khi lưu.");
+            }
+            if (slot.startTime().isBefore(LocalDateTime.now())) {
+                warnings.add("Thời gian bắt đầu đã qua hiện tại.");
+            }
+
+            results.add(new ShowtimePricePreviewResponse(
+                    slot.tempId(),
+                    movie.getId(),
+                    movie.getTitle(),
+                    room.getId(),
+                    room.getName(),
+                    cinemaId,
+                    room.getCinema().getName(),
+                    slot.startTime(),
+                    endTime,
+                    roomStd,
+                    roomVip,
+                    roomCouple,
+                    childAdd,
+                    studentAdd,
+                    adultAdd,
+                    childStd,
+                    studentStd,
+                    adultStd,
+                    childVip,
+                    studentVip,
+                    adultVip,
+                    ccCouple,
+                    csCouple,
+                    caCouple,
+                    ssCouple,
+                    saCouple,
+                    aaCouple,
+                    audiencePriceMissing,
+                    warnings
+            ));
+        }
+        return results;
+    }
 }
+

@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -69,6 +70,7 @@ public class AdminMovieController {
         return ApiResponse.success(movieService.getAdmin(movieId));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create new movie (Admin)", description = "Create a new movie (Admin only)")
@@ -83,6 +85,7 @@ public class AdminMovieController {
         return ApiResponse.success(movieService.create(request), "Movie created successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{movieId}")
     @Operation(summary = "Update movie (Admin)", description = "Update an existing movie (Admin only)")
     @ApiResponses(value = {
@@ -100,6 +103,7 @@ public class AdminMovieController {
         return ApiResponse.success(movieService.update(movieId, request), "Movie updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{movieId}/status")
     @Operation(summary = "Update movie status (Admin)", description = "Update the status of a movie (Admin only)")
     @ApiResponses(value = {
@@ -116,6 +120,7 @@ public class AdminMovieController {
         return ApiResponse.success(movieService.updateStatus(movieId, request), "Movie status updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{movieId}")
     @Operation(summary = "Delete movie (Admin)", description = "Delete a movie by marking it as inactive (Admin only)")
     @ApiResponses(value = {

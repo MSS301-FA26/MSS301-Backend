@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +30,7 @@ public class AdminGenreController {
 
     private final GenreService genreService;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create new genre (Admin)", description = "Create a new genre (Admin only)")
@@ -43,6 +45,7 @@ public class AdminGenreController {
         return ApiResponse.success(genreService.create(request), "Genre created successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{genreId}")
     @Operation(summary = "Update genre (Admin)", description = "Update an existing genre (Admin only)")
     @ApiResponses(value = {
@@ -60,6 +63,7 @@ public class AdminGenreController {
         return ApiResponse.success(genreService.update(genreId, request), "Genre updated successfully");
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{genreId}")
     @Operation(summary = "Delete genre (Admin)", description = "Delete a genre (Admin only)")
     @ApiResponses(value = {

@@ -32,4 +32,13 @@ public class InternalBookingController {
     ) {
         return ApiResponse.success(bookingService.getOccupiedSeats(showtimeId));
     }
+
+    @Operation(summary = "Kiểm tra khách hàng đã xem phim hay chưa để cho phép đánh giá (Internal)")
+    @GetMapping("/verify-eligibility")
+    public ApiResponse<com.cinemaai.booking.dto.response.BookingEligibilityResponse> verifyEligibility(
+            @org.springframework.web.bind.annotation.RequestParam Long userId,
+            @org.springframework.web.bind.annotation.RequestParam Long movieId
+    ) {
+        return ApiResponse.success(bookingService.checkReviewEligibility(userId, movieId));
+    }
 }
