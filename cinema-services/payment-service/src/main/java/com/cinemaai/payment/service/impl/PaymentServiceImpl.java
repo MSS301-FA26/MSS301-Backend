@@ -163,7 +163,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
 
-        Payment payment = paymentRepository.findByBookingId(bookingId).orElse(null);
+        Payment payment = paymentRepository.findByBookingIdForUpdate(bookingId).orElse(null);
         if (payment == null) {
             payment = Payment.builder()
                     .bookingId(bookingId)
@@ -172,6 +172,8 @@ public class PaymentServiceImpl implements PaymentService {
                     .provider(PaymentProvider.MOCK)
                     .amount(amount)
                     .build();
+        } else if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            return PaymentMapper.toResponse(payment);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -213,13 +215,18 @@ public class PaymentServiceImpl implements PaymentService {
             return Map.of("RspCode", "01", "Message", "Invalid transaction reference");
         }
 
-        Payment payment = paymentRepository.findById(paymentId).orElse(null);
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId).orElse(null);
         if (payment == null) {
             return Map.of("RspCode", "01", "Message", "Order not found");
         }
 
         // Amount check
-        long vnpAmount = Long.parseLong(params.getOrDefault("vnp_Amount", "0"));
+        long vnpAmount;
+        try {
+            vnpAmount = Long.parseLong(params.getOrDefault("vnp_Amount", ""));
+        } catch (NumberFormatException ex) {
+            return Map.of("RspCode", "04", "Message", "Invalid Amount");
+        }
         long expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100)).longValue();
         if (vnpAmount != expectedAmount) {
             return Map.of("RspCode", "04", "Message", "Invalid Amount");
@@ -279,8 +286,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     private void writeOutboxEvent(Payment payment, LocalDateTime paidAt) {
         try {
+            String eventId = "payment-succeeded-" + payment.getId();
             PaymentSucceededEvent event = new PaymentSucceededEvent(
-                    UUID.randomUUID().toString(),
+                    eventId,
                     payment.getId(),
                     payment.getBookingId(),
                     payment.getFoodOrderId(),
@@ -294,6 +302,7 @@ public class PaymentServiceImpl implements PaymentService {
                     .aggregateType("PAYMENT")
                     .aggregateId(String.valueOf(payment.getId()))
                     .eventType("PaymentSucceededEvent")
+                    .deduplicationKey(eventId)
                     .payload(objectMapper.writeValueAsString(event))
                     .status(OutboxStatus.PENDING)
                     .createdAt(LocalDateTime.now())
@@ -301,7 +310,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             outboxEventRepository.save(outboxEvent);
         } catch (Exception ex) {
-            log.error("Failed to serialize OutboxEvent: {}", ex.getMessage());
+            throw new IllegalStateException("Unable to persist payment success outbox event", ex);
         }
     }
 

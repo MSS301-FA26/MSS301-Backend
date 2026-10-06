@@ -25,7 +25,7 @@ public class OutboxPublisherWorker {
     @Transactional
     public void publishPendingEvents() {
         List<OutboxEvent> pendingEvents = outboxEventRepository
-                .findTop50ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);
+                .findNextPendingEventsForPublish(OutboxStatus.PENDING.name());
 
         if (pendingEvents.isEmpty()) {
             return;

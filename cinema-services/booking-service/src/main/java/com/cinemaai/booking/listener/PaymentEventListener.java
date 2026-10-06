@@ -3,7 +3,6 @@ package com.cinemaai.booking.listener;
 import com.cinemaai.booking.config.RabbitMqConfig;
 import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.entity.BookingSeat;
-import com.cinemaai.booking.entity.ProcessedEvent;
 import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.event.PaymentSucceededEvent;
@@ -39,8 +38,14 @@ public class PaymentEventListener {
         log.info("Received PaymentSucceededEvent: eventId={}, bookingId={}, amount={}",
                 event.eventId(), event.bookingId(), event.amount());
 
-        // 1. Idempotency Check: prevent duplicate processing
-        if (processedEventRepository.existsById(event.eventId())) {
+        if (event.eventId() == null || event.eventId().isBlank()) {
+            log.error("Payment success event is missing eventId");
+            return;
+        }
+
+        // Claim the event in the same transaction before changing booking state.
+        // PostgreSQL returns 0 for a replay, so concurrent consumers cannot both update the booking.
+        if (processedEventRepository.claimEvent(event.eventId(), "PaymentSucceededEvent") == 0) {
             log.warn("Event {} already processed, skipping duplicate message.", event.eventId());
             return;
         }
@@ -48,8 +53,8 @@ public class PaymentEventListener {
         if (event.bookingId() != null) {
             Booking booking = bookingRepository.findById(event.bookingId()).orElse(null);
             if (booking == null) {
-                log.error("Booking with id {} not found for payment success event", event.bookingId());
-                return;
+                throw new IllegalStateException(
+                        "Booking " + event.bookingId() + " not found for payment success event");
             }
 
             // 2. Transition Booking status to PAID
@@ -73,12 +78,5 @@ public class PaymentEventListener {
             bookingRepository.save(booking);
             log.info("Successfully marked Booking {} as PAID with QR code.", booking.getBookingCode());
         }
-
-        // 5. Record processed event for idempotent consumer guarantee
-        processedEventRepository.save(new ProcessedEvent(
-                event.eventId(),
-                "PaymentSucceededEvent",
-                LocalDateTime.now()
-        ));
     }
 }

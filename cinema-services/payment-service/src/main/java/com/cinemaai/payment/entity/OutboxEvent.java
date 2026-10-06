@@ -32,6 +32,9 @@ public class OutboxEvent {
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 
+    @Column(name = "deduplication_key", nullable = false, length = 150, unique = true)
+    private String deduplicationKey;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String payload;
 
