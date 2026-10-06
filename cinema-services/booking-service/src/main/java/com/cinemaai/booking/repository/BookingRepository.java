@@ -2,6 +2,7 @@ package com.cinemaai.booking.repository;
 
 import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.enums.BookingStatus;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -9,6 +10,9 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -22,6 +26,24 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Booking> findByUserIdAndShowtimeIdAndStatusIn(
             Long userId, Long showtimeId, Collection<BookingStatus> statuses);
+
+    List<Booking> findByUserIdAndMovieIdAndStatusIn(
+            Long userId, Long movieId, Collection<BookingStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT DISTINCT b FROM Booking b
+            JOIN FETCH b.seats seat
+            WHERE b.showtimeId = :showtimeId
+              AND b.status IN :statuses
+              AND b.holdExpiresAt < :now
+              AND seat.seatId IN :seatIds
+            """)
+    List<Booking> findExpiredHoldsForSeatsForUpdate(
+            @Param("showtimeId") Long showtimeId,
+            @Param("seatIds") Collection<Long> seatIds,
+            @Param("statuses") Collection<BookingStatus> statuses,
+            @Param("now") LocalDateTime now);
 
     List<Booking> findByStatusInAndHoldExpiresAtBefore(
             Collection<BookingStatus> statuses, LocalDateTime time);
