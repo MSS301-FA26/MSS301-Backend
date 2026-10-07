@@ -24,6 +24,7 @@ class RecommendationResponse(BaseModel):
     strategy: str = Field(..., description="Applied algorithm strategy")
     branchId: Optional[int] = Field(default=None, description="Applied branch filter ID if specified")
     setId: Optional[int] = Field(default=None, description="Persisted recommendation set ID for CTR tracking")
+    experimentVariant: str = Field(default="CONTROL", description="A/B experiment variant assignment")
     recommendations: List[RecommendationItem] = Field(default_factory=list)
 
 
@@ -71,3 +72,26 @@ class TrendingRecommendationResponse(BaseModel):
     branchId: Optional[int] = Field(default=None, description="Filtered branch ID")
     strategy: str = Field(default="GLOBAL_POPULARITY", description="Strategy used")
     recommendations: List[RecommendationItem] = Field(default_factory=list)
+
+
+class MovieReviewRequest(BaseModel):
+    """User review submission with comment and rating DTO."""
+    model_config = ConfigDict(frozen=True)
+
+    userId: int = Field(..., description="User logical ID")
+    movieId: int = Field(..., description="Movie logical ID")
+    rating: float = Field(..., ge=1.0, le=5.0, description="Star rating [1.0, 5.0]")
+    comment: str = Field(..., min_length=1, description="Review text comment")
+
+
+class MovieReviewResponseData(BaseModel):
+    """Processed review response with sentiment and consistency DTO."""
+    model_config = ConfigDict(frozen=True)
+
+    userId: int = Field(..., description="User logical ID")
+    movieId: int = Field(..., description="Movie logical ID")
+    sentimentLabel: str = Field(..., description="Sentiment classification (POSITIVE, NEGATIVE, NEUTRAL)")
+    sentimentScore: float = Field(..., description="Sentiment polar score [-1.0, 1.0]")
+    feedbackConsistency: str = Field(..., description="Consistency status (CONSISTENT, INCONSISTENT)")
+    confidenceScore: float = Field(..., description="Confidence score [0.0, 1.0]")
+    aspectSentiment: dict = Field(default_factory=dict, description="Aspect sentiment breakdowns")

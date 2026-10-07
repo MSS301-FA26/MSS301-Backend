@@ -10,11 +10,14 @@ from dtos.recommendation_dtos import (
     TrendingRecommendationResponse,
     RecommendationItem,
     FeedbackRequest,
-    FeedbackClickRequest
+    FeedbackClickRequest,
+    MovieReviewRequest,
+    MovieReviewResponseData
 )
 from modules.recommendation.interfaces import IRecommendationService
 from modules.recommendation.hybrid_engine import HybridRecommendationEngine
 from modules.recommendation.content_filter import ContentBasedFilter
+from modules.recommendation.sentiment_analyzer import AspectSentimentAnalyzer
 from events.interaction_event_consumer import (
     handle_movie_rated_event,
     handle_movie_disliked_event
@@ -29,6 +32,7 @@ class RecommendationServiceImpl:
     def __init__(self):
         self.hybrid_engine = HybridRecommendationEngine()
         self.content_filter = ContentBasedFilter()
+        self.sentiment_analyzer = AspectSentimentAnalyzer()
 
     def get_user_recommendations(
         self,
@@ -36,7 +40,7 @@ class RecommendationServiceImpl:
         branch_id: Optional[int] = None,
         limit: int = 10
     ) -> RecommendationResponse:
-        strategy, items, set_id = self.hybrid_engine.recommend(
+        strategy, items, set_id, variant = self.hybrid_engine.recommend(
             user_id=user_id,
             branch_id=branch_id,
             limit=limit
@@ -46,6 +50,7 @@ class RecommendationServiceImpl:
             strategy=strategy,
             branchId=branch_id,
             setId=set_id,
+            experimentVariant=variant,
             recommendations=items
         )
 
@@ -144,6 +149,31 @@ class RecommendationServiceImpl:
         except Exception as e:
             logger.warning(f"Error recording click telemetry: {e}")
             return False
+
+    def submit_movie_review(self, review_data: MovieReviewRequest) -> MovieReviewResponseData:
+        """Submit a user movie review and perform aspect sentiment and consistency analysis."""
+        result = self.sentiment_analyzer.analyze(review_data.comment, review_data.rating)
+        self.sentiment_analyzer.persist_review(
+            user_id=review_data.userId,
+            movie_id=review_data.movieId,
+            rating=review_data.rating,
+            comment=review_data.comment,
+            result=result
+        )
+
+        # Invalidate recommendation cache for user
+        get_cache().delete_pattern(f"user:{review_data.userId}:*")
+
+        return MovieReviewResponseData(
+            userId=review_data.userId,
+            movieId=review_data.movieId,
+            sentimentLabel=result.sentiment_label,
+            sentimentScore=result.sentiment_score,
+            feedbackConsistency=result.feedback_consistency,
+            confidenceScore=result.confidence_score,
+            aspectSentiment=result.aspect_sentiment
+        )
+
 
 
 _rec_service_instance = None

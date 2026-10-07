@@ -11,6 +11,9 @@ from modules.recommendation.content_filter import ContentBasedFilter, parse_vect
 from modules.recommendation.branch_scorer import BranchAwareScorer
 from modules.recommendation.diversity_reranker import DiversityReranker
 from modules.recommendation.feedback_tracker import FeedbackTracker
+from modules.recommendation.bandit_explorer import ContextualBanditExplorer
+from modules.recommendation.ab_testing import RecommendationABTestingRouter
+from modules.recommendation.llm_explainer import LLMRecommendationExplainer
 from dtos.recommendation_dtos import RecommendationItem
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,8 @@ class HybridRecommendationEngine:
     - Pearson Shrinkage Collaborative Filtering with sample size gating.
     - Location & branch-aware popularity scoring and user affinity.
     - Diversity re-ranking with primary genre capping (max 3 per genre) and exploration slots.
+    - Contextual Multi-Armed Bandit exploration and deterministic A/B testing router.
+    - Grounded LLM reasoning and explanation generation with template fallback.
     - In-memory TTL cache with event-driven invalidation.
     - Telemetry tracking of recommendation sets (set_id) for click-through funnel analytics.
     - Multi-tier resilience fallback (Hybrid -> Content-Based -> Popularity -> Now Showing).
@@ -34,6 +39,9 @@ class HybridRecommendationEngine:
         self.branch_scorer = BranchAwareScorer()
         self.diversity_reranker = DiversityReranker()
         self.feedback_tracker = FeedbackTracker()
+        self.bandit_explorer = ContextualBanditExplorer()
+        self.ab_router = RecommendationABTestingRouter()
+        self.llm_explainer = LLMRecommendationExplainer()
 
     def _get_movie_metadata_batch(self, movie_ids: List[int]) -> Dict[int, dict]:
         """Fetch metadata dictionary for given movie IDs."""
@@ -185,32 +193,34 @@ class HybridRecommendationEngine:
         user_id: int,
         branch_id: Optional[int] = None,
         limit: int = 10
-    ) -> Tuple[str, List[RecommendationItem], Optional[int]]:
+    ) -> Tuple[str, List[RecommendationItem], Optional[int], str]:
         """
-        Execute full personalized recommendation pipeline with caching and telemetry tracking.
-        Returns: Tuple[strategy_name, items_list, persisted_set_id]
+        Execute full personalized recommendation pipeline with caching, A/B testing, and telemetry tracking.
+        Returns: Tuple[strategy_name, items_list, persisted_set_id, experiment_variant]
         """
+        variant = self.ab_router.get_variant(user_id)
         cache = get_cache()
-        cache_key = f"user:{user_id}:rec:{branch_id or 0}:{limit}"
+        cache_key = f"user:{user_id}:rec:{branch_id or 0}:{limit}:{variant}"
         cached_result = cache.get(cache_key)
         if cached_result:
             logger.debug(f"Cache hit for recommendation key: {cache_key}")
             return cached_result
 
         try:
-            strategy, items, set_id = self._execute_hybrid_pipeline(user_id, branch_id, limit)
-            cache.set(cache_key, (strategy, items, set_id), ttl_seconds=900)
-            return strategy, items, set_id
+            strategy, items, set_id = self._execute_hybrid_pipeline(user_id, branch_id, limit, variant)
+            cache.set(cache_key, (strategy, items, set_id, variant), ttl_seconds=900)
+            return strategy, items, set_id, variant
         except Exception as e:
             logger.error(f"Error in hybrid recommendation pipeline for user {user_id}: {e}", exc_info=True)
             fallback_items = self._get_fallback_popular_movies(limit)
-            return "FALLBACK_GLOBAL_POPULARITY", fallback_items, None
+            return "FALLBACK_GLOBAL_POPULARITY", fallback_items, None, variant
 
     def _execute_hybrid_pipeline(
         self,
         user_id: int,
         branch_id: Optional[int],
-        limit: int
+        limit: int,
+        variant: str = "CONTROL"
     ) -> Tuple[str, List[RecommendationItem], Optional[int]]:
         interactions = self._get_user_interactions(user_id)
 
@@ -218,7 +228,9 @@ class HybridRecommendationEngine:
         if not interactions:
             logger.info(f"User {user_id} is cold-start -> serving popular releases")
             items = self._get_fallback_popular_movies(limit)
-            set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, "COLD_START_POPULAR", items)
+            set_id = self.feedback_tracker.persist_recommendation_set(
+                user_id, branch_id, "COLD_START_POPULAR", items, experiment_variant=variant
+            )
             return "COLD_START_POPULAR", items, set_id
 
         candidate_movies = self._get_candidate_movie_ids(user_id=user_id, branch_id=branch_id)
@@ -232,7 +244,9 @@ class HybridRecommendationEngine:
 
         if not candidate_movies:
             items = self._get_fallback_popular_movies(limit)
-            set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, "FALLBACK_POPULAR", items)
+            set_id = self.feedback_tracker.persist_recommendation_set(
+                user_id, branch_id, "FALLBACK_POPULAR", items, experiment_variant=variant
+            )
             return "FALLBACK_POPULAR", items, set_id
 
         # Dual user profile vectors with time decay
@@ -351,10 +365,31 @@ class HybridRecommendationEngine:
             limit=limit
         )
 
+        # Contextual bandit exploration injection
+        if self.ab_router.should_apply_bandit(variant):
+            reranked_candidates = self.bandit_explorer.inject_exploration_candidates(
+                ranked_candidates=reranked_candidates,
+                candidate_metadata=candidate_meta,
+                user_known_genres=recent_genres,
+                limit=limit,
+                exploration_slots=1
+            )
+
         # Construct final RecommendationItem DTOs
         items: List[RecommendationItem] = []
-        for mid, score, reason, source in reranked_candidates:
+        for rank_idx, (mid, score, reason, source) in enumerate(reranked_candidates):
             meta = candidate_meta.get(mid, {})
+
+            # LLM explanation for top recommendations in experimental variant
+            if self.ab_router.should_apply_llm_explanation(variant) and rank_idx < 3:
+                reason = self.llm_explainer.explain(
+                    movie_title=meta.get("title", f"Movie #{mid}"),
+                    genres=meta.get("genres") or [],
+                    user_recent_genres=list(recent_genres),
+                    base_reason=reason,
+                    source=source
+                )
+
             items.append(RecommendationItem(
                 movieId=mid,
                 title=meta.get("title", f"Movie #{mid}"),
@@ -366,7 +401,9 @@ class HybridRecommendationEngine:
                 releaseYear=meta.get("release_year")
             ))
 
-        # Persist recommendation set for CTR telemetry tracking
-        set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, strategy, items)
+        # Persist recommendation set with experiment variant for telemetry tracking
+        set_id = self.feedback_tracker.persist_recommendation_set(
+            user_id, branch_id, strategy, items, experiment_variant=variant
+        )
 
         return strategy, items, set_id

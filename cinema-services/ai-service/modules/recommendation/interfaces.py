@@ -4,7 +4,9 @@ from dtos.recommendation_dtos import (
     ContentRecommendationResponse,
     TrendingRecommendationResponse,
     FeedbackRequest,
-    FeedbackClickRequest
+    FeedbackClickRequest,
+    MovieReviewRequest,
+    MovieReviewResponseData
 )
 
 
@@ -43,3 +45,8 @@ class IRecommendationService(Protocol):
     def record_click_telemetry(self, click_data: FeedbackClickRequest) -> bool:
         """Record recommendation item click event for CTR analytics."""
         ...
+
+    def submit_movie_review(self, review_data: MovieReviewRequest) -> MovieReviewResponseData:
+        """Submit a user movie review and perform sentiment and consistency analysis."""
+        ...
+

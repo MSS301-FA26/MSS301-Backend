@@ -21,6 +21,7 @@ class FeedbackTracker:
         branch_id: Optional[int],
         strategy: str,
         items: List[RecommendationItem],
+        experiment_variant: str = "CONTROL",
         ttl_hours: int = 24
     ) -> Optional[int]:
         """
@@ -34,10 +35,10 @@ class FeedbackTracker:
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        INSERT INTO recommendation_sets (user_id, branch_id, strategy, generated_at, expires_at)
-                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, %s)
+                        INSERT INTO recommendation_sets (user_id, branch_id, strategy, experiment_variant, generated_at, expires_at)
+                        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
                         RETURNING set_id;
-                    """, (user_id, branch_id, strategy, expires_at))
+                    """, (user_id, branch_id, strategy, experiment_variant, expires_at))
                     set_id = cur.fetchone()[0]
 
                     item_tuples = [

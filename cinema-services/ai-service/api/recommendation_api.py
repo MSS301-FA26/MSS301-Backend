@@ -7,7 +7,9 @@ from dtos.recommendation_dtos import (
     TrendingRecommendationResponse,
     FeedbackRequest,
     FeedbackResponseData,
-    FeedbackClickRequest
+    FeedbackClickRequest,
+    MovieReviewRequest,
+    MovieReviewResponseData
 )
 from modules.recommendation.service_impl import get_recommendation_service
 
@@ -111,3 +113,21 @@ def record_recommendation_click(
         message="Click telemetry recorded successfully",
         data={"recorded": True, "setId": click_data.setId, "movieId": click_data.movieId}
     )
+
+
+@router.post("/reviews", response_model=ApiResponse[MovieReviewResponseData])
+def submit_movie_review(
+    review_data: MovieReviewRequest = Body(..., description="User movie review with comment and rating")
+):
+    """
+    Submit user movie review with comment and rating.
+    Performs aspect-based sentiment analysis, detects consistency/sarcasm, and persists review.
+    """
+    service = get_recommendation_service()
+    data = service.submit_movie_review(review_data)
+    return ApiResponse(
+        success=True,
+        message="Movie review processed and recorded successfully",
+        data=data
+    )
+
