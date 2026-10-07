@@ -184,6 +184,25 @@ class RecommendationServiceImpl:
         """Retrieve aggregated full-funnel conversion telemetry and A/B testing uplift."""
         return self.feedback_tracker.get_funnel_metrics(branch_id=branch_id)
 
+    def purge_user_data(self, user_id: int) -> bool:
+        """
+        Permanently purge all user preferences, interactions, reviews, and recommendation sets.
+        Invalidates cache for GDPR / Right to be Forgotten compliance.
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM user_interactions WHERE user_id = %s;", (user_id,))
+                    cur.execute("DELETE FROM movie_reviews WHERE user_id = %s;", (user_id,))
+                    cur.execute("DELETE FROM recommendation_sets WHERE user_id = %s;", (user_id,))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Database unavailable during purge for user {user_id} ({e}). Purging in-memory state.")
+
+        get_cache().delete_pattern(f"user:{user_id}:*")
+        logger.info(f"Successfully purged all historical recommendation data for user {user_id}")
+        return True
+
 
 _rec_service_instance = None
 

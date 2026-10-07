@@ -216,3 +216,102 @@ def handle_movie_reviewed_event(body: dict):
     except Exception as e:
         logger.error(f"[RabbitMQ] Error handling MOVIE_REVIEWED event: {e}", exc_info=True)
 
+
+def handle_booking_cancelled_event(body: dict):
+    """
+    Handle customer-initiated booking cancellation.
+    Reduces interaction signal strength while preserving historical preference records.
+    """
+    try:
+        payload = body.get("payload", {})
+        user_id = payload.get("userId") or body.get("userId")
+        movie_id = payload.get("movieId") or payload.get("movie_id")
+        event_id = body.get("eventId") or body.get("event_id") or payload.get("eventId")
+
+        if not user_id or not movie_id:
+            logger.warning("[RabbitMQ] Missing user_id or movie_id in BOOKING_CANCELLED payload")
+            return
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                if event_id and is_event_processed(cursor, event_id):
+                    logger.info(f"[RabbitMQ] Event {event_id} already processed. Skipping.")
+                    return
+
+                cursor.execute("""
+                    INSERT INTO user_interactions (
+                        user_id, movie_id, rating, interaction_type, weight, event_id, is_disliked, raw_feedback_score, updated_at
+                    )
+                    VALUES (%s, %s, 2.5, 'BOOKING_CANCELLED', 0.5, %s, FALSE, 0.0, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_id, movie_id)
+                    DO UPDATE SET
+                        interaction_type = 'BOOKING_CANCELLED',
+                        weight = 0.5,
+                        event_id = EXCLUDED.event_id,
+                        updated_at = CURRENT_TIMESTAMP;
+                """, (int(user_id), int(movie_id), str(event_id) if event_id else None))
+
+                if event_id:
+                    mark_event_processed(cursor, event_id, "BOOKING_CANCELLED", source="BOOKING_SERVICE")
+
+            conn.commit()
+            logger.info(f"[RabbitMQ] Recorded customer booking cancellation: User {user_id} -> Movie {movie_id}")
+    except Exception as e:
+        logger.error(f"[RabbitMQ] Error handling BOOKING_CANCELLED event: {e}", exc_info=True)
+
+
+def handle_refund_completed_event(body: dict):
+    """
+    Handle refund completion event.
+    Differentiates cinema-initiated showtime cancellation from customer dissatisfaction:
+    - Cinema cancellation (CINEMA_CANCELLED, SHOWTIME_CANCELLED, TECHNICAL_ISSUE) does NOT penalize movie preference.
+    - Customer dissatisfaction refund applies negative feedback dampening.
+    """
+    try:
+        payload = body.get("payload", {})
+        user_id = payload.get("userId") or body.get("userId")
+        movie_id = payload.get("movieId") or payload.get("movie_id")
+        reason = str(payload.get("reason") or payload.get("refundReason") or "").upper()
+        event_id = body.get("eventId") or body.get("event_id") or payload.get("eventId")
+
+        if not user_id or not movie_id:
+            logger.warning("[RabbitMQ] Missing user_id or movie_id in REFUND_COMPLETED payload")
+            return
+
+        is_cinema_fault = any(k in reason for k in ("CINEMA", "SHOWTIME", "TECHNICAL", "FACILITY", "CANCELLED_BY_THEATER"))
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                if event_id and is_event_processed(cursor, event_id):
+                    logger.info(f"[RabbitMQ] Event {event_id} already processed. Skipping.")
+                    return
+
+                if is_cinema_fault:
+                    logger.info(
+                        f"[RabbitMQ] Showtime cancelled by cinema (reason: {reason}). "
+                        f"Preserving User {user_id} positive taste profile without penalty for Movie {movie_id}."
+                    )
+                else:
+                    cursor.execute("""
+                        INSERT INTO user_interactions (
+                            user_id, movie_id, rating, interaction_type, weight, event_id, is_disliked, raw_feedback_score, updated_at
+                        )
+                        VALUES (%s, %s, 2.0, 'REFUND_DISSATISFACTION', 0.2, %s, FALSE, -0.3, CURRENT_TIMESTAMP)
+                        ON CONFLICT (user_id, movie_id)
+                        DO UPDATE SET
+                            interaction_type = 'REFUND_DISSATISFACTION',
+                            weight = 0.2,
+                            raw_feedback_score = -0.3,
+                            event_id = EXCLUDED.event_id,
+                            updated_at = CURRENT_TIMESTAMP;
+                    """, (int(user_id), int(movie_id), str(event_id) if event_id else None))
+
+                if event_id:
+                    mark_event_processed(cursor, event_id, "REFUND_COMPLETED", source="PAYMENT_SERVICE")
+
+            conn.commit()
+            logger.info(f"[RabbitMQ] Processed refund event: User {user_id} -> Movie {movie_id} (Reason: {reason})")
+    except Exception as e:
+        logger.error(f"[RabbitMQ] Error handling REFUND_COMPLETED event: {e}", exc_info=True)
+
+

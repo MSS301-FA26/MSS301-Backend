@@ -58,4 +58,9 @@ class IRecommendationService(Protocol):
         """Retrieve aggregated full-funnel conversion and A/B test uplift telemetry metrics."""
         ...
 
+    def purge_user_data(self, user_id: int) -> bool:
+        """Purge all user preference records, reviews, recommendation history, and invalidate cache for GDPR compliance."""
+        ...
+
+
 

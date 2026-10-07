@@ -150,3 +150,21 @@ def get_recommendation_metrics(
     )
 
 
+@router.delete("/users/{user_id}/data", response_model=ApiResponse[dict])
+def purge_user_recommendation_data(
+    user_id: int = Path(..., description="Target user logical ID")
+):
+    """
+    Purge all user preference records, reviews, recommendation history, and invalidate cache.
+    Complies with GDPR and privacy rights to be forgotten.
+    """
+    service = get_recommendation_service()
+    success = service.purge_user_data(user_id=user_id)
+    return ApiResponse(
+        success=success,
+        message=f"User {user_id} recommendation data purged successfully" if success else "Failed to purge user data",
+        data={"userId": user_id, "purged": success}
+    )
+
+
+

@@ -87,6 +87,8 @@ class AspectSentimentAnalyzer:
                     consistency = "CONSISTENT"
 
                 confidence = max(0.0, min(1.0, float(parsed.get("confidence_score", 0.85))))
+                if consistency == "INCONSISTENT":
+                    confidence = min(0.35, confidence * 0.4)
                 aspects = parsed.get("aspect_sentiment") or {}
                 aspect_map = {k: round(float(v), 2) for k, v in aspects.items() if isinstance(v, (int, float))}
 
