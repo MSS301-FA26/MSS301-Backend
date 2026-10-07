@@ -14,6 +14,8 @@ from modules.recommendation.feedback_tracker import FeedbackTracker
 from modules.recommendation.bandit_explorer import ContextualBanditExplorer
 from modules.recommendation.ab_testing import RecommendationABTestingRouter
 from modules.recommendation.llm_explainer import LLMRecommendationExplainer
+from modules.recommendation.subgenre_engine import SubgenreEngine
+from core.circuit_breaker import get_circuit_breaker
 from dtos.recommendation_dtos import RecommendationItem
 
 logger = logging.getLogger(__name__)
@@ -24,13 +26,14 @@ class HybridRecommendationEngine:
     Enterprise Hybrid Recommendation Engine for Cinema Business:
     - Dual profile Content-Based Filtering with Negative Penalty.
     - Pearson Shrinkage Collaborative Filtering with sample size gating.
+    - Sub-genre and fine-grained theme preference and targeted aversion dampening.
     - Location & branch-aware popularity scoring and user affinity.
     - Diversity re-ranking with primary genre capping (max 3 per genre) and exploration slots.
     - Contextual Multi-Armed Bandit exploration and deterministic A/B testing router.
     - Grounded LLM reasoning and explanation generation with template fallback.
     - In-memory TTL cache with event-driven invalidation.
+    - Circuit breaker downstream protection with fast multi-tier resilience fallback.
     - Telemetry tracking of recommendation sets (set_id) for click-through funnel analytics.
-    - Multi-tier resilience fallback (Hybrid -> Content-Based -> Popularity -> Now Showing).
     """
 
     def __init__(self):
@@ -42,6 +45,8 @@ class HybridRecommendationEngine:
         self.bandit_explorer = ContextualBanditExplorer()
         self.ab_router = RecommendationABTestingRouter()
         self.llm_explainer = LLMRecommendationExplainer()
+        self.subgenre_engine = SubgenreEngine()
+        self.db_breaker = get_circuit_breaker("db_recommendation_breaker", failure_threshold=3, recovery_timeout=15.0)
 
     def _get_movie_metadata_batch(self, movie_ids: List[int]) -> Dict[int, dict]:
         """Fetch metadata dictionary for given movie IDs."""
@@ -206,8 +211,15 @@ class HybridRecommendationEngine:
             logger.debug(f"Cache hit for recommendation key: {cache_key}")
             return cached_result
 
+        if not self.db_breaker.can_execute():
+            logger.warning(f"Circuit breaker '{self.db_breaker.name}' is OPEN. Diverting immediately to fallback popular releases.")
+            fallback_items = self._get_fallback_popular_movies(limit)
+            return "CIRCUIT_BREAKER_FALLBACK", fallback_items, None, variant
+
         try:
-            strategy, items, set_id = self._execute_hybrid_pipeline(user_id, branch_id, limit, variant)
+            strategy, items, set_id = self.db_breaker.execute(
+                self._execute_hybrid_pipeline, user_id, branch_id, limit, variant
+            )
             cache.set(cache_key, (strategy, items, set_id, variant), ttl_seconds=900)
             return strategy, items, set_id, variant
         except Exception as e:
@@ -312,6 +324,11 @@ class HybridRecommendationEngine:
         recent_genres, time_boost = self._get_user_recent_interaction(user_id)
         candidate_meta = self._get_movie_metadata_batch(list(candidate_movies))
 
+        # Fine-grained sub-genre and attribute preference profiles
+        all_interacted_mids = list({inter["movie_id"] for inter in interactions})
+        interacted_meta = self._get_movie_metadata_batch(all_interacted_mids)
+        pos_attrs, neg_attrs = self.subgenre_engine.build_attribute_profiles(interactions, interacted_meta)
+
         # Final scoring and location boost
         hybrid_scores: List[Tuple[int, float, str, str]] = []
         for mid in candidate_movies:
@@ -330,10 +347,17 @@ class HybridRecommendationEngine:
             else:
                 branch_reason = None
 
+            # Sub-genre and fine-grained attribute affinity adjustment
+            meta_mid = candidate_meta.get(mid, {})
+            sub_adj, sub_reason = self.subgenre_engine.compute_subgenre_adjustment(
+                meta_mid, pos_attrs, neg_attrs
+            )
+            final_score += sub_adj
+
             reason = "Personalized recommendation matching your taste profile"
             source = "HYBRID"
 
-            movie_genres = set(candidate_meta.get(mid, {}).get("genres") or [])
+            movie_genres = set(meta_mid.get("genres") or [])
             overlap_genre = recent_genres & movie_genres
 
             if overlap_genre and time_boost > 0.02:
@@ -344,6 +368,9 @@ class HybridRecommendationEngine:
             elif branch_reason:
                 reason = branch_reason
                 source = "LOCATION_AWARE"
+            elif sub_reason and sub_adj > 0.04:
+                reason = sub_reason
+                source = "SUBGENRE_THEME"
             elif cb_val >= 0.70:
                 reason = "Similar to movies you rated highly"
                 source = "CONTENT_BASED"

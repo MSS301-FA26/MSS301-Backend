@@ -95,3 +95,44 @@ class MovieReviewResponseData(BaseModel):
     feedbackConsistency: str = Field(..., description="Consistency status (CONSISTENT, INCONSISTENT)")
     confidenceScore: float = Field(..., description="Confidence score [0.0, 1.0]")
     aspectSentiment: dict = Field(default_factory=dict, description="Aspect sentiment breakdowns")
+
+
+class VariantFunnelMetrics(BaseModel):
+    """Telemetry metrics per A/B experiment variant."""
+    model_config = ConfigDict(frozen=True)
+
+    variant: str = Field(..., description="Variant identifier (e.g. CONTROL, VARIANT_B)")
+    impressions: int = Field(default=0, description="Total recommendation sets shown")
+    clicks: int = Field(default=0, description="Total recommendation items clicked")
+    ctr: float = Field(default=0.0, description="Click-through rate (clicks / impressions)")
+    detailViews: int = Field(default=0, description="Total movie detail views")
+    detailViewRate: float = Field(default=0.0, description="Detail view rate (detailViews / clicks)")
+    bookings: int = Field(default=0, description="Total bookings completed from recommendations")
+    bookingConversionRate: float = Field(default=0.0, description="Booking conversion rate (bookings / impressions)")
+    ticketsUsed: int = Field(default=0, description="Total tickets redeemed at cinema")
+    ticketUsedRate: float = Field(default=0.0, description="Ticket used conversion rate (ticketsUsed / bookings)")
+
+
+class FunnelTotals(BaseModel):
+    """Aggregated full-funnel telemetry across all variants."""
+    model_config = ConfigDict(frozen=True)
+
+    totalImpressions: int = Field(default=0, description="Overall recommendation sets delivered")
+    totalClicks: int = Field(default=0, description="Overall recommendation clicks recorded")
+    overallCtr: float = Field(default=0.0, description="Aggregated click-through rate")
+    totalDetailViews: int = Field(default=0, description="Overall detail views recorded")
+    totalBookings: int = Field(default=0, description="Overall booking conversions recorded")
+    overallBookingRate: float = Field(default=0.0, description="Aggregated booking conversion rate")
+    totalTicketsUsed: int = Field(default=0, description="Overall tickets validated at cinema")
+
+
+class RecommendationMetricsResponse(BaseModel):
+    """Full-funnel telemetry and conversion metrics dashboard response DTO."""
+    model_config = ConfigDict(frozen=True)
+
+    overall: FunnelTotals = Field(..., description="Aggregated full-funnel metrics")
+    variants: List[VariantFunnelMetrics] = Field(default_factory=list, description="Metrics per experiment variant")
+    ctrUpliftPercent: Optional[float] = Field(default=None, description="CTR relative uplift of Variant B over Control (%)")
+    conversionUpliftPercent: Optional[float] = Field(default=None, description="Booking conversion relative uplift (%)")
+    measuredPeriod: str = Field(default="All Time", description="Measurement interval description")
+

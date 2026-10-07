@@ -6,7 +6,8 @@ from dtos.recommendation_dtos import (
     FeedbackRequest,
     FeedbackClickRequest,
     MovieReviewRequest,
-    MovieReviewResponseData
+    MovieReviewResponseData,
+    RecommendationMetricsResponse
 )
 
 
@@ -49,4 +50,12 @@ class IRecommendationService(Protocol):
     def submit_movie_review(self, review_data: MovieReviewRequest) -> MovieReviewResponseData:
         """Submit a user movie review and perform sentiment and consistency analysis."""
         ...
+
+    def get_recommendation_metrics(
+        self,
+        branch_id: Optional[int] = None
+    ) -> RecommendationMetricsResponse:
+        """Retrieve aggregated full-funnel conversion and A/B test uplift telemetry metrics."""
+        ...
+
 

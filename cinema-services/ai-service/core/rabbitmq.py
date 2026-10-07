@@ -29,24 +29,43 @@ def _run_consumer():
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
 
+            # Declare Dead-Letter Exchange and Queue for unprocessable or exhausted events
+            dlx_exchange = "cinema.dlx"
+            dlq_queue = "ai-service.events.dlq"
+            channel.exchange_declare(exchange=dlx_exchange, exchange_type="topic", durable=True)
+            channel.queue_declare(queue=dlq_queue, durable=True)
+            channel.queue_bind(exchange=dlx_exchange, queue=dlq_queue, routing_key="#")
+
             # Declare Payment Events exchange and queue
             payment_exchange = "cinema.payment.events"
             payment_queue = "ai-service.payment.events.queue"
             channel.exchange_declare(exchange=payment_exchange, exchange_type="topic", durable=True)
-            channel.queue_declare(queue=payment_queue, durable=True)
+            channel.queue_declare(
+                queue=payment_queue,
+                durable=True,
+                arguments={"x-dead-letter-exchange": dlx_exchange, "x-dead-letter-routing-key": "dlq.payment"}
+            )
             channel.queue_bind(exchange=payment_exchange, queue=payment_queue, routing_key="payment.succeeded")
 
             # Declare Catalog Events exchange and queue
             catalog_exchange = "cinema.catalog.events"
             catalog_queue = "ai-service.catalog.events.queue"
             channel.exchange_declare(exchange=catalog_exchange, exchange_type="topic", durable=True)
-            channel.queue_declare(queue=catalog_queue, durable=True)
+            channel.queue_declare(
+                queue=catalog_queue,
+                durable=True,
+                arguments={"x-dead-letter-exchange": dlx_exchange, "x-dead-letter-routing-key": "dlq.catalog"}
+            )
             channel.queue_bind(exchange=catalog_exchange, queue=catalog_queue, routing_key="movie.published")
             channel.queue_bind(exchange=catalog_exchange, queue=catalog_queue, routing_key="movie.updated")
 
-            logger.info("RabbitMQ Consumer is ready and listening for events.")
+            logger.info("RabbitMQ Consumer is ready and listening for events with DLQ resilience.")
 
             def on_message(ch, method, properties, body):
+                headers = properties.headers or {} if properties else {}
+                retry_count = int(headers.get("x-retry-count", 0))
+                max_retries = 3
+
                 try:
                     data = json.loads(body.decode("utf-8"))
                     routing_key = method.routing_key
@@ -56,8 +75,46 @@ def _run_consumer():
                         handle_movie_published_event(data)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as ex:
-                    logger.error(f"Error processing RabbitMQ message: {ex}", exc_info=True)
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                    logger.error(
+                        f"Error processing RabbitMQ message (routing_key={method.routing_key}, "
+                        f"retry={retry_count}/{max_retries}): {ex}",
+                        exc_info=True
+                    )
+                    if retry_count < max_retries:
+                        updated_headers = dict(headers)
+                        updated_headers["x-retry-count"] = retry_count + 1
+                        updated_headers["x-last-error"] = str(ex)
+                        new_props = pika.BasicProperties(
+                            headers=updated_headers,
+                            delivery_mode=2
+                        )
+                        ch.basic_publish(
+                            exchange=method.exchange,
+                            routing_key=method.routing_key,
+                            body=body,
+                            properties=new_props
+                        )
+                        ch.basic_ack(delivery_tag=method.delivery_tag)
+                    else:
+                        logger.critical(
+                            f"Max retries exhausted for message on {method.routing_key}. "
+                            f"Routing message to dead-letter exchange {dlx_exchange}."
+                        )
+                        dlq_headers = dict(headers)
+                        dlq_headers["x-dead-letter-reason"] = str(ex)
+                        dlq_headers["x-original-exchange"] = method.exchange
+                        dlq_headers["x-original-routing-key"] = method.routing_key
+                        dlq_props = pika.BasicProperties(
+                            headers=dlq_headers,
+                            delivery_mode=2
+                        )
+                        ch.basic_publish(
+                            exchange=dlx_exchange,
+                            routing_key=f"dlq.{method.routing_key}",
+                            body=body,
+                            properties=dlq_props
+                        )
+                        ch.basic_ack(delivery_tag=method.delivery_tag)
 
             channel.basic_consume(queue=payment_queue, on_message_callback=on_message)
             channel.basic_consume(queue=catalog_queue, on_message_callback=on_message)

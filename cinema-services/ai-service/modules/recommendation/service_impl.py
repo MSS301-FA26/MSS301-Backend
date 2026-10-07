@@ -12,12 +12,14 @@ from dtos.recommendation_dtos import (
     FeedbackRequest,
     FeedbackClickRequest,
     MovieReviewRequest,
-    MovieReviewResponseData
+    MovieReviewResponseData,
+    RecommendationMetricsResponse
 )
 from modules.recommendation.interfaces import IRecommendationService
 from modules.recommendation.hybrid_engine import HybridRecommendationEngine
 from modules.recommendation.content_filter import ContentBasedFilter
 from modules.recommendation.sentiment_analyzer import AspectSentimentAnalyzer
+from modules.recommendation.feedback_tracker import FeedbackTracker
 from events.interaction_event_consumer import (
     handle_movie_rated_event,
     handle_movie_disliked_event
@@ -33,6 +35,7 @@ class RecommendationServiceImpl:
         self.hybrid_engine = HybridRecommendationEngine()
         self.content_filter = ContentBasedFilter()
         self.sentiment_analyzer = AspectSentimentAnalyzer()
+        self.feedback_tracker = FeedbackTracker()
 
     def get_user_recommendations(
         self,
@@ -174,6 +177,12 @@ class RecommendationServiceImpl:
             aspectSentiment=result.aspect_sentiment
         )
 
+    def get_recommendation_metrics(
+        self,
+        branch_id: Optional[int] = None
+    ) -> RecommendationMetricsResponse:
+        """Retrieve aggregated full-funnel conversion telemetry and A/B testing uplift."""
+        return self.feedback_tracker.get_funnel_metrics(branch_id=branch_id)
 
 
 _rec_service_instance = None

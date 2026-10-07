@@ -9,7 +9,8 @@ from dtos.recommendation_dtos import (
     FeedbackResponseData,
     FeedbackClickRequest,
     MovieReviewRequest,
-    MovieReviewResponseData
+    MovieReviewResponseData,
+    RecommendationMetricsResponse
 )
 from modules.recommendation.service_impl import get_recommendation_service
 
@@ -130,4 +131,22 @@ def submit_movie_review(
         message="Movie review processed and recorded successfully",
         data=data
     )
+
+
+@router.get("/metrics", response_model=ApiResponse[RecommendationMetricsResponse])
+def get_recommendation_metrics(
+    branch_id: Optional[int] = Query(default=None, description="Optional branch ID filter for location-specific telemetry")
+):
+    """
+    Get full-funnel conversion telemetry and A/B test uplift analytics.
+    Tracks impression, click, detail view, booking, and ticket redemption conversion rates.
+    """
+    service = get_recommendation_service()
+    data = service.get_recommendation_metrics(branch_id=branch_id)
+    return ApiResponse(
+        success=True,
+        message="Recommendation funnel telemetry metrics retrieved successfully",
+        data=data
+    )
+
 
