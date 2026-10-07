@@ -1,35 +1,55 @@
 import logging
-from typing import List
+from typing import List, Optional
+import psycopg2.extras
+from core.db import get_db_connection
 from dtos.recommendation_dtos import (
     RecommendationResponse,
     ContentRecommendationResponse,
-    RecommendationItem
+    TrendingRecommendationResponse,
+    RecommendationItem,
+    FeedbackRequest
 )
 from modules.recommendation.interfaces import IRecommendationService
 from modules.recommendation.hybrid_engine import HybridRecommendationEngine
 from modules.recommendation.content_filter import ContentBasedFilter
-from core.db import get_db_connection
-import psycopg2.extras
+from events.interaction_event_consumer import (
+    handle_movie_rated_event,
+    handle_movie_disliked_event
+)
 
 logger = logging.getLogger(__name__)
 
 
 class RecommendationServiceImpl:
-    """Implementation of IRecommendationService."""
+    """Enterprise implementation of IRecommendationService."""
 
     def __init__(self):
         self.hybrid_engine = HybridRecommendationEngine()
         self.content_filter = ContentBasedFilter()
 
-    def get_user_recommendations(self, user_id: int, limit: int = 10) -> RecommendationResponse:
-        strategy, items = self.hybrid_engine.recommend(user_id=user_id, limit=limit)
+    def get_user_recommendations(
+        self,
+        user_id: int,
+        branch_id: Optional[int] = None,
+        limit: int = 10
+    ) -> RecommendationResponse:
+        strategy, items = self.hybrid_engine.recommend(
+            user_id=user_id,
+            branch_id=branch_id,
+            limit=limit
+        )
         return RecommendationResponse(
             userId=user_id,
             strategy=strategy,
+            branchId=branch_id,
             recommendations=items
         )
 
-    def get_content_recommendations(self, movie_id: int, limit: int = 6) -> ContentRecommendationResponse:
+    def get_content_recommendations(
+        self,
+        movie_id: int,
+        limit: int = 6
+    ) -> ContentRecommendationResponse:
         similar_tuples = self.content_filter.find_similar_movies(target_movie_id=movie_id, top_n=limit)
         if not similar_tuples:
             return ContentRecommendationResponse(movieId=movie_id, recommendations=[])
@@ -56,6 +76,7 @@ class RecommendationServiceImpl:
                     posterUrl=r.get("poster_url") or "",
                     score=round(float(scores_map[mid]), 3),
                     reason="High semantic similarity in content, genre, and themes",
+                    source="CONTENT_BASED",
                     genres=r.get("genres") or [],
                     releaseYear=r.get("release_year")
                 ))
@@ -64,6 +85,44 @@ class RecommendationServiceImpl:
             movieId=movie_id,
             recommendations=items
         )
+
+    def get_trending_recommendations(
+        self,
+        branch_id: Optional[int] = None,
+        limit: int = 10
+    ) -> TrendingRecommendationResponse:
+        items = self.hybrid_engine._get_fallback_popular_movies(limit=limit)
+        return TrendingRecommendationResponse(
+            branchId=branch_id,
+            strategy="GLOBAL_POPULARITY",
+            recommendations=items
+        )
+
+    def record_feedback(self, feedback: FeedbackRequest) -> bool:
+        try:
+            interaction_type = feedback.interactionType.upper()
+            body = {
+                "userId": feedback.userId,
+                "movieId": feedback.movieId,
+                "payload": {
+                    "userId": feedback.userId,
+                    "movieId": feedback.movieId,
+                    "rating": feedback.rating,
+                    "comment": feedback.comment
+                }
+            }
+
+            if interaction_type in ("MOVIE_DISLIKED", "DISLIKE"):
+                handle_movie_disliked_event(body)
+            elif interaction_type in ("MOVIE_RATED", "RATING"):
+                handle_movie_rated_event(body)
+            else:
+                # Default generic feedback handling
+                handle_movie_rated_event(body)
+            return True
+        except Exception as e:
+            logger.error(f"Error recording user feedback: {e}", exc_info=True)
+            return False
 
 
 _rec_service_instance = None

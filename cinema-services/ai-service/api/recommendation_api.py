@@ -1,22 +1,31 @@
-from fastapi import APIRouter, Query, Path
+from typing import Optional
+from fastapi import APIRouter, Query, Path, Body, HTTPException, status
 from dtos.common import ApiResponse
-from dtos.recommendation_dtos import RecommendationResponse, ContentRecommendationResponse
+from dtos.recommendation_dtos import (
+    RecommendationResponse,
+    ContentRecommendationResponse,
+    TrendingRecommendationResponse,
+    FeedbackRequest,
+    FeedbackResponseData
+)
 from modules.recommendation.service_impl import get_recommendation_service
 
 router = APIRouter(prefix="/api/v1/recommendations", tags=["Recommendations"])
 
 
-@router.get("/user/{user_id}", response_model=ApiResponse[RecommendationResponse])
+@router.get("/users/{user_id}", response_model=ApiResponse[RecommendationResponse])
+@router.get("/user/{user_id}", response_model=ApiResponse[RecommendationResponse], include_in_schema=False)
 def get_user_recommendations(
     user_id: int = Path(..., description="User ID (Logical ID)"),
+    branch_id: Optional[int] = Query(default=None, description="Optional Cinema Branch ID for availability filtering"),
     limit: int = Query(default=10, ge=1, le=50, description="Maximum number of recommendations")
 ):
     """
     Get personalized movie recommendations for a user.
-    Uses Pearson Correlation with overlap shrinkage and content-based profile.
+    Integrates dual profile content-based filtering, Pearson CF, availability and dislike exclusion.
     """
     service = get_recommendation_service()
-    data = service.get_user_recommendations(user_id=user_id, limit=limit)
+    data = service.get_user_recommendations(user_id=user_id, branch_id=branch_id, limit=limit)
     return ApiResponse(
         success=True,
         message="User recommendations retrieved successfully",
@@ -24,7 +33,8 @@ def get_user_recommendations(
     )
 
 
-@router.get("/content/{movie_id}", response_model=ApiResponse[ContentRecommendationResponse])
+@router.get("/movies/{movie_id}/similar", response_model=ApiResponse[ContentRecommendationResponse])
+@router.get("/content/{movie_id}", response_model=ApiResponse[ContentRecommendationResponse], include_in_schema=False)
 def get_content_recommendations(
     movie_id: int = Path(..., description="Target movie ID (Logical ID)"),
     limit: int = Query(default=6, ge=1, le=20, description="Maximum number of similar movies")
@@ -38,4 +48,49 @@ def get_content_recommendations(
         success=True,
         message="Similar movies retrieved successfully",
         data=data
+    )
+
+
+@router.get("/trending", response_model=ApiResponse[TrendingRecommendationResponse])
+def get_trending_recommendations(
+    branch_id: Optional[int] = Query(default=None, description="Optional Cinema Branch ID filter"),
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum number of trending recommendations")
+):
+    """
+    Get trending and popular movies currently showing.
+    Ideal for guest users or cold-start fallback.
+    """
+    service = get_recommendation_service()
+    data = service.get_trending_recommendations(branch_id=branch_id, limit=limit)
+    return ApiResponse(
+        success=True,
+        message="Trending recommendations retrieved successfully",
+        data=data
+    )
+
+
+@router.post("/feedbacks", response_model=ApiResponse[FeedbackResponseData])
+@router.post("/feedback", response_model=ApiResponse[FeedbackResponseData], include_in_schema=False)
+def record_recommendation_feedback(
+    feedback: FeedbackRequest = Body(..., description="User rating, like, or dislike feedback payload")
+):
+    """
+    Submit user feedback or explicit rating/dislike signal.
+    Immediately updates user preference profile and applies negative penalties if disliked.
+    """
+    service = get_recommendation_service()
+    success = service.record_feedback(feedback)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record recommendation feedback"
+        )
+    return ApiResponse(
+        success=True,
+        message="Feedback recorded successfully",
+        data=FeedbackResponseData(
+            recorded=True,
+            userId=feedback.userId,
+            movieId=feedback.movieId
+        )
     )

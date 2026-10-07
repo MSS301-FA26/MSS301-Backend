@@ -53,15 +53,40 @@ def get_db_connection():
 
 
 def run_migrations():
-    """Execute initial SQL schema migration if tables do not exist."""
-    migration_file = os.path.join(
-        os.path.dirname(__file__), "..", "db", "migration", "V1__init_ai_db.sql"
-    )
-    if os.path.exists(migration_file):
-        with get_db_connection() as conn:
-            with conn.cursor() as cursor:
-                with open(migration_file, "r", encoding="utf-8") as f:
-                    sql = f.read()
-                    cursor.execute(sql)
-            conn.commit()
-            logger.info("Executed migration V1__init_ai_db.sql successfully.")
+    """Execute SQL schema migrations in alphabetical order if not already applied."""
+    migrations_dir = os.path.join(os.path.dirname(__file__), "..", "db", "migration")
+    if not os.path.exists(migrations_dir):
+        return
+
+    sql_files = sorted([f for f in os.listdir(migrations_dir) if f.endswith(".sql")])
+    if not sql_files:
+        return
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # Create schema_migrations tracking table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version VARCHAR(128) PRIMARY KEY,
+                    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("SELECT version FROM schema_migrations;")
+            applied = {row[0] for row in cursor.fetchall()}
+
+            for sql_file in sql_files:
+                if sql_file in applied:
+                    continue
+
+                full_path = os.path.join(migrations_dir, sql_file)
+                logger.info(f"Applying database migration: {sql_file}")
+                with open(full_path, "r", encoding="utf-8") as f:
+                    sql_content = f.read()
+                    cursor.execute(sql_content)
+
+                cursor.execute(
+                    "INSERT INTO schema_migrations (version) VALUES (%s);",
+                    (sql_file,)
+                )
+                logger.info(f"Successfully applied migration: {sql_file}")
+        conn.commit()

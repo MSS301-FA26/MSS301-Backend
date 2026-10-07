@@ -5,6 +5,10 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
+    """
+    Application settings configuration.
+    Loads and validates required infrastructure and security environment variables.
+    """
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -12,30 +16,30 @@ class Settings(BaseSettings):
     )
 
     # Server Configuration
-    SERVER_PORT: int = Field(default=8000, description="Server port")
+    SERVER_PORT: int = Field(..., description="Server port")
 
-    # Security
+    # Security (Zero-Trust tokens)
     INTERNAL_GATEWAY_SECRET: str = Field(
-        default="cinema-gateway-secret-key-change-in-production",
+        ...,
         description="Secret key injected by API Gateway in X-Gateway-Secret header"
     )
     INTERNAL_SERVICE_SECRET: str = Field(
-        default="cinema-internal-service-secret-key-change-in-production",
+        ...,
         description="Secret key for service-to-service calls in X-Internal-Service-Secret header"
     )
 
     # PostgreSQL Database
-    DB_HOST: str = Field(default="localhost", description="Postgres host")
-    DB_PORT: int = Field(default=5435, description="Postgres port")
-    DB_NAME: str = Field(default="recommendation_db", description="Postgres database name")
-    DB_USER: str = Field(default="rec_user", description="Postgres user")
-    DB_PASSWORD: str = Field(default="rec_pass_123", description="Postgres password")
+    DB_HOST: str = Field(..., description="Postgres host")
+    DB_PORT: int = Field(..., description="Postgres port")
+    DB_NAME: str = Field(..., description="Postgres database name")
+    DB_USER: str = Field(..., description="Postgres user")
+    DB_PASSWORD: str = Field(..., description="Postgres password")
 
     # RabbitMQ Event Broker
-    RABBITMQ_HOST: str = Field(default="localhost", description="RabbitMQ host")
-    RABBITMQ_PORT: int = Field(default=5672, description="RabbitMQ port")
-    RABBITMQ_USER: str = Field(default="guest", description="RabbitMQ username")
-    RABBITMQ_PASS: str = Field(default="guest", description="RabbitMQ password")
+    RABBITMQ_HOST: str = Field(..., description="RabbitMQ host")
+    RABBITMQ_PORT: int = Field(..., description="RabbitMQ port")
+    RABBITMQ_USER: str = Field(..., description="RabbitMQ username")
+    RABBITMQ_PASS: str = Field(..., description="RabbitMQ password")
 
     # OpenAI-Compatible LLM for Chatbot
     OPENAI_API_KEY: Optional[str] = Field(default="", description="OpenAI API key")
