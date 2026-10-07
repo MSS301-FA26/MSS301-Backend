@@ -41,14 +41,14 @@ class SingleHopTagExecutor:
         history: List[Dict[str, str]],
         user_id: Optional[int] = None
     ) -> AgentResult:
-        # 1. Build conversational context
+        # Build conversational context
         messages: List[Dict[str, Any]] = [{"role": "system", "content": PURE_PERSONA_PROMPT}]
         recent_history = history[-6:] if len(history) > 6 else history
         for turn in recent_history:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": message})
 
-        # 2. Lượt 1: LLM Tool Classification & Parameter Extraction (Docstring-Driven)
+        # LLM tool classification and parameter extraction (docstring-driven)
         tools_schema = self.tool_registry.get_tools_schema()
         response_msg = self.openai_client.chat_completion_with_tools(
             messages=messages,
@@ -56,9 +56,9 @@ class SingleHopTagExecutor:
             temperature=0.1
         )
 
-        # 3. Handle Tool Calling vs Direct Path
+        # Handle tool calling vs direct path
         if response_msg.tool_calls:
-            # Lấy tool call đầu tiên (Single-Hop)
+            # First tool call (Single-Hop)
             tool_call = response_msg.tool_calls[0]
             func_name = tool_call.function.name
             raw_args = tool_call.function.arguments
@@ -74,7 +74,7 @@ class SingleHopTagExecutor:
 
             logger.info(f"[SingleHopExecutor] Invoking tool '{func_name}' with arguments: {args}")
 
-            # Thực thi tool trong RAM (mất ~ 3ms)
+            # Execute tool in memory
             tool_result = self.tool_registry.execute(func_name, **args)
 
             movies = tool_result.get("movies", [])
@@ -82,7 +82,7 @@ class SingleHopTagExecutor:
             subsystem = tool_result.get("subsystem", "SEARCH")
             rewritten_query = tool_result.get("rewritten_query")
 
-            # 4. Lượt 2: LLM Grounded Response Synthesis
+            # LLM grounded response synthesis
             follow_up_messages = list(messages)
             follow_up_messages.append({
                 "role": "assistant",
@@ -109,7 +109,7 @@ class SingleHopTagExecutor:
             )
 
         else:
-            # Đường đi trực tiếp (Chit-chat / FAQ rạp) -> Chỉ tốn đúng 1 lượt LLM (~1.0s)
+            # Direct path (chit-chat / cinema FAQ) -> Single LLM turn
             reply_text = response_msg.content or "Xin chào! PopBot có thể giúp gì cho bạn về phim ảnh tại CinePremier hôm nay? 🍿"
             return AgentResult(
                 reply=reply_text,

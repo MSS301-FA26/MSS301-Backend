@@ -38,7 +38,7 @@ class GroundedGenerator:
         movie_titles = [m.title for m in movies[:4]]
         titles_str = ", ".join(f"'{t}'" for t in movie_titles)
 
-        # 1. Attempt generation via LLM if client is available
+        # Attempt generation via LLM if client is available
         prompt = (
             f"Catalog data retrieved from CinePremier: {titles_str}.\n"
             f"User request: \"{user_message}\".\n"
@@ -55,7 +55,7 @@ class GroundedGenerator:
         if llm_reply:
             return llm_reply
 
-        # 2. Template-based grounded fallback (Zero hallucination guarantee)
+        # Template-based grounded fallback (Zero hallucination guarantee)
         count = len(movies)
         if subsystem == "SEARCH":
             return f"Tôi đã tìm thấy {count} phim phù hợp nhất với yêu cầu của bạn tại CinePremier: {titles_str}."

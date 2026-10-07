@@ -1,13 +1,16 @@
 import logging
 from typing import List, Optional
 import psycopg2.extras
+
 from core.db import get_db_connection
+from core.cache import get_cache
 from dtos.recommendation_dtos import (
     RecommendationResponse,
     ContentRecommendationResponse,
     TrendingRecommendationResponse,
     RecommendationItem,
-    FeedbackRequest
+    FeedbackRequest,
+    FeedbackClickRequest
 )
 from modules.recommendation.interfaces import IRecommendationService
 from modules.recommendation.hybrid_engine import HybridRecommendationEngine
@@ -33,7 +36,7 @@ class RecommendationServiceImpl:
         branch_id: Optional[int] = None,
         limit: int = 10
     ) -> RecommendationResponse:
-        strategy, items = self.hybrid_engine.recommend(
+        strategy, items, set_id = self.hybrid_engine.recommend(
             user_id=user_id,
             branch_id=branch_id,
             limit=limit
@@ -42,6 +45,7 @@ class RecommendationServiceImpl:
             userId=user_id,
             strategy=strategy,
             branchId=branch_id,
+            setId=set_id,
             recommendations=items
         )
 
@@ -117,11 +121,28 @@ class RecommendationServiceImpl:
             elif interaction_type in ("MOVIE_RATED", "RATING"):
                 handle_movie_rated_event(body)
             else:
-                # Default generic feedback handling
                 handle_movie_rated_event(body)
+
+            # Invalidate cached recommendations for this user
+            get_cache().delete_pattern(f"user:{feedback.userId}:rec:*")
             return True
         except Exception as e:
             logger.error(f"Error recording user feedback: {e}", exc_info=True)
+            return False
+
+    def record_click_telemetry(self, click_data: FeedbackClickRequest) -> bool:
+        """Record recommendation item click for CTR telemetry analytics."""
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO ai_metrics_log (correlation_id, query_type, route_selected, latency_ms)
+                        VALUES (%s, 'RECOMMENDATION_CLICK', 'DIRECT_CLICK', 0.0);
+                    """, (f"click_set_{click_data.setId}_m_{click_data.movieId}",))
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.warning(f"Error recording click telemetry: {e}")
             return False
 
 

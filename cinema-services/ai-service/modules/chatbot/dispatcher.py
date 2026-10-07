@@ -38,19 +38,19 @@ class SubsystemDispatcher:
         """
         q_lower = query.lower()
 
-        # 1. Check for personalized recommendation intent
+        # Check for personalized recommendation intent
         if any(k in q_lower for k in REC_KEYWORDS):
             effective_uid = user_id or 1
             logger.info(f"[Dispatcher] Dispatching to RECOMMENDATION SUBSYSTEM (User {effective_uid})")
             rec_result = self.rec_service.get_user_recommendations(user_id=effective_uid, limit=5)
             return "RECOMMEND", rec_result
 
-        # 2. Check for movie search intent
+        # Check for movie search intent
         if any(k in q_lower for k in SEARCH_KEYWORDS) or len(query.split()) >= 2:
             logger.info(f"[Dispatcher] Dispatching to SEARCH SUBSYSTEM with query: '{query}'")
             search_result = self.search_service.search(query=query, limit=5)
             return "SEARCH", search_result
 
-        # 3. Direct conversational fallback
+        # Direct conversational fallback
         logger.info("[Dispatcher] Dispatching to DIRECT CONVERSATION")
         return "DIRECT", None

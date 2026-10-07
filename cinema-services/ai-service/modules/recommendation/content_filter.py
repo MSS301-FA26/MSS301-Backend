@@ -141,14 +141,14 @@ class ContentBasedFilter:
             interaction_type = str(inter.get("interaction_type") or "")
             raw_feedback = float(inter.get("raw_feedback_score") or 0.0)
 
-            # 1. Negative Signal: Disliked or Rating <= 2 or raw_feedback < 0
+            # Negative signal: Disliked or Rating <= 2 or raw_feedback < 0
             if is_disliked or rating <= 2.0 or raw_feedback < 0:
                 penalty_weight = 1.0 if is_disliked else ((3.0 - rating) / 2.0)
                 eff_weight = penalty_weight * decay
                 neg_vec += vec * eff_weight
                 neg_weight_total += eff_weight
 
-            # 2. Positive Signal: Rating >= 4, or engagement signals (booking, ticket used, like)
+            # Positive signal: Rating >= 4, or engagement signals (booking, ticket used, like)
             elif rating >= 4.0 or interaction_type in ("BOOKING_PAID", "TICKET_USED", "MOVIE_LIKED") or raw_feedback > 0:
                 score_weight = (rating / 5.0) if rating >= 4.0 else 1.0
                 eff_weight = score_weight * decay

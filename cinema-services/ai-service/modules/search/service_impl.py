@@ -34,13 +34,13 @@ class SearchServiceImpl:
     def search(self, query: str, limit: int = 10) -> AdaptiveSearchResponse:
         start_time = time.perf_counter()
 
-        # Step 1: Initial R0 candidate retrieval once (reused across tiers)
+        # Initial R0 candidate retrieval once (reused across tiers)
         r0_pool = self.routes.route_r0_first_stage(query, limit=max(limit * 3, 15))
 
-        # Step 2: Soft Utility Router determines execution tier (No fallback)
+        # Soft Utility Router determines execution tier (No fallback)
         route_name, entropy_h, was_fallback = self.router.predict_route(query, r0_pool[:max(limit, 5)])
 
-        # Step 3: Execute selected tier directly using pre-retrieved candidates
+        # Execute selected tier directly using pre-retrieved candidates
         if route_name == "R0_FIRST_STAGE":
             results = r0_pool[:limit]
         elif route_name == "R1_LIGHTWEIGHT":

@@ -11,7 +11,7 @@ class RecommendationItem(BaseModel):
     posterUrl: Optional[str] = Field(default="", description="Movie poster URL")
     score: float = Field(..., description="Normalized recommendation score [0, 1]")
     reason: Optional[str] = Field(default="", description="Recommendation rationale")
-    source: str = Field(default="HYBRID", description="Source mechanism (e.g. CONTENT_BASED, COLLABORATIVE, POPULARITY, HYBRID)")
+    source: str = Field(default="HYBRID", description="Source mechanism (e.g. CONTENT_BASED, COLLABORATIVE, POPULARITY, HYBRID, EXPLORATION)")
     genres: List[str] = Field(default_factory=list, description="Movie genres")
     releaseYear: Optional[int] = Field(default=None, description="Release year")
 
@@ -23,6 +23,7 @@ class RecommendationResponse(BaseModel):
     userId: int = Field(..., description="User logical ID")
     strategy: str = Field(..., description="Applied algorithm strategy")
     branchId: Optional[int] = Field(default=None, description="Applied branch filter ID if specified")
+    setId: Optional[int] = Field(default=None, description="Persisted recommendation set ID for CTR tracking")
     recommendations: List[RecommendationItem] = Field(default_factory=list)
 
 
@@ -35,7 +36,7 @@ class ContentRecommendationResponse(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    """User interaction and feedback submission DTO (Immutable)."""
+    """User interaction and feedback submission DTO."""
     model_config = ConfigDict(frozen=True)
 
     userId: int = Field(..., description="User logical ID")
@@ -46,12 +47,21 @@ class FeedbackRequest(BaseModel):
 
 
 class FeedbackResponseData(BaseModel):
-    """Feedback submission response acknowledgement DTO (Immutable)."""
+    """Feedback submission response acknowledgement DTO."""
     model_config = ConfigDict(frozen=True)
 
     recorded: bool = Field(..., description="Whether feedback was successfully processed")
     userId: int = Field(..., description="User logical ID")
     movieId: int = Field(..., description="Movie logical ID")
+
+
+class FeedbackClickRequest(BaseModel):
+    """Telemetry tracking DTO for recommendation item clicks."""
+    model_config = ConfigDict(frozen=True)
+
+    setId: int = Field(..., description="Recommendation set ID")
+    movieId: int = Field(..., description="Clicked movie ID")
+    userId: int = Field(..., description="User logical ID")
 
 
 class TrendingRecommendationResponse(BaseModel):

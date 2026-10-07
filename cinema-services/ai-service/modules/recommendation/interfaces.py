@@ -3,7 +3,8 @@ from dtos.recommendation_dtos import (
     RecommendationResponse,
     ContentRecommendationResponse,
     TrendingRecommendationResponse,
-    FeedbackRequest
+    FeedbackRequest,
+    FeedbackClickRequest
 )
 
 
@@ -37,4 +38,8 @@ class IRecommendationService(Protocol):
 
     def record_feedback(self, feedback: FeedbackRequest) -> bool:
         """Record real-time user feedback (rating, like, dislike)."""
+        ...
+
+    def record_click_telemetry(self, click_data: FeedbackClickRequest) -> bool:
+        """Record recommendation item click event for CTR analytics."""
         ...

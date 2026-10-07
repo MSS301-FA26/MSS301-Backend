@@ -3,9 +3,14 @@ import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
 import psycopg2.extras
+
 from core.db import get_db_connection
+from core.cache import get_cache
 from modules.recommendation.collaborative_filter import PearsonShrinkageCollaborativeFilter
 from modules.recommendation.content_filter import ContentBasedFilter, parse_vector
+from modules.recommendation.branch_scorer import BranchAwareScorer
+from modules.recommendation.diversity_reranker import DiversityReranker
+from modules.recommendation.feedback_tracker import FeedbackTracker
 from dtos.recommendation_dtos import RecommendationItem
 
 logger = logging.getLogger(__name__)
@@ -15,16 +20,20 @@ class HybridRecommendationEngine:
     """
     Enterprise Hybrid Recommendation Engine for Cinema Business:
     - Dual profile Content-Based Filtering with Negative Penalty.
-    - Pearson Shrinkage Collaborative Filtering with adaptive sample size gating.
-    - Branch and Showtime Availability filtering.
-    - Dislike exclusion (suppressing disliked movies from all personalized suggestions).
-    - Exponential Time Decay applied across interactions and recent genre booster.
+    - Pearson Shrinkage Collaborative Filtering with sample size gating.
+    - Location & branch-aware popularity scoring and user affinity.
+    - Diversity re-ranking with primary genre capping (max 3 per genre) and exploration slots.
+    - In-memory TTL cache with event-driven invalidation.
+    - Telemetry tracking of recommendation sets (set_id) for click-through funnel analytics.
     - Multi-tier resilience fallback (Hybrid -> Content-Based -> Popularity -> Now Showing).
     """
 
     def __init__(self):
-        self.cf_filter = PearsonShrinkageCollaborativeFilter(lambda_shrinkage=5.0, min_overlap=2)
+        self.cf_filter = PearsonShrinkageCollaborativeFilter(lambda_shrinkage=5.0, min_overlap=2, top_k_neighbors=30)
         self.content_filter = ContentBasedFilter()
+        self.branch_scorer = BranchAwareScorer()
+        self.diversity_reranker = DiversityReranker()
+        self.feedback_tracker = FeedbackTracker()
 
     def _get_movie_metadata_batch(self, movie_ids: List[int]) -> Dict[int, dict]:
         """Fetch metadata dictionary for given movie IDs."""
@@ -46,20 +55,18 @@ class HybridRecommendationEngine:
     ) -> Set[int]:
         """
         Generate candidate movie IDs based on:
-        1. NOW_SHOWING status.
-        2. Branch showtime availability (if branch_id provided).
-        3. Strict exclusion of user disliked movies.
+        - NOW_SHOWING status.
+        - Branch showtime availability (if branch_id provided).
+        - Strict exclusion of user disliked movies.
         """
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # 1. Base query: active movies currently in theaters
                 cur.execute("SELECT movie_id FROM movie_embeddings WHERE status = 'NOW_SHOWING'")
                 candidates = {r["movie_id"] for r in cur.fetchall()}
 
                 if not candidates:
                     return set()
 
-                # 2. User-specific exclusions (dislikes & hidden movies)
                 if user_id:
                     cur.execute("""
                         SELECT movie_id 
@@ -69,18 +76,13 @@ class HybridRecommendationEngine:
                     disliked_ids = {r["movie_id"] for r in cur.fetchall()}
                     candidates -= disliked_ids
 
-                # 3. Branch-aware showtime availability filtering (if branch_id specified)
                 if branch_id:
-                    # In microservice context: if branch showtimes mapping table exists, filter against it;
-                    # Otherwise verify against active branch screenings.
                     candidates = self._filter_by_branch_showtimes(cur, candidates, branch_id)
 
                 return candidates
 
     def _filter_by_branch_showtimes(self, cur, candidate_ids: Set[int], branch_id: int) -> Set[int]:
-        """
-        Filter candidate movies that have active, non-expired showtimes at selected branch.
-        """
+        """Filter candidate movies that have active showtimes at selected branch."""
         try:
             cur.execute("""
                 SELECT DISTINCT movie_id 
@@ -127,7 +129,6 @@ class HybridRecommendationEngine:
                     if updated_at.tzinfo is None:
                         updated_at = updated_at.replace(tzinfo=timezone.utc)
                     delta_hours = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds() / 3600.0)
-                    # Exponential decay with half-life of 24 hours for short-term recency boost
                     decay_boost = 0.20 * math.exp(-delta_hours / 24.0)
                 else:
                     decay_boost = 0.10
@@ -139,9 +140,7 @@ class HybridRecommendationEngine:
         limit: int = 10,
         exclude_movie_ids: Optional[Set[int]] = None
     ) -> List[RecommendationItem]:
-        """
-        Fallback strategy: return most popular active releases ordered by booking volume & rating count.
-        """
+        """Fallback strategy: return most popular active releases ordered by booking volume & rating count."""
         exclude_set = exclude_movie_ids or set()
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -186,53 +185,60 @@ class HybridRecommendationEngine:
         user_id: int,
         branch_id: Optional[int] = None,
         limit: int = 10
-    ) -> Tuple[str, List[RecommendationItem]]:
+    ) -> Tuple[str, List[RecommendationItem], Optional[int]]:
         """
-        Execute full personalized recommendation pipeline:
-        1. Fetch interactions and construct candidate set with availability & dislike filtering.
-        2. Check cold-start status -> Fallback to Popularity if no positive history.
-        3. Build Dual User Profile (Positive & Negative vectors) with exponential time decay.
-        4. Apply Collaborative Filtering with sample size gating (Nu >= 5).
-        5. Score candidate movies using Weighted Hybrid formula with Negative Penalty.
-        6. Apply multi-tier fallback upon any subsystem failure.
+        Execute full personalized recommendation pipeline with caching and telemetry tracking.
+        Returns: Tuple[strategy_name, items_list, persisted_set_id]
         """
+        cache = get_cache()
+        cache_key = f"user:{user_id}:rec:{branch_id or 0}:{limit}"
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            logger.debug(f"Cache hit for recommendation key: {cache_key}")
+            return cached_result
+
         try:
-            return self._execute_hybrid_pipeline(user_id, branch_id, limit)
+            strategy, items, set_id = self._execute_hybrid_pipeline(user_id, branch_id, limit)
+            cache.set(cache_key, (strategy, items, set_id), ttl_seconds=900)
+            return strategy, items, set_id
         except Exception as e:
             logger.error(f"Error in hybrid recommendation pipeline for user {user_id}: {e}", exc_info=True)
-            # Multi-tier fallback: Fallback to Popularity safely
-            return "FALLBACK_GLOBAL_POPULARITY", self._get_fallback_popular_movies(limit)
+            fallback_items = self._get_fallback_popular_movies(limit)
+            return "FALLBACK_GLOBAL_POPULARITY", fallback_items, None
 
     def _execute_hybrid_pipeline(
         self,
         user_id: int,
         branch_id: Optional[int],
         limit: int
-    ) -> Tuple[str, List[RecommendationItem]]:
+    ) -> Tuple[str, List[RecommendationItem], Optional[int]]:
         interactions = self._get_user_interactions(user_id)
 
-        # 1. Cold Start Check: User has zero recorded interactions
+        # Cold start check
         if not interactions:
             logger.info(f"User {user_id} is cold-start -> serving popular releases")
-            return "COLD_START_POPULAR", self._get_fallback_popular_movies(limit)
+            items = self._get_fallback_popular_movies(limit)
+            set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, "COLD_START_POPULAR", items)
+            return "COLD_START_POPULAR", items, set_id
 
         candidate_movies = self._get_candidate_movie_ids(user_id=user_id, branch_id=branch_id)
 
-        # Filter out watched movies unless needed, and isolate positive history
+        # Exclude watched movies
         watched_movie_ids = {
             inter["movie_id"] for inter in interactions 
             if inter.get("interaction_type") in ("BOOKING_PAID", "TICKET_USED") or (inter.get("rating") or 0) >= 4.0
         }
         candidate_movies -= watched_movie_ids
 
-        # If candidates are exhausted, relax watched filter or fallback
         if not candidate_movies:
-            return "FALLBACK_POPULAR", self._get_fallback_popular_movies(limit)
+            items = self._get_fallback_popular_movies(limit)
+            set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, "FALLBACK_POPULAR", items)
+            return "FALLBACK_POPULAR", items, set_id
 
-        # 2. Build Dual User Profile (Positive, Negative) with Exponential Time Decay
+        # Dual user profile vectors with time decay
         pos_vec, neg_vec = self.content_filter.build_dual_user_profile_vectors(interactions, half_life_days=30.0)
 
-        # 3. Collaborative Filtering with Threshold Gating (Nu >= 5)
+        # Collaborative filtering with sample size gating (Nu >= 5)
         user_ratings_map = {
             inter["movie_id"]: float(inter["rating"] or 3.0) 
             for inter in interactions if not inter.get("is_disliked")
@@ -245,7 +251,7 @@ class HybridRecommendationEngine:
             if all_ratings and user_id in all_ratings:
                 cf_preds = dict(self.cf_filter.predict_user_ratings(user_id, all_ratings, candidate_movies))
 
-        # 4. Content-Based Scores with Negative Penalty
+        # Content-based scores with negative penalty
         candidate_vectors: Dict[int, List[float]] = {}
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -270,43 +276,46 @@ class HybridRecommendationEngine:
                 )
                 cb_scores[mid] = cb_score
 
-        # 5. Adaptive Weight Determination
+        # Adaptive weight determination
         if num_interactions < 5:
-            # Low interaction count: CF weight is suppressed to 0.0
             w_cf = 0.0
-            w_cb = 0.75
-            w_pop = 0.25
+            w_cb = 0.70
+            w_pop = 0.30
             strategy = "CONTENT_POPULAR_HYBRID"
         elif cf_preds:
-            # Sufficient interaction count with valid CF predictions
             w_cf = min(0.30, (num_interactions / (num_interactions + 10.0)) * 0.50)
-            w_cb = 0.55
+            w_cb = 0.50
             w_pop = 1.0 - (w_cf + w_cb)
             strategy = "PEARSON_SHRINKAGE_HYBRID"
         else:
-            # Sufficient interaction count but no CF neighbor overlap
             w_cf = 0.0
-            w_cb = 0.80
-            w_pop = 0.20
+            w_cb = 0.75
+            w_pop = 0.25
             strategy = "CONTENT_BASED_PROFILE"
 
-        # 6. Real-time Recency Booster
+        # Branch scorer and recency booster
+        branch_pop_map = self.branch_scorer.get_branch_movie_popularity(branch_id, list(candidate_movies)) if branch_id else {}
         recent_genres, time_boost = self._get_user_recent_interaction(user_id)
         candidate_meta = self._get_movie_metadata_batch(list(candidate_movies))
 
-        # 7. Final Scoring & Reason Formulation
+        # Final scoring and location boost
         hybrid_scores: List[Tuple[int, float, str, str]] = []
         for mid in candidate_movies:
-            # CF Score normalized [0, 1]
             cf_val = (cf_preds[mid] - 1.0) / 4.0 if mid in cf_preds else 0.5
-            # CB Score [0, 1]
             cb_val = cb_scores.get(mid, 0.5 if not pos_vec else 0.0)
-            # Default Popularity prior
             pop_val = 0.5
 
             final_score = (w_cf * cf_val) + (w_cb * cb_val) + (w_pop * pop_val)
 
-            # Determine dominant reason & source
+            # Location boost
+            if branch_id:
+                branch_boost, branch_reason = self.branch_scorer.compute_branch_boost(
+                    user_id, branch_id, mid, branch_pop_map
+                )
+                final_score += branch_boost
+            else:
+                branch_reason = None
+
             reason = "Personalized recommendation matching your taste profile"
             source = "HYBRID"
 
@@ -318,6 +327,9 @@ class HybridRecommendationEngine:
                 genre_name = next(iter(overlap_genre))
                 reason = f"Based on your recent interest in {genre_name}"
                 source = "CONTENT_BASED"
+            elif branch_reason:
+                reason = branch_reason
+                source = "LOCATION_AWARE"
             elif cb_val >= 0.70:
                 reason = "Similar to movies you rated highly"
                 source = "CONTENT_BASED"
@@ -330,11 +342,18 @@ class HybridRecommendationEngine:
 
         # Sort descending by hybrid score
         hybrid_scores.sort(key=lambda x: x[1], reverse=True)
-        top_candidates = hybrid_scores[:limit]
+
+        # Diversity re-ranking
+        reranked_candidates = self.diversity_reranker.rerank_by_genre_diversity(
+            ranked_candidates=hybrid_scores,
+            metadata_map=candidate_meta,
+            max_per_genre=3,
+            limit=limit
+        )
 
         # Construct final RecommendationItem DTOs
         items: List[RecommendationItem] = []
-        for mid, score, reason, source in top_candidates:
+        for mid, score, reason, source in reranked_candidates:
             meta = candidate_meta.get(mid, {})
             items.append(RecommendationItem(
                 movieId=mid,
@@ -347,4 +366,7 @@ class HybridRecommendationEngine:
                 releaseYear=meta.get("release_year")
             ))
 
-        return strategy, items
+        # Persist recommendation set for CTR telemetry tracking
+        set_id = self.feedback_tracker.persist_recommendation_set(user_id, branch_id, strategy, items)
+
+        return strategy, items, set_id

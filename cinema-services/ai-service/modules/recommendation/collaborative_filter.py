@@ -28,13 +28,13 @@ class PearsonShrinkageCollaborativeFilter:
         ratings: Dict[int, Dict[int, float]] = {}
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # 1. Fetch movies rated by the target user
+                # Fetch movies rated by the target user
                 cur.execute("SELECT movie_id FROM user_interactions WHERE user_id = %s", (target_user_id,))
                 user_mids = [r["movie_id"] for r in cur.fetchall()]
                 if not user_mids:
                     return {}
 
-                # 2. Fetch candidate neighbors who have rated at least one common movie
+                # Fetch candidate neighbors who have rated at least one common movie
                 cur.execute("""
                     SELECT user_id, movie_id, COALESCE(rating, weight, 5.0) AS score
                     FROM user_interactions

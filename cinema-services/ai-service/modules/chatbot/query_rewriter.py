@@ -20,7 +20,7 @@ class QueryRewriter:
         history: List[Dict[str, str]],
         last_movie_title: str = None
     ) -> str:
-        # 1. Attempt LLM-based query rewrite if client is configured
+        # Attempt LLM-based query rewrite if client is configured
         recent_history = history[-4:] if len(history) > 4 else history
         formatted_history = "\n".join([f"{turn['role'].capitalize()}: {turn['content']}" for turn in recent_history])
 
@@ -44,7 +44,7 @@ class QueryRewriter:
             logger.info(f"[Query Rewriter] Rewrote '{current_message}' -> '{rewritten}'")
             return rewritten
 
-        # 2. Rule-based heuristic fallback when LLM is unconfigured or unavailable
+        # Rule-based heuristic fallback when LLM is unconfigured or unavailable
         fallback_query = current_message
         if last_movie_title:
             if any(w in current_message.lower() for w in ["này", "đó", "thứ hai", "bộ đó", "this", "that"]):

@@ -57,9 +57,8 @@ def run_benchmark():
         for mid, r in items[split_point:]:
             test_ratings[u][mid] = r
 
-    # Evaluated methods:
-    # 1. Baseline: Traditional Cosine Similarity with zero-imputation
-    # 2. Proposed: Pearson Correlation + Mean Centering + Overlap Shrinkage (Paper 2)
+    # Baseline: Traditional Cosine Similarity with zero-imputation
+    # Proposed: Pearson Correlation with Mean Centering and Overlap Shrinkage
     proposed_cf = PearsonShrinkageCollaborativeFilter(lambda_shrinkage=5.0, min_overlap=2)
 
     baseline_errors = []

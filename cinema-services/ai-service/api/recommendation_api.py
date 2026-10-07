@@ -6,7 +6,8 @@ from dtos.recommendation_dtos import (
     ContentRecommendationResponse,
     TrendingRecommendationResponse,
     FeedbackRequest,
-    FeedbackResponseData
+    FeedbackResponseData,
+    FeedbackClickRequest
 )
 from modules.recommendation.service_impl import get_recommendation_service
 
@@ -22,7 +23,7 @@ def get_user_recommendations(
 ):
     """
     Get personalized movie recommendations for a user.
-    Integrates dual profile content-based filtering, Pearson CF, availability and dislike exclusion.
+    Integrates dual profile content-based filtering, Pearson CF, availability, branch scoring and diversity.
     """
     service = get_recommendation_service()
     data = service.get_user_recommendations(user_id=user_id, branch_id=branch_id, limit=limit)
@@ -76,7 +77,7 @@ def record_recommendation_feedback(
 ):
     """
     Submit user feedback or explicit rating/dislike signal.
-    Immediately updates user preference profile and applies negative penalties if disliked.
+    Immediately updates user preference profile and invalidates cache.
     """
     service = get_recommendation_service()
     success = service.record_feedback(feedback)
@@ -93,4 +94,20 @@ def record_recommendation_feedback(
             userId=feedback.userId,
             movieId=feedback.movieId
         )
+    )
+
+
+@router.post("/clicks", response_model=ApiResponse[dict])
+def record_recommendation_click(
+    click_data: FeedbackClickRequest = Body(..., description="Recommendation click event telemetry payload")
+):
+    """
+    Record recommendation item click event for CTR analytics and conversion tracking.
+    """
+    service = get_recommendation_service()
+    service.record_click_telemetry(click_data)
+    return ApiResponse(
+        success=True,
+        message="Click telemetry recorded successfully",
+        data={"recorded": True, "setId": click_data.setId, "movieId": click_data.movieId}
     )
