@@ -192,9 +192,17 @@ Tuân thủ nghiêm ngặt quy định tại Mục 22 và Mục 28: Mọi thuậ
   - $\vec{V}_{\text{neg}}$: Véc-tơ đại diện các nội dung khách hàng phản cảm (1★, dislike, chê bai).
   - $\lambda_{\text{neg}}$: Hệ số phạt ($\lambda_{\text{neg}} = 0.5$).
 - **Trích dẫn Bài báo Gốc**:
-  - *Tên nghiên cứu*: Relevance Feedback in Information Retrieval (Nền tảng Thuật toán Rocchio)
-  - *Tác giả*: J. J. Rocchio
-  - *Năm / Xuất bản*: 1971, The SMART Retrieval System: Experiments in Automatic Document Processing, Prentice-Hall, pp. 313–323.
+  - *Tên nghiên cứu*: Relevance Feedback in Information Retrieval (Nền tảng Thuật toán Rocchio, Chương 14)
+  - *Tác giả*: J. J. Rocchio Jr.
+  - *Chủ biên tập sách*: Gerard Salton
+  - *Tên sách chuyên khảo*: *The SMART Retrieval System: Experiments in Automatic Document Processing*
+  - *Nhà xuất bản*: Prentice-Hall, Englewood Cliffs, NJ, USA
+  - *Năm / Trang*: 1971, pp. 313–323
+  - *ISBN-10*: 0-13-814525-9
+  - *ISBN-13*: 978-0138145255
+  - *LCCN (Thư viện Quốc hội Mỹ)*: 70-143823
+  - *Semantic Scholar Corpus ID*: [15307527](https://www.semanticscholar.org/paper/Relevance-Feedback-in-Information-Retrieval-Rocchio/3986ca78680d29032fa65a8fc5500c8b21c4b7e8)
+  - *Định danh DOI*: **Không có DOI**. *(Lý do: Công trình này là một chương sách chuyên khảo in vật lý xuất bản năm 1971 bởi Prentice-Hall — trước khi hệ thống định danh số DOI được thành lập vào năm 2000. Nhà xuất bản không đăng ký mã DOI hồi tố cho từng chương sách con; theo chuẩn trích dẫn quốc tế APA 7th và ACM, công trình được định danh chính thức thông qua mã ISBN và LCCN).*
 - **Vị trí trong mã nguồn**: `modules/recommendation/content_filter.py:calculate_dual_profile_similarity()`
 
 ---
