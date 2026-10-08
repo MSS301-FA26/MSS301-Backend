@@ -46,6 +46,19 @@ public class AuditLogServiceImpl implements AuditLogService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordInternal(AuditActionType action, String targetType, Long targetId, String detail, Long actorId) {
+        try {
+            User actor = actorId != null ? userRepository.findById(actorId).orElse(null) : null;
+            AuditLog logEntry = new AuditLog(actor, action, targetType, targetId, detail, null);
+            auditLogRepository.save(logEntry);
+        } catch (Exception e) {
+            log.warn("Failed to record internal audit log for action={} targetType={} targetId={}: {}",
+                    action, targetType, targetId, e.getMessage());
+        }
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PageResponse<AuditLogResponse> getLogs(int page, int size, String targetType) {
         int boundedPage = Math.max(0, page);

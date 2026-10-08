@@ -53,12 +53,20 @@ public class AuditLog extends BaseEntity {
     @Column(name = "ip_address", length = 100)
     private String ipAddress;
 
+    @Column(name = "cinema_id")
+    private Long cinemaId;
+
     public AuditLog(User actor, AuditActionType action, String targetType, Long targetId, String detail, String ipAddress) {
+        this(actor, action, targetType, targetId, detail, ipAddress, null);
+    }
+
+    public AuditLog(User actor, AuditActionType action, String targetType, Long targetId, String detail, String ipAddress, Long cinemaId) {
         this.actor = actor;
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;
         this.detail = detail;
         this.ipAddress = ipAddress;
+        this.cinemaId = cinemaId;
     }
 }

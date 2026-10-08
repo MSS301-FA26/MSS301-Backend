@@ -222,6 +222,12 @@ The following mapping statements are stale relative to current code:
 5. Implement Cinema Incident Refund in isolated phases: schema, incident, gateway refund, claim, proof/history, notification/audit/tests.
 6. Add dedicated review, report, scheduler and RBAC integration tests.
 
+## 2026-09-18 - Admin poster and concession-image upload CORS
+
+- Fixed authenticated `POST /api/v1/admin/uploads/images` preflight handling by treating configured CORS origins as origin patterns. This makes a local `*` origin setting compatible with credentialed/JWT upload requests while retaining explicit origin allowlists.
+- The endpoint is shared by movie posters and food/concession images; a failed upload left the URL required by the admin creation forms unavailable.
+- Verification passed: `mvn -Dtest=ActorIntegrationTests test` (3 tests, including authenticated admin image-upload validation).
+
 ## Handoff rule
 
 Future sessions must update:
@@ -233,7 +239,43 @@ Future sessions must update:
 - pass/fail evidence;
 - unresolved blocker and next concrete action.
 
+## 2026-09-22 - Admin direct movie publication
+
+- Admin movie creation and updates now transition directly to `APPROVED` and `PUBLISHED`, including approval/publication actor and timestamps.
+- Manager calls to the shared movie endpoints retain the existing draft/approval restrictions; the direct transition is role-checked in the service.
+- Removed the Admin movie-proposal approval page, sidebar entry, pending-count polling, and `/admin/approvals` section registration.
+- Simplified the Admin movie form to one `ĐĂNG PHIM` / `CẬP NHẬT & ĐĂNG` action with publication-required validation.
+- Updated the movie API contract and focused integration assertions.
+- Verification: frontend `npm run build` passed; backend `mvn -q -DskipTests compile` passed.
+- `MovieIntegrationTests` could not start because Maven test compilation is already broken by stale `TicketPricingRuleRequest` constructors in booking, cinema, and ticket-pricing tests; this unrelated baseline issue was not changed in this task.
+
 Do not mark a partial phase `done` merely because its primary controller exists.
+
+## 2026-09-19 - MANAGER provision and cinema scope
+
+- Added the `MANAGER` role, admin-only manager-account creation, and explicit manager-to-cinema assignments.
+- Admin user management now has a **Cấp tài khoản MANAGER** form at `/admin/users`; it validates account details, requires at least one assigned cinema, then calls `POST /api/v1/admin/users/managers`.
+- Manager endpoints validate every cinema ID against that assignment. The manager cannot access admin users, reports, or movie approval routes.
+- Added PostgreSQL migration `V13__manager_role_and_cinema_assignments.sql`, manager operational APIs, and the focused authorization integration test.
+- Verification passed on 2026-09-19: frontend `npm run build`; backend `mvnw.cmd -Dtest=ManagerAuthorizationIntegrationTests test -q`.
+
+## 2026-09-19 - Manager showtime operations
+
+- Added scoped Manager APIs to create and update showtimes, see seat maps and available slots, and cancel a showtime with a required reason.
+- The controller verifies both the assigned cinema and the cinema owning the target room or existing showtime. It reuses `ShowtimeService` validation for movie eligibility, room conflicts, booking guards, transaction handling, and audit events.
+- Verification passed: `mvnw.cmd -DskipTests package -q`.
+
+## 2026-09-19 - Manager seat operations
+
+- Added scoped room-seat listing and Manager-only operational seat status updates. The request requires a reason and can only change `AVAILABLE`, `UNAVAILABLE`, or `MAINTENANCE`; seat type and layout remain ADMIN-only.
+- A Manager's request verifies assignment plus the cinema owning the seat before any state change. Coupled seats retain their paired operational status and the action is audited.
+- Verification passed: `mvnw.cmd -DskipTests package -q`.
+
+## 2026-09-19 - Scoped F&B inventory visibility
+
+- Added Manager-only low-stock/out-of-stock and stock-summary endpoints. Both use the assigned cinema ID before loading inventory, so they do not expose another cinema's inventory.
+- Catalogue item, combo, category and global price changes remain ADMIN-only pending a request/approval workflow.
+- Verification passed: `mvnw.cmd -DskipTests package -q`.
 
 ## 2026-07-23 — Standalone concession pickup QR
 

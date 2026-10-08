@@ -1,0 +1,347 @@
+@startuml
+
+title Cinema System - Logical Data Model Mapped to Current Backend
+left to right direction
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam nodesep 55
+skinparam ranksep 75
+hide methods
+hide stereotypes
+
+package "Identity Service" {
+    entity "User" as USER {
+        id : Identifier (PK)
+        email : String (UQ)
+        passwordHash : String
+        status : UserStatus
+        emailVerified : Boolean
+        birthYear : Integer (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "User Profile" as USER_PROFILE {
+        id : Identifier (PK)
+        userId : Identifier (FK, UQ)
+        fullName : String
+        phone : String (nullable)
+        avatarUrl : String (nullable)
+        phoneVerified : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Role" as ROLE {
+        id : Identifier (PK)
+        name : RoleName (UQ)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "User Role" as USER_ROLE {
+        id : Identifier (PK)
+        userId : Identifier (FK)
+        roleId : Identifier (FK)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Staff Profile" as STAFF_PROFILE {
+        id : Identifier (PK)
+        userId : Identifier (FK, UQ)
+        cinemaId : Identifier (logical ref, nullable)
+        employeeCode : String (UQ)
+        position : String
+        status : StaffStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Refresh Token" as REFRESH_TOKEN {
+        id : Identifier (PK)
+        userId : Identifier (FK)
+        token : String (UQ)
+        expiresAt : DateTime
+        revoked : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Email Verification Token" as EMAIL_TOKEN {
+        id : Identifier (PK)
+        userId : Identifier (FK)
+        token : String (UQ)
+        purpose : EmailOtpPurpose
+        expiresAt : DateTime
+        used : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Password Reset Token" as PASSWORD_TOKEN {
+        id : Identifier (PK)
+        userId : Identifier (FK)
+        token : String (UQ)
+        expiresAt : DateTime
+        used : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Pending Registration" as PENDING_REGISTRATION {
+        id : Identifier (PK)
+        email : String (UQ)
+        passwordHash : String
+        fullName : String
+        phone : String (nullable)
+        birthYear : Integer (nullable)
+        otp : String
+        expiresAt : DateTime
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Audit Log" as AUDIT_LOG {
+        id : Identifier (PK)
+        actorUserId : Identifier (FK, nullable)
+        action : AuditActionType
+        targetType : String
+        targetId : Identifier (nullable)
+        detail : Text (nullable)
+        ipAddress : String (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    USER ||--|| USER_PROFILE
+    USER ||--o{ USER_ROLE
+    ROLE ||--o{ USER_ROLE
+    USER ||--o{ STAFF_PROFILE
+    USER ||--o{ REFRESH_TOKEN
+    USER ||--o{ EMAIL_TOKEN
+    USER ||--o{ PASSWORD_TOKEN
+    USER |o--o{ AUDIT_LOG
+}
+
+package "Catalog Service" {
+    entity "Cinema" as CINEMA {
+        id : Identifier (PK)
+        name : String
+        address : String
+        city : String (nullable)
+        phone : String (nullable)
+        status : CinemaStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Room" as ROOM {
+        id : Identifier (PK)
+        cinemaId : Identifier (FK)
+        name : String
+        roomType : RoomType
+        rowCount : Integer
+        columnCount : Integer
+        status : RoomStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Seat Row" as SEAT_ROW {
+        id : Identifier (PK)
+        roomId : Identifier (FK)
+        rowLabel : String
+        displayOrder : Integer
+        startColumn : Integer
+        rowType : SeatType
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Seat" as SEAT {
+        id : Identifier (PK)
+        roomId : Identifier (FK)
+        seatRowId : Identifier (FK)
+        rowLabel : String
+        seatNumber : Integer
+        displayColumn : Integer
+        seatType : SeatType
+        status : SeatStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Movie" as MOVIE {
+        id : Identifier (PK)
+        title : String (UQ)
+        description : Text (nullable)
+        trailerUrl : String (nullable)
+        posterUrl : String (nullable)
+        avatarUrl : String (nullable)
+        durationMinutes : Integer
+        releaseDate : Date (nullable)
+        endDate : Date (nullable)
+        language : String (nullable)
+        subtitleLanguage : String (nullable)
+        status : MovieStatus
+        ageRating : AgeRating (nullable)
+        director : String (nullable)
+        mainActors : String (nullable)
+        castList : Text (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Genre" as GENRE {
+        id : Identifier (PK)
+        name : String (UQ)
+        description : String (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Actor" as ACTOR {
+        id : Identifier (PK)
+        name : String (UQ)
+        biography : String (nullable)
+        avatarUrl : String (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Movie Genre" as MOVIE_GENRE {
+        id : Identifier (PK)
+        movieId : Identifier (FK)
+        genreId : Identifier (FK)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Movie Actor" as MOVIE_ACTOR {
+        id : Identifier (PK)
+        movieId : Identifier (FK)
+        actorId : Identifier (FK)
+        mainActor : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Showtime" as SHOWTIME {
+        id : Identifier (PK)
+        movieId : Identifier (FK)
+        roomId : Identifier (FK)
+        startTime : DateTime
+        endTime : DateTime
+        basePrice : Decimal
+        vipPrice : Decimal (nullable)
+        couplePrice : Decimal (nullable)
+        adultStandardPrice : Decimal (nullable)
+        childStandardPrice : Decimal (nullable)
+        studentStandardPrice : Decimal (nullable)
+        adultVipPrice : Decimal (nullable)
+        childVipPrice : Decimal (nullable)
+        studentVipPrice : Decimal (nullable)
+        adultCouplePrice : Decimal (nullable)
+        childCouplePrice : Decimal (nullable)
+        studentCouplePrice : Decimal (nullable)
+        weekendSurcharge : Boolean
+        holidaySurcharge : Boolean
+        lateNightSurchargeAmount : Decimal
+        status : ShowtimeStatus
+        cancellationReason : Text (nullable)
+        cancelledAt : DateTime (nullable)
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Food Item" as FOOD_ITEM {
+        id : Identifier (PK)
+        name : String
+        description : String (nullable)
+        price : Decimal
+        imageUrl : String (nullable)
+        status : FoodItemStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Food Combo" as FOOD_COMBO {
+        id : Identifier (PK)
+        name : String
+        description : Text (nullable)
+        price : Decimal
+        imageUrl : String (nullable)
+        status : FoodItemStatus
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Ticket Pricing Rule" as PRICING_RULE {
+        id : Identifier (PK)
+        ticketType : TicketType
+        roomType : RoomType
+        seatType : SeatType
+        weekend : Boolean
+        holiday : Boolean
+        price : Decimal
+        active : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    entity "Ticket Combo (current code)" as TICKET_COMBO {
+        id : Identifier (PK)
+        name : String (UQ)
+        description : String (nullable)
+        adultCount : Integer
+        childCount : Integer
+        studentCount : Integer
+        price : Decimal
+        active : Boolean
+        createdAt : DateTime
+        updatedAt : DateTime
+    }
+
+    CINEMA ||--o{ ROOM
+    ROOM ||--o{ SEAT_ROW
+    ROOM ||--o{ SEAT
+    SEAT_ROW ||--o{ SEAT
+    MOVIE ||--o{ MOVIE_GENRE
+    GENRE ||--o{ MOVIE_GENRE
+    MOVIE ||--o{ MOVIE_ACTOR
+    ACTOR ||--o{ MOVIE_ACTOR
+    MOVIE ||--o{ SHOWTIME
+    ROOM ||--o{ SHOWTIME
+}
+
+package "Booking Service" {
+    note "No persistent domain entities are implemented in the current service." as BOOKING_NOTE
+}
+
+package "Payment Service" {
+    note "No persistent domain entities are implemented in the current service." as PAYMENT_NOTE
+}
+
+package "Recommendation Service" {
+    note "Current service exposes response models only; no persistent entities are implemented." as RECOMMENDATION_NOTE
+}
+
+' ===========================================
+' CROSS-SERVICE LOGICAL REFERENCES
+' ===========================================
+
+CINEMA |o..o{ STAFF_PROFILE
+
+legend bottom
+    (PK) primary key
+    (FK) foreign key within the same service
+    (UQ) unique constraint
+    (logical ref) identifier owned by another service
+    -- = same microservice relationship
+    .. = cross-service logical reference
+endlegend
+
+@enduml

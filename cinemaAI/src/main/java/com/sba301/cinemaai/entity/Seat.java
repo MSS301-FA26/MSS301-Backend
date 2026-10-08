@@ -34,6 +34,7 @@ public class Seat extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "seat_row_id", nullable = false)
+    @Setter
     private SeatRow seatRow;
 
     @Column(name = "row_label", nullable = false, length = 10)
@@ -43,12 +44,13 @@ public class Seat extends BaseEntity {
     private int seatNumber;
 
     @Column(name = "display_column", nullable = false)
+    @Setter
     private int displayColumn;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "seat_type", nullable = false, length = 30)
     @Setter
-    private SeatType seatType = SeatType.STANDARD;
+    private SeatType seatType = SeatType.SINGLE;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

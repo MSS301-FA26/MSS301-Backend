@@ -8,5 +8,7 @@ public interface AuditLogService {
 
     void record(AuditActionType action, String targetType, Long targetId, String detail);
 
+    void recordInternal(AuditActionType action, String targetType, Long targetId, String detail, Long actorId);
+
     PageResponse<AuditLogResponse> getLogs(int page, int size, String targetType);
 }
