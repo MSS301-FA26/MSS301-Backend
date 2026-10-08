@@ -87,11 +87,18 @@ public class SecurityConfig {
                     // Authenticate from Header (Gateway Forwarding) or Bearer JWT Token
                     String userIdHeader = request.getHeader("X-User-Id");
                     String userRolesHeader = request.getHeader("X-User-Roles");
+                    String userCinemaHeader = request.getHeader("X-User-Cinema-Id");
                     String authHeader = request.getHeader("Authorization");
 
                     if (userIdHeader != null && !userIdHeader.isBlank()) {
                         try {
                             Long uid = Long.parseLong(userIdHeader);
+                            Long cinemaId = null;
+                            if (userCinemaHeader != null && !userCinemaHeader.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(userCinemaHeader.trim());
+                                } catch (Exception ignored) {}
+                            }
                             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                             if (userRolesHeader != null && !userRolesHeader.isBlank()) {
                                 for (String role : userRolesHeader.split(",")) {
@@ -100,7 +107,7 @@ public class SecurityConfig {
                                     authorities.add(new SimpleGrantedAuthority(r));
                                 }
                             }
-                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), authorities);
+                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), authorities, cinemaId);
                             SecurityContextHolder.getContext().setAuthentication(
                                     new UsernamePasswordAuthenticationToken(user, null, authorities));
                         } catch (Exception ex) {
@@ -120,6 +127,16 @@ public class SecurityConfig {
                                 } catch (Exception ignored) {}
                             }
 
+                            Long cinemaId = null;
+                            Object cinemaObj = claims.get("cinemaId");
+                            if (cinemaObj instanceof Number cNum) {
+                                cinemaId = cNum.longValue();
+                            } else if (cinemaObj instanceof String cStr && !cStr.isBlank()) {
+                                try {
+                                    cinemaId = Long.parseLong(cStr);
+                                } catch (Exception ignored) {}
+                            }
+
                             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                             Object rawRoles = claims.get("roles");
                             if (rawRoles instanceof List<?> list) {
@@ -130,7 +147,7 @@ public class SecurityConfig {
                                 }
                             }
 
-                            AuthenticatedUser user = new AuthenticatedUser(uid, claims.get("email", String.class), authorities);
+                            AuthenticatedUser user = new AuthenticatedUser(uid, claims.get("email", String.class), authorities, cinemaId);
                             SecurityContextHolder.getContext().setAuthentication(
                                     new UsernamePasswordAuthenticationToken(user, null, authorities));
                         } catch (Exception ex) {

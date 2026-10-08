@@ -36,6 +36,23 @@ class JwtServiceTest {
     }
 
     @Test
+    void testGenerateAndValidateAccessTokenWithCinemaId() {
+        Long userId = 42L;
+        String email = "manager@cinemaai.com";
+        List<String> roles = List.of("MANAGER");
+        Long cinemaId = 10L;
+
+        String token = jwtService.generateAccessToken(userId, email, roles, cinemaId);
+        assertNotNull(token);
+        assertTrue(jwtService.isTokenValid(token));
+
+        assertEquals(email, jwtService.getSubject(token));
+        assertEquals(userId, jwtService.getUserId(token));
+        assertEquals(roles, jwtService.getRoles(token));
+        assertEquals(cinemaId, jwtService.getCinemaId(token));
+    }
+
+    @Test
     void testInvalidToken() {
         assertFalse(jwtService.isTokenValid("invalid.token.here"));
     }

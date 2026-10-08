@@ -7,6 +7,7 @@ import com.cinemaai.catalog.dto.response.PageResponse;
 import com.cinemaai.catalog.dto.response.ticket.TicketComboResponse;
 import com.cinemaai.catalog.dto.response.ticket.TicketPriceValidationResponse;
 import com.cinemaai.catalog.dto.response.ticket.TicketPricingRuleResponse;
+import com.cinemaai.catalog.entity.TicketPricingRule;
 import com.cinemaai.catalog.enums.SeatType;
 import com.cinemaai.catalog.enums.TicketType;
 import java.util.List;
@@ -23,6 +24,18 @@ public interface TicketPricingService {
                 int page,
                 int size
         );
+
+        public PageResponse<TicketPricingRuleResponse> searchRules(
+                Long cinemaId,
+                TicketType ticketType,
+                com.cinemaai.catalog.enums.RoomType roomType,
+                SeatType seatType,
+                Boolean active,
+                int page,
+                int size
+        );
+
+        public TicketPricingRule findRule(Long id);
 
         public TicketPricingRuleResponse createRule(TicketPricingRuleRequest request);
 
