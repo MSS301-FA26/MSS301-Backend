@@ -63,6 +63,9 @@ def handle_movie_published_event(body: dict):
                 ))
             conn.commit()
 
+        from core.cache import get_cache
+        get_cache().delete_pattern("user:*")
+
         logger.info(f"[RabbitMQ] Updated movie embedding for Movie {movie_id} - '{title}'")
     except Exception as e:
         logger.error(f"[RabbitMQ] Error handling movie event: {e}", exc_info=True)

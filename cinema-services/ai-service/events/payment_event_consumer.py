@@ -58,6 +58,9 @@ def handle_payment_succeeded_event(body: dict):
 
             conn.commit()
 
+        from core.cache import get_cache
+        get_cache().delete_pattern(f"user:{user_id}:*")
+
         logger.info(
             f"[RabbitMQ] Recorded idempotent interaction: User {user_id} -> Movie {movie_id} (Booking {booking_id}, Event {event_id})"
         )

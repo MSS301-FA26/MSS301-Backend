@@ -139,9 +139,14 @@ class HybridRecommendationEngine:
                 genres = set(row["genres"])
                 updated_at = row.get("updated_at")
                 if updated_at:
-                    if updated_at.tzinfo is None:
+                    if isinstance(updated_at, str):
+                        try:
+                            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                        except Exception:
+                            updated_at = None
+                    if updated_at and updated_at.tzinfo is None:
                         updated_at = updated_at.replace(tzinfo=timezone.utc)
-                    delta_hours = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds() / 3600.0)
+                    delta_hours = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds() / 3600.0) if updated_at else 0.0
                     decay_boost = 0.20 * math.exp(-delta_hours / 24.0)
                 else:
                     decay_boost = 0.10
@@ -227,7 +232,11 @@ class HybridRecommendationEngine:
 
         if not self.db_breaker.can_execute():
             logger.warning(f"Circuit breaker '{self.db_breaker.name}' is OPEN. Diverting immediately to fallback popular releases.")
-            fallback_items = self._get_fallback_popular_movies(limit)
+            disliked_ids = {
+                r["movie_id"] for r in self._get_user_interactions(user_id)
+                if r.get("is_disliked") or (r.get("rating") or 5.0) <= 1.0
+            }
+            fallback_items = self._get_fallback_popular_movies(limit, exclude_movie_ids=disliked_ids)
             return "CIRCUIT_BREAKER_FALLBACK", fallback_items, None, variant
 
         try:
@@ -238,7 +247,11 @@ class HybridRecommendationEngine:
             return strategy, items, set_id, variant
         except Exception as e:
             logger.error(f"Error in hybrid recommendation pipeline for user {user_id}: {e}", exc_info=True)
-            fallback_items = self._get_fallback_popular_movies(limit)
+            disliked_ids = {
+                r["movie_id"] for r in self._get_user_interactions(user_id)
+                if r.get("is_disliked") or (r.get("rating") or 5.0) <= 1.0
+            }
+            fallback_items = self._get_fallback_popular_movies(limit, exclude_movie_ids=disliked_ids)
             return "FALLBACK_GLOBAL_POPULARITY", fallback_items, None, variant
 
     def _execute_hybrid_pipeline(
@@ -269,7 +282,11 @@ class HybridRecommendationEngine:
         candidate_movies -= watched_movie_ids
 
         if not candidate_movies:
-            items = self._get_fallback_popular_movies(limit)
+            disliked_ids = {
+                inter["movie_id"] for inter in interactions 
+                if inter.get("is_disliked") or (inter.get("rating") or 5.0) <= 1.0
+            }
+            items = self._get_fallback_popular_movies(limit, exclude_movie_ids=disliked_ids)
             set_id = self.feedback_tracker.persist_recommendation_set(
                 user_id, branch_id, "FALLBACK_POPULAR", items, experiment_variant=variant
             )

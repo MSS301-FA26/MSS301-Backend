@@ -12,6 +12,9 @@ os.environ["DB_NAME"] = "recommendation_db"
 os.environ["DB_USER"] = "rec_user"
 os.environ["DB_PASSWORD"] = "rec_pass_123"
 os.environ["RABBITMQ_HOST"] = "localhost"
+os.environ["RABBITMQ_PORT"] = "5672"
+os.environ["RABBITMQ_USER"] = "guest"
+os.environ["RABBITMQ_PASS"] = "guest"
 
 from app.main import app
 

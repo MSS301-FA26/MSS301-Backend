@@ -129,9 +129,14 @@ class ContentBasedFilter:
             vec = np.array(valid_vectors[mid], dtype=np.float32)
             updated_at = inter.get("updated_at")
             if updated_at:
-                if updated_at.tzinfo is None:
+                if isinstance(updated_at, str):
+                    try:
+                        updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    except Exception:
+                        updated_at = None
+                if updated_at and updated_at.tzinfo is None:
                     updated_at = updated_at.replace(tzinfo=timezone.utc)
-                delta_days = max(0.0, (now - updated_at).total_seconds() / 86400.0)
+                delta_days = max(0.0, (now - updated_at).total_seconds() / 86400.0) if updated_at else 0.0
             else:
                 delta_days = 0.0
 
