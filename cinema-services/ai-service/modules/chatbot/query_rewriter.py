@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict
 from core.openai_client import get_openai_client
+from modules.prompt.service_impl import get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class QueryRewriter:
 
     def __init__(self):
         self.openai_client = get_openai_client()
+        self.prompt_service = get_prompt_service()
 
     def rewrite_query(
         self,
@@ -20,29 +22,36 @@ class QueryRewriter:
         history: List[Dict[str, str]],
         last_movie_title: str = None
     ) -> str:
-        # Attempt LLM-based query rewrite if client is configured
+        # Attempt LLM-based query rewrite using dynamic prompt template
         recent_history = history[-4:] if len(history) > 4 else history
         formatted_history = "\n".join([f"{turn['role'].capitalize()}: {turn['content']}" for turn in recent_history])
 
-        prompt = (
-            "Given the conversational dialogue between a User and a Cinema AI Assistant:\n"
-            f"{formatted_history}\n\n"
-            f"Latest user message: \"{current_message}\"\n"
-            f"Most recently discussed movie: \"{last_movie_title or 'None'}\"\n\n"
-            "Task: Rewrite the user's latest message into a fully resolved, standalone search query "
-            "preserving all implicit context and entity mentions from previous turns. "
-            "Return ONLY the rewritten query text without explanation or greeting."
-        )
+        try:
+            sys_prompt, user_prompt, model_name, temp, max_tok = self.prompt_service.render_prompt(
+                "QUERY_REWRITE",
+                {
+                    "formatted_history": formatted_history,
+                    "current_message": current_message,
+                    "last_movie_title": last_movie_title or "None"
+                }
+            )
 
-        messages = [
-            {"role": "system", "content": "You are an expert at resolving conversational ellipsis and rewriting follow-up queries into clear standalone search queries."},
-            {"role": "user", "content": prompt}
-        ]
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
 
-        rewritten = self.openai_client.chat_completion(messages, temperature=0.0, max_tokens=100)
-        if rewritten:
-            logger.info(f"[Query Rewriter] Rewrote '{current_message}' -> '{rewritten}'")
-            return rewritten
+            rewritten = self.openai_client.chat_completion(
+                messages,
+                temperature=temp,
+                max_tokens=max_tok,
+                model=model_name
+            )
+            if rewritten:
+                logger.info(f"[Query Rewriter] Rewrote '{current_message}' -> '{rewritten}'")
+                return rewritten
+        except Exception as e:
+            logger.warning(f"[Query Rewriter] Dynamic prompt execution failed ({e}), falling back to heuristic.")
 
         # Rule-based heuristic fallback when LLM is unconfigured or unavailable
         fallback_query = current_message

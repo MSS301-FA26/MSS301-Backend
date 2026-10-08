@@ -1,158 +1,194 @@
-# Báo Cáo Tính Năng Nhánh `feat/ai-service` (CinemaAI ai-service)
+# Báo Cáo Toàn Diện Tính Năng `ai-service` (CinemaAI Intelligence Engine)
 
+> **Dịch vụ**: `MSS301-Backend/cinema-services/ai-service`  
 > **Nhánh Git**: `feat/ai-service`  
-> **Service**: `MSS301-Backend/cinema-services/ai-service`  
-> **Tech Stack**: Python 3.12, FastAPI, PostgreSQL (pgvector + HNSW), RabbitMQ (pika), Sentence-Transformers (`all-MiniLM-L6-v2`), OpenAI API, Pytest, UV.
+> **Ngôn ngữ & Nền tảng**: Python 3.12, FastAPI, PostgreSQL 16 + pgvector, RabbitMQ 3.13 (pika), Sentence-Transformers (`all-MiniLM-L6-v2`), OpenAI API (`gpt-4o-mini`), Pytest.  
+> **Phiên bản Schema Database**: 4 Migrations versioned (`V1` $\to$ `V4`).  
 
 ---
 
-## 1. Tổng Quan Kiến Trúc & Mục Tiêu
+## 1. Tổng Quan Kiến Trúc & Sứ Mệnh
 
-Nhánh `feat/ai-service` xây dựng một microservice độc lập chịu trách nhiệm cung cấp trí tuệ nhân tạo toàn diện cho nền tảng rạp chiếu phim **CinePremier** (CinemaAI). Service hoạt động theo kiến trúc Event-Driven kết hợp API-driven, hỗ trợ 3 trụ cột AI cốt lõi:
-1. **Tìm kiếm phim thích ứng đa tầng (Adaptive Multi-Tier Semantic Search)**.
-2. **Gợi ý phim cá nhân hóa kết hợp (Adaptive Hybrid Recommendation Engine)**.
-3. **Trợ lý ảo đàm thoại thông minh (PopBot Conversational Assistant)** với kiến trúc **Docstring-Driven Single-Hop TAG Agent**.
-
-Hệ thống được bảo vệ bởi lớp bảo mật **Zero-Trust Gateway Secret** và theo dõi hiệu năng liên tục qua **AI Telemetry & Metrics**.
+`ai-service` là microservice phụ trách toàn bộ năng lực Trí tuệ Nhân tạo và Dữ liệu Thông minh cho hệ thống rạp chiếu phim **CinePremier**, bao gồm 4 trụ cột nghiệp vụ cốt lõi:
+1. **Tìm kiếm phim thích ứng đa tầng (Adaptive Multi-Tier Semantic Search)**: Tự động điều tiết tài nguyên tính toán giữa tìm kiếm nhanh và re-ranking sâu dựa trên entropy độ bất định của câu hỏi.
+2. **Gợi ý phim cá nhân hóa nâng cao (Adaptive Hybrid Recommendation Engine)**: Kết hợp lọc cộng tác (Pearson Shrinkage CF), hồ sơ kép nội dung (Dual-Profile Rocchio Algorithm), lọc cứng phim không thích, suy giảm hàm mũ thời gian, cân bằng đa dạng thể loại và phân tích rạp chiếu.
+3. **Trợ lý ảo đàm thoại thông minh (PopBot Conversational TAG Agent)**: Kiến trúc Single-Hop Docstring-Driven Function Calling, phân giải ngữ cảnh đa lượt và cam kết 100% không bịa đặt phim (Grounded Synthesis).
+4. **Quản trị Prompt động (Dynamic Prompt Management CRUD)**: Cho phép Product Owner / Admin điều chỉnh prompt hệ thống, model và tham số suy luận theo thời gian thực qua REST API với cơ chế Hot-Reload Cache và Zero Downtime.
 
 ```
-                       ┌────────────────────────┐
-                       │      API Gateway       │
-                       └───────────┬────────────┘
-                                   │ (X-Gateway-Secret, X-Correlation-Id)
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                          ai-service (FastAPI)                          │
-│                                                                        │
-│  ┌───────────────────────┐ ┌───────────────────────┐ ┌───────────────┐ │
-│  │   Adaptive Search     │ │ Hybrid Recommendation │ │ PopBot TAG    │ │
-│  │  - Soft Utility Router│ │ - Pearson Shrinkage CF│ │   Agent       │ │
-│  │  - R0/R1/R2 Re-rankers│ │ - SBERT Content Filter│ │ - Docstring   │ │
-│  │  - HNSW pgvector      │ │ - Time-Decay Booster  │ │   Tools       │ │
-│  │                       │ │ - Cold-Start Fallback │ │ - Grounded LLM│ │
-│  └───────────────────────┘ └───────────────────────┘ └───────────────┘ │
-│                                  │                                     │
-│            ┌─────────────────────┴──────────────────────┐              │
-│            ▼                                            ▼              │
-│  ┌───────────────────────┐                    ┌──────────────────────┐ │
-│  │ PostgreSQL + pgvector │                    │  RabbitMQ Consumers  │ │
-│  │ - movie_embeddings    │                    │ - Catalog events     │ │
-│  │ - user_interactions   │                    │ - Payment events     │ │
-│  │ - chat_sessions       │                    └──────────────────────┘ │
-│  │ - ai_metrics_log      │                                             │
-│  └───────────────────────┘                                             │
-└────────────────────────────────────────────────────────────────────────┘
+                              ┌────────────────────────┐
+                              │      API Gateway       │
+                              └───────────┬────────────┘
+                                          │ (X-Gateway-Secret, X-Correlation-Id)
+                                          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 ai-service (FastAPI)                                   │
+│                                                                                        │
+│ ┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────┐ ┌─────────────┐ │
+│ │   Adaptive Search    │ │Hybrid Recommendation │ │   PopBot Agent   │ │ Prompt CRUD │ │
+│ │ - Soft Utility Router│ │ - Dual Rocchio Profile│ │ - Docstring TAG  │ │ - Versioning│ │
+│ │ - R0/R1/R2 Re-rankers│ │ - Pearson Shrinkage  │ │ - Ellipsis Solver│ │ - Hot Reload │ │
+│ │ - HNSW pgvector      │ │ - Diversity Ceiling  │ │ - Grounded LLM   │ │ - Dry-run   │ │
+│ │                      │ │ - Circuit Breaker    │ │                  │ │   Test      │ │
+│ └──────────────────────┘ └──────────────────────┘ └──────────────────┘ └─────────────┘ │
+│                                            │                                           │
+│                 ┌──────────────────────────┴──────────────────────────┐                │
+│                 ▼                                                     ▼                │
+│ ┌───────────────────────────────┐                   ┌────────────────────────────────┐ │
+│ │    PostgreSQL 16 + pgvector   │                   │       RabbitMQ Broker          │ │
+│ │ - movie_embeddings (384-dim)  │                   │ - cinema.catalog.events        │ │
+│ │ - user_interactions          │                   │ - cinema.payment.events        │ │
+│ │ - movie_reviews (aspects)     │                   │ - ai-service.events.dlq        │ │
+│ │ - recommendation_sets / items │                   └────────────────────────────────┘ │
+│ │ - prompt_templates            │                                                      │
+│ │ - chat_sessions / metrics     │                                                      │
+│ └───────────────────────────────┘                                                      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Chi Tiết Các Tính Năng Đang Có
+## 2. Chi Tiết Các Tính Năng Hiện Có
 
-### 2.1. Tìm kiếm phim thích ứng đa tầng (Adaptive Semantic Search)
+### 2.1. Quản Trị Prompt Động (Dynamic Prompt Management)
+- **Mục đích**: Thay vì hardcode prompt trong mã nguồn, toàn bộ chỉ dẫn và tham số LLM được lưu trữ trong PostgreSQL và cập nhật trực tiếp qua API.
+- **Bảng dữ liệu**: `prompt_templates` (Flyway `V4__prompt_templates.sql`).
+- **Các tính năng nổi bật**:
+  1. **Hot-Reload In-Memory Cache**: Ứng dụng đọc prompt qua `TTLMemoryCache` (độ trễ < 0.1ms). Khi có request `PUT` hoặc `DELETE`, cache tự động bị vô hiệu hoá (`cache.delete`), prompt mới có hiệu lực ngay trong lượt gọi tiếp theo mà **không cần restart server**.
+  2. **An toàn Fallback (Zero-Downtime Guarantee)**: Nếu database gặp sự cố, hệ thống tự động rơi về `DEFAULT_FALLBACK_PROMPTS` có sẵn trong code, ngăn chặn lỗi 500.
+  3. **Dry-Run Test Render (`POST .../test-render`)**: Cho phép truyền mock variables để kiểm tra kết quả ráp biến `{variable}` hoặc gọi thử LLM trước khi lưu vào production.
+- **Danh mục 4 Prompt cốt lõi đang hoạt động**:
+  - `QUERY_REWRITE`: Viết lại câu hỏi tỉnh lược trong hội thoại.
+  - `CHATBOT_GROUNDED_REPLY`: Sinh phản hồi trợ lý ảo dựa trên danh mục thực tế.
+  - `SENTIMENT_ASPECT_ANALYSIS`: Trích xuất khía cạnh (Plot, Acting, Visuals, Audio) và đánh giá mâu thuẫn.
+  - `RECOMMENDATION_EXPLAINER`: Sinh câu giải thích lý do gợi ý phim cá nhân hóa.
+
+---
+
+### 2.2. Gợi Ý Phim Cá Nhân Hoá Nâng Cao (Adaptive Hybrid Recommendation Engine)
+- **Kiến trúc Hybrid đa tầng**:
+  1. **Hồ sơ sở thích kép với suy giảm thời gian (Dual-Profile Rocchio Algorithm)**:
+     - Xây dựng 2 vector trọng tâm đại diện cho sở thích tích cực $\vec{P}_u$ và sở thích tiêu cực $\vec{N}_u$:
+       $$\vec{P}_u = \sum_{i \in I_u^+} w_{ui} \cdot e^{-\Delta t_i / \lambda} \cdot \vec{v}_i, \quad \vec{N}_u = \sum_{j \in I_u^-} w_{uj} \cdot e^{-\Delta t_j / \lambda} \cdot \vec{v}_j$$
+     - Điểm tương đồng nội dung được tính bằng:
+       $$S_{\text{content}}(u, m) = \cos(\vec{P}_u, \vec{v}_m) - 0.35 \cdot \cos(\vec{N}_u, \vec{v}_m)$$
+  2. **Loại trừ tuyệt đối phim bị ghét (Strict Dislike Exclusion & Catalog Starvation)**:
+     - Bất kỳ phim nào người dùng đã dislike hoặc chấm $\le 1.0$ sao đều bị **loại bỏ 100%** khỏi mọi tập ứng viên.
+     - Kể cả khi toàn bộ danh mục bị dislike hoặc kích hoạt Circuit Breaker Fallback, hệ thống bảo đảm **không bao giờ rò rỉ phim bị ghét**.
+  3. **Lọc cộng tác Pearson Shrinkage (User-User Collaborative Filtering)**:
+     - Tính tương quan Pearson có điều chuẩn độ trùng lặp (Overlap Shrinkage Regularization, $\lambda = 5.0$) trên tập phim chung:
+       $$s'_{uv} = s_{uv} \cdot \frac{|I_{uv}|}{|I_{uv}| + 5.0}$$
+     - Gated Nu $\ge 5$: Chỉ áp dụng khi người dùng có tối thiểu 5 tương tác đánh giá để chống nhiễu cold-start.
+  4. **Phân tích khía cạnh đánh giá & Giảm trọng số châm biếm (Sarcasm & Inconsistency Dampening)**:
+     - Tự động bóc tách khía cạnh: `plot`, `acting`, `visuals`, `audio`.
+     - Nếu phát hiện đánh giá mâu thuẫn (ví dụ: chấm 5 sao nhưng bình luận chê bai, châm biếm), hệ thống hạ thấp `confidence_score` xuống $\le 0.35$ để tránh làm sai lệch hồ sơ người dùng.
+  5. **Giới hạn trần đa dạng thể loại (Genre Diversity Ceiling & MMR)**:
+     - Khống chế tỷ lệ tối đa không quá 40% cho bất kỳ thể loại nào trong danh sách gợi ý, ngăn chặn hiện tượng "bong bóng lọc" (filter bubble).
+  6. **Ràng buộc suất chiếu theo chi nhánh rạp (`branch_id`)**:
+     - Lọc cứng và ưu tiên các phim đang có suất chiếu hoạt động tại chi nhánh người dùng chọn.
+  7. **Cầu dao bảo vệ quá tải (Circuit Breaker FSM)**:
+     - Tự động ngắt sang trạng thái `OPEN` nếu xảy ra 5 lỗi kết nối database liên tiếp.
+     - Thời gian phản hồi fail-fast $< 0.01$ ms, tự động phục hồi qua trạng thái `HALF_OPEN` sau timeout 30s.
+  8. **Viễn trắc phễu chuyển đổi & Thử nghiệm A/B (Full-Funnel Telemetry)**:
+     - Theo dõi tỷ lệ chuyển đổi: Hiển thị (Impression) $\to$ Click $\to$ Xem chi tiết $\to$ Đặt vé $\to$ Sử dụng vé.
+     - Hỗ trợ 4 nhóm thử nghiệm A/B: `CONTROL`, `VARIANT_B`, `LLM_EXPLAINER`, `BANDIT_EXPLORATION`.
+  9. **Tuân thủ quyền riêng tư GDPR (Right-to-be-Forgotten)**:
+     - Endpoint `DELETE /api/v1/recommendations/users/{user_id}/data` xoá sạch tương tác, đánh giá, lịch sử gợi ý và xoá cache ngay lập tức.
+
+---
+
+### 2.3. Tìm Kiếm Phim Thích Ứng Đa Tầng (Adaptive Semantic Search)
 - **API Endpoint**: `POST /api/v1/search/adaptive`
-- **Các thành phần cốt lõi**:
+- **Cơ chế hoạt động**:
   1. **Soft Utility Router (`soft_utility_router.py`)**:
-     - Trích xuất đặc trưng thống kê truy vấn $x_q = [\text{query\_len}, \text{top\_score}, \text{score\_gap}, \text{score\_entropy}]$.
-     - Dự đoán phân phối xác suất định tuyến: $p(R0), p(R1), p(R2)$ qua hàm Softmax.
-     - Tính entropy định tuyến $H(q) = -\sum p_i \log p_i$.
-     - Tự động kích hoạt cơ chế Fallback nếu entropy vượt ngưỡng bất định.
-  2. **Tầng R0 - First-Stage Retriever (`route_r0_first_stage`)**:
-     - Kết hợp tìm kiếm ngữ nghĩa Dense Vector (SBERT 384 dims qua Cosine Similarity) và Keyword Overlap (trọng số 60% Dense + 40% Keyword).
-     - Lọc trạng thái phim `NOW_SHOWING` để tối ưu tài nguyên quét.
-  3. **Tầng R1 - Lightweight Neural Re-Ranker (`route_r1_lightweight_reranker`)**:
-     - Tái sử dụng danh sách ứng viên từ R0, cross-scoring với điểm thưởng tương quan tiêu đề (Title match +0.25) và thể loại (Genre match +0.15).
-  4. **Tầng R2 - Heavy Late-Interaction Re-Ranker (`route_r2_heavy_adap_colbert`)**:
-     - Cơ chế ColBERT-style Token-Level MaxSim: So khớp ma trận tương đồng token câu truy vấn với token tóm tắt phim.
-     - Cân bằng 50% điểm candidate + 50% điểm Late-Interaction.
-  5. **Đo lường & Logging**:
-     - Ghi nhận độ trễ, tuyến đường lựa chọn (R0/R1/R2), entropy và cờ fallback vào bảng `ai_metrics_log`.
+     - Trích xuất đặc trưng truy vấn: độ dài câu hỏi, điểm tương đồng cao nhất, khoảng cách điểm, entropy.
+     - Dự đoán phân phối định tuyến qua Softmax: $p(R0), p(R1), p(R2)$.
+     - Tính entropy định tuyến $H(q) = -\sum p_i \log p_i$. Tự động kích hoạt Fallback khi độ bất định vượt ngưỡng.
+  2. **Tầng R0 - First-Stage Retriever**:
+     - Kết hợp Dense Semantic Vector (SBERT 384 dims) và Keyword Overlap (60% Dense + 40% Keyword).
+  3. **Tầng R1 - Lightweight Neural Re-Ranker**:
+     - Tái xếp hạng danh sách ứng viên, cộng điểm thưởng tương quan tiêu đề (+0.25) và thể loại (+0.15).
+  4. **Tầng R2 - Heavy Late-Interaction Re-Ranker**:
+     - Áp dụng kỹ thuật ColBERT-style Token-Level MaxSim để so khớp ma trận tương đồng từng token giữa câu hỏi và mô tả phim.
 
 ---
 
-### 2.2. Gợi ý phim cá nhân hóa kết hợp (Adaptive Hybrid Recommendation Engine)
-- **API Endpoints**:
-  - `GET /api/v1/recommendations/user/{user_id}?limit=10` (Gợi ý cho người dùng)
-  - `GET /api/v1/recommendations/content/{movie_id}?limit=6` (Gợi ý phim tương tự)
-- **Các thành phần cốt lõi**:
-  1. **User-User Collaborative Filtering với Pearson Shrinkage (`collaborative_filter.py`)**:
-     - Tính tương quan Pearson có **Mean-Centering** chuẩn xác trên tập phim chung giữa 2 người dùng $I_{uv}$.
-     - Áp dụng kỹ thuật điều chuẩn **Overlap Shrinkage Regularization**:
-       $$s'_{uv} = s_{uv} \cdot \frac{|I_{uv}|}{|I_{uv}| + \lambda} \quad (\lambda = 5.0, |I_{uv}| \ge 2)$$
-     - Dự đoán điểm từ độ lệch xếp hạng:
-       $$\hat{r}_{ui} = \bar{r}_u + \frac{\sum_{v \in \text{top-K}} s'_{uv}(r_{vi} - \bar{r}_v)}{\sum_{v \in \text{top-K}} |s'_{uv}|}$$
-     - Tối ưu truy vấn SQL: Chỉ lấy người dùng có phim đánh giá chung thay vì quét toàn bộ bảng (tránh full-table scan).
-  2. **Content-Based Filtering (`content_filter.py`)**:
-     - Xây dựng User Preference Vector trọng số từ các phim người dùng đã tương tác.
-     - Đo khoảng cách ngữ nghĩa Cosine Similarity với kho vector phim trong `movie_embeddings`.
-  3. **Real-time Exponential Time-Decay Booster (`hybrid_engine.py`)**:
-     - Phân tích tương tác đặt vé gần nhất của user.
-     - Tăng điểm ưu tiên cho các phim cùng thể loại với hệ số suy giảm mũ theo thời gian:
-       $$\text{boost} = 0.20 \cdot e^{-\Delta t / 24.0} \quad (\text{half-life} \approx 24\text{ giờ})$$
-  4. **Cold-Start Fallback**:
-     - Nếu người dùng mới chưa có lịch sử, hệ thống tự động fallback về danh sách phim thịnh hành đang chiếu (`NOW_SHOWING`), đảm bảo không trả về rỗng.
-
----
-
-### 2.3. Trợ lý ảo đàm thoại PopBot (Conversational TAG Assistant)
+### 2.4. Trợ Lý Ảo Đàm Thoại PopBot (Docstring-Driven TAG Agent)
 - **API Endpoint**: `POST /api/v1/chat/message`
-- **Kiến trúc Docstring-Driven Single-Hop TAG Agent (`modules/chatbot/agent/`)**:
-  1. **Single-Hop Bounded Latency (`SingleHopTagExecutor`)**:
-     - Khống chế tối đa 1 lượt gọi tool.
-     - Đối với câu hỏi chào hỏi/chém gió ngoài lề (Chit-chat / FAQ): Chỉ tốn **1 lần gọi LLM** (~1s).
-     - Đối với câu hỏi tra cứu / gợi ý: Tối đa **2 lần gọi LLM** (1 lần phân loại & trích xuất tham số, 1 lần tổng hợp câu trả lời).
-  2. **100% Docstring-Driven Tool Definition (`tools.py`, `tool.py`, `registry.py`)**:
-     - Định nghĩa công cụ bằng docstring chuẩn Python tự động chuyển thành JSON Schema OpenAI functions:
-       - `search_movies(query: str)`: Tự sửa lỗi chính tả, dịch tiếng lóng (ví dụ: 'anh thon' -> 'Thor', 'fim ma' -> 'phim ma').
-       - `recommend_movies(user_id: int, mood_or_topic: Optional[str])`: Gợi ý theo cảm xúc, hoàn cảnh (buồn, vui, hẹn hò...).
-     - System prompt thuần Persona, không hardcode hướng dẫn tool.
-  3. **Cam kết Zero-Hallucination (Grounded Response Synthesis)**:
-     - LLM chỉ được phép giới thiệu các bộ phim có trong danh sách kết quả hệ thống trả về.
-     - Tích hợp fallback template tự động nếu OpenAI API gặp sự cố mạng hoặc timeout.
-  4. **Multi-turn Context & Session Persistence**:
-     - Quản lý lịch sử hội thoại nhiều lượt lưu trữ trong PostgreSQL (`chat_sessions.history` dưới dạng JSONB).
-     - Tự động duy trì `last_movie_id` để xử lý các câu hỏi ngữ cảnh nối tiếp ("Ai đóng phim này?", "Chiếu rạp nào?").
+- **Các ưu điểm kiến trúc**:
+  1. **Single-Hop Bounded Latency**: Khống chế tối đa 1 lượt gọi tool. Câu hỏi giao tiếp/FAQ chỉ tốn 1 lượt LLM (~1s); câu hỏi tìm kiếm/gợi ý tốn tối đa 2 lượt LLM.
+  2. **Docstring-Driven Function Calling**: Tự động chuyển đổi docstring hàm Python thành OpenAPI Tool Schemas:
+     - `search_movies(query)`: Tự sửa lỗi chính tả, dịch tiếng lóng ('anh thon' $\to$ 'Thor').
+     - `recommend_movies(user_id, mood_or_topic)`: Gợi ý theo tâm trạng, ngữ cảnh.
+  3. **Cam kết 100% Zero-Hallucination**: Câu trả lời chỉ được giới thiệu các phim có thực trong danh mục được hệ thống trả về.
+  4. **Quản lý phiên hội thoại đa lượt**: Lưu trữ lịch sử đàm thoại trong PostgreSQL (`chat_sessions.history`), hỗ trợ phân giải tỉnh lược câu hỏi phụ thuộc ("ai đóng phim này?").
 
 ---
 
-### 2.4. Đồng bộ dữ liệu sự kiện thời gian thực (RabbitMQ Event Consumers)
-Tích hợp trực tiếp vào message broker của toàn hệ thống cinema-services:
+### 2.5. Đồng Bộ Dữ Liệu Sự Kiện Thời Gian Thực (RabbitMQ Event Consumers)
+Hệ thống lắng nghe trên message broker và tự động xóa cache liên quan:
 1. **Catalog Consumer (`catalog_event_consumer.py`)**:
-   - Lắng nghe exchange `cinema.catalog.events` (`movie.published`, `movie.updated`).
-   - Ghép nối thông tin (Title, Description, Director, Genres, Actors), tính toán vector dense 384 chiều qua SentenceTransformer, và upsert vào bảng `movie_embeddings` (`dense_vector`).
+   - Lắng nghe `cinema.catalog.events` (`movie.published`, `movie.updated`).
+   - Tạo vector nhúng 384 chiều qua SentenceTransformer, upsert vào `movie_embeddings`, và **xóa cache danh mục đề xuất** (`user:*`).
 2. **Payment Consumer (`payment_event_consumer.py`)**:
-   - Lắng nghe exchange `cinema.payment.events` (`payment.succeeded`).
-   - Tự động ghi nhận tín hiệu tương tác mạnh (`interaction_type='BOOKING_PAID'`, `weight += 5.0`) vào bảng `user_interactions` một cách bất đồng bộ và lũy kế.
+   - Lắng nghe `cinema.payment.events` (`payment.succeeded`).
+   - Ghi nhận tương tác mua vé (`interaction_type='BOOKING_PAID'`, trọng số 5.0) và **xóa cache đề xuất của người dùng đó** (`user:{user_id}:*`).
 
 ---
 
-### 2.5. Bảo mật, Cơ sở hạ tầng & Giám sát (Security, Infra & Telemetry)
-1. **Zero-Trust Gateway Security (`GatewaySecretMiddleware`)**:
-   - Chặn toàn bộ truy cập trực tiếp từ bên ngoài vào `/api/v1/**` nếu thiếu header `X-Gateway-Secret`.
-   - Bảo vệ endpoints nội bộ `/internal/**` với `X-Internal-Service-Secret`.
-   - Sử dụng `hmac.compare_digest` để chống tấn công Timing Attack.
-2. **Distributed Tracing**:
-   - Middleware `CorrelationIdMiddleware` tự động sinh hoặc chuyển tiếp header `X-Correlation-Id`.
-   - `CorrelationIdLogFilter` gắn correlation_id vào từng log line.
-3. **Telemetry Metrics API (`telemetry_api.py`)**:
-   - Endpoint `GET /api/v1/ai/metrics` tính toán tức thời phân phối độ trễ (Mean, P50, P95), tỉ lệ các route R0/R1/R2, số lượng fallback.
-4. **PostgreSQL Migration (`V1__init_ai_db.sql`)**:
-   - Tự động kích hoạt extension `vector`.
-   - Tạo index vector tăng tốc HNSW `idx_movie_embeddings_hnsw` trên cột `dense_vector`.
-5. **Bộ kiểm thử toàn diện (Pytest)**:
-   - `test_chatbot_context.py`: Kiểm thử phân giải ngữ cảnh độc lập/phụ thuộc, in-memory dispatcher.
-   - `test_recommendation_algo.py`: Kiểm thử thuật toán Pearson Shrinkage CF.
-   - `test_search_router.py`: Kiểm thử Soft Utility Router.
-   - `test_security.py`: Kiểm thử xác thực Gateway Secret header và whitelist `/health`.
+### 2.6. Bảo Mật, Viễn Trắc & Cơ Sở Hạ Tầng
+1. **Zero-Trust Gateway Isolation**: Bắt buộc có header `X-Gateway-Secret` (cho API client) hoặc `X-Internal-Service-Secret` (cho giao tiếp nội bộ giữa các microservice).
+2. **Distributed Tracing**: Gắn `X-Correlation-Id` vào tất cả các log line và response header.
+3. **Immutability & Strict DTO Validation**: Tất cả DTOs dùng Pydantic `frozen=True` với chuẩn Envelope `ApiResponse<T>`.
+4. **Flyway Migrations**:
+   - `V1__init_ai_db.sql`: Khởi tạo bảng vector embeddings, index HNSW, sessions.
+   - `V2__recommendation_enhancements.sql`: Bổ sung tracking recommendation sets, feedback, telemetry.
+   - `V3__sentiment_and_reviews.sql`: Bảng review, aspect sentiment, experiment variants.
+   - `V4__prompt_templates.sql`: Bảng quản lý template prompt động và nạp dữ liệu khởi tạo.
 
 ---
 
-## 3. Tổng Kết Danh Sách API Đang Cung Cấp
+## 3. Danh Mục Đầy Đủ Các API Đang Cung Cấp
 
-| Phương Thức | Đường Dẫn | Mô Tả |
-| :--- | :--- | :--- |
-| `GET` | `/health` | Healthcheck công khai trạng thái service |
-| `POST` | `/api/v1/search/adaptive` | Tìm kiếm phim thích ứng 3 tầng (R0/R1/R2) |
-| `GET` | `/api/v1/recommendations/user/{user_id}` | Gợi ý phim cá nhân hóa cho người dùng |
-| `GET` | `/api/v1/recommendations/content/{movie_id}`| Gợi ý danh sách phim tương tự theo nội dung |
-| `POST` | `/api/v1/chat/message` | Trợ lý ảo PopBot đàm thoại đa lượt (TAG Agent) |
-| `GET` | `/api/v1/ai/metrics` | Thống kê telemetry (P50, P95 latency, routes) |
+### 🔹 Nhóm Quản Trị Prompt Động (`/api/v1/prompts`)
+| Phương thức | Đường dẫn API | Mô tả nghiệp vụ |
+| :---: | :--- | :--- |
+| `GET` | `/api/v1/prompts` | Lấy danh sách toàn bộ prompt templates (hỗ trợ `active_only`) |
+| `GET` | `/api/v1/prompts/{prompt_code}` | Lấy chi tiết 1 prompt template theo mã định danh |
+| `POST` | `/api/v1/prompts` | Tạo mới một prompt template |
+| `PUT` | `/api/v1/prompts/{prompt_code}` | Cập nhật nội dung, model, temperature (tự động xóa cache hot-reload) |
+| `DELETE` | `/api/v1/prompts/{prompt_code}` | Vô hiệu hoá template (soft delete) |
+| `POST` | `/api/v1/prompts/{prompt_code}/test-render` | Chạy thử render biến mock và kiểm tra kết quả LLM dry-run |
+
+### 🔹 Nhóm Gợi Ý Phim & Phản Hồi (`/api/v1/recommendations`)
+| Phương thức | Đường dẫn API | Mô tả nghiệp vụ |
+| :---: | :--- | :--- |
+| `GET` | `/api/v1/recommendations/users/{user_id}` | Gợi ý phim cá nhân hóa theo người dùng (hỗ trợ `branch_id`, `limit`) |
+| `GET` | `/api/v1/recommendations/movies/{movie_id}/similar` | Gợi ý phim tương đồng theo nội dung và embedding vector |
+| `GET` | `/api/v1/recommendations/trending` | Danh sách phim thịnh hành đang chiếu tại rạp (Cold-start fallback) |
+| `POST` | `/api/v1/recommendations/feedbacks` | Gửi tín hiệu tương tác: Đánh giá sao, Thích (Like), Ghét (Dislike) |
+| `POST` | `/api/v1/recommendations/clicks` | Ghi nhận sự kiện click vào item gợi ý (đo CTR A/B Testing) |
+| `POST` | `/api/v1/recommendations/reviews` | Gửi đánh giá phim kèm phân tích khía cạnh (Aspect Sentiment) |
+| `GET` | `/api/v1/recommendations/metrics` | Thống kê viễn trắc phễu chuyển đổi và đo lường A/B testing |
+| `DELETE` | `/api/v1/recommendations/users/{user_id}/data` | Xoá toàn bộ dữ liệu lịch sử của user (Tuân thủ GDPR / Quyền được quên) |
+
+### 🔹 Nhóm Tìm Kiếm & Trợ Lý Ảo
+| Phương thức | Đường dẫn API | Mô tả nghiệp vụ |
+| :---: | :--- | :--- |
+| `POST` | `/api/v1/search/adaptive` | Tìm kiếm ngữ nghĩa thích ứng 3 tầng (R0/R1/R2) |
+| `POST` | `/api/v1/chat/message` | Trò chuyện với trợ lý ảo PopBot (Grounded Response Synthesis) |
+| `GET` | `/api/v1/ai/metrics` | Báo cáo hiệu năng tìm kiếm và phân phối độ trễ (P50, P95) |
+| `GET` | `/health` | Healthcheck công khai kiểm tra trạng thái hoạt động của service |
+
+---
+
+## 4. Kết Quả Kiểm Thử Nghiệm Thu (Quality Assurance)
+- **100% Pass Pytest Test Suite**: Toàn bộ 14 bài kiểm thử tự động nội bộ chạy thành công trong ~2.2 giây.
+- **100% Pass 9 Kịch Bản Tải Nặng & Biên Cực Hạn (Adversarial Stress Test)**:
+  - Catalog Starvation (Dislike 100% danh mục phim): Không rò rỉ phim bị ghét.
+  - Concurrency Storm: 20 request đồng thời bảo đảm tính bất biến (Idempotent), 0 bản ghi trùng.
+  - Bảo mật & Fuzzing: Chặn 100% request thiếu secret và validate chặt chẽ tham số ngoài biên.
+  - Phân tích cảm xúc châm biếm: Tách biệt khía cạnh âm thanh/hình ảnh (+1.0) và kịch bản/diễn xuất (-1.0).
+  - Biên thời gian: Chống tràn số mũ float với timestamp tương lai và quá khứ 10 năm.
+  - Circuit Breaker: Chuyển trạng thái FSM mượt mà, độ trễ fail-fast $< 0.01$ ms.
+  - GDPR Purge: Xoá sạch dữ liệu 3 bảng và đưa tài khoản về cold-start không tàn dư.
