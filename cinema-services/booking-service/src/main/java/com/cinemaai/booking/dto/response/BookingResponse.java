@@ -17,6 +17,7 @@ public record BookingResponse(
         String moviePosterSnapshot,
         String cinemaName,
         String cinemaNameSnapshot,
+        Long cinemaId,
         String roomName,
         String roomNameSnapshot,
         LocalDateTime showtimeStart,
@@ -36,4 +37,42 @@ public record BookingResponse(
         List<BookingTicketResponse> tickets,
         List<BookingFoodResponse> foods,
         LocalDateTime createdAt
-) {}
+) {
+    public BookingResponse(
+            Long id,
+            String bookingCode,
+            Long userId,
+            Long showtimeId,
+            Long movieId,
+            String movieTitle,
+            String movieTitleSnapshot,
+            String posterUrl,
+            String moviePosterSnapshot,
+            String cinemaName,
+            String cinemaNameSnapshot,
+            String roomName,
+            String roomNameSnapshot,
+            LocalDateTime showtimeStart,
+            LocalDateTime showtimeStartSnapshot,
+            BigDecimal subtotal,
+            BigDecimal discountAmount,
+            int loyaltyPointsRedeemed,
+            BigDecimal totalAmount,
+            BookingStatus status,
+            LocalDateTime holdExpiresAt,
+            LocalDateTime paidAt,
+            LocalDateTime checkedInAt,
+            LocalDateTime cancelledAt,
+            LocalDateTime refundedAt,
+            String qrCode,
+            List<BookingSeatResponse> seats,
+            List<BookingTicketResponse> tickets,
+            List<BookingFoodResponse> foods,
+            LocalDateTime createdAt
+    ) {
+        this(id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot, posterUrl, moviePosterSnapshot,
+                cinemaName, cinemaNameSnapshot, null, roomName, roomNameSnapshot, showtimeStart, showtimeStartSnapshot,
+                subtotal, discountAmount, loyaltyPointsRedeemed, totalAmount, status, holdExpiresAt, paidAt, checkedInAt,
+                cancelledAt, refundedAt, qrCode, seats, tickets, foods, createdAt);
+    }
+}

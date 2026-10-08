@@ -1,141 +1,264 @@
 services:
-  # ============================================================================
-  # 1. IDENTITY DATABASE (Port 5431)
-  # ============================================================================
   identity-db:
     image: postgres:16-alpine
-    container_name: cinema-identity-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: identity_db
       POSTGRES_USER: identity_user
       POSTGRES_PASSWORD: identity_pass_123
-    ports:
-      - "5431:5432"
-    volumes:
-      - identity_data:/var/lib/postgresql/data
+    volumes: [identity_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U identity_user -d identity_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
 
-  # ============================================================================
-  # 2. CATALOG DATABASE (Port 5432)
-  # ============================================================================
   catalog-db:
     image: postgres:16-alpine
-    container_name: cinema-catalog-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: catalog_db
       POSTGRES_USER: catalog_user
       POSTGRES_PASSWORD: catalog_pass_123
-    ports:
-      - "5432:5432"
-    volumes:
-      - catalog_data:/var/lib/postgresql/data
+    volumes: [catalog_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalog_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
 
-  # ============================================================================
-  # 3. BOOKING DATABASE (Port 5433)
-  # ============================================================================
   booking-db:
     image: postgres:16-alpine
-    container_name: cinema-booking-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: booking_db
       POSTGRES_USER: booking_user
       POSTGRES_PASSWORD: booking_pass_123
-    ports:
-      - "5433:5432"
-    volumes:
-      - booking_data:/var/lib/postgresql/data
+    volumes: [booking_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U booking_user -d booking_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
 
-  # ============================================================================
-  # 4. PAYMENT DATABASE (Port 5434)
-  # ============================================================================
   payment-db:
     image: postgres:16-alpine
-    container_name: cinema-payment-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: payment_db
       POSTGRES_USER: payment_user
       POSTGRES_PASSWORD: payment_pass_123
-    ports:
-      - "5434:5432"
-    volumes:
-      - payment_data:/var/lib/postgresql/data
+    volumes: [payment_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U payment_user -d payment_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
 
-  # ============================================================================
-  # 5. RECOMMENDATION DATABASE (Port 5435)
-  # ============================================================================
   recommendation-db:
     image: postgres:16-alpine
-    container_name: cinema-recommendation-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: recommendation_db
       POSTGRES_USER: rec_user
       POSTGRES_PASSWORD: rec_pass_123
-    ports:
-      - "5435:5432"
-    volumes:
-      - recommendation_data:/var/lib/postgresql/data
+    volumes: [recommendation_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rec_user -d recommendation_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
 
-  # ============================================================================
-  # 6. ASYNCHRONOUS EVENT BROKER: RABBITMQ (AMQP 5672, Management 15672)
-  # ============================================================================
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    container_name: cinema-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - "5672:5672"     # AMQP transport
-      - "15672:15672"   # Management Web UI
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - cinema-network
+      retries: 10
+    networks: [cinema-network]
+
+  identity-service:
+    build:
+      context: ./cinema-services
+      args: { SERVICE: identity-service }
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/identity-service/.env.example
+        required: true
+      - path: ./cinema-services/identity-service/.env
+        required: false
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://identity-db:5432/identity_db
+      DB_USERNAME: identity_user
+      DB_PASSWORD: identity_pass_123
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+    depends_on:
+      identity-db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
+
+  catalog-service:
+    build:
+      context: ./cinema-services
+      args: { SERVICE: catalog-service }
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/catalog-service/.env.example
+        required: true
+      - path: ./cinema-services/catalog-service/.env
+        required: false
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://catalog-db:5432/catalog_db
+      DB_USERNAME: catalog_user
+      DB_PASSWORD: catalog_pass_123
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      RECOMMENDATION_SERVICE_URL: http://recommendation-service:8000
+    depends_on:
+      catalog-db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
+
+  booking-service:
+    build:
+      context: ./cinema-services
+      args: { SERVICE: booking-service }
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/booking-service/.env.example
+        required: true
+      - path: ./cinema-services/booking-service/.env
+        required: false
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://booking-db:5432/booking_db
+      DB_USERNAME: booking_user
+      DB_PASSWORD: booking_pass_123
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      GATEWAY_URL: http://api-gateway:8080
+    depends_on:
+      booking-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      catalog-service: { condition: service_healthy }
+      identity-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
+
+  payment-service:
+    build:
+      context: ./cinema-services
+      args: { SERVICE: payment-service }
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/payment-service/.env.example
+        required: true
+      - path: ./cinema-services/payment-service/.env
+        required: false
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://payment-db:5432/payment_db
+      DB_USERNAME: payment_user
+      DB_PASSWORD: payment_pass_123
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      GATEWAY_URL: http://api-gateway:8080
+    depends_on:
+      payment-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      booking-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
+
+  recommendation-service:
+    build: ./cinema-services/recommendation-service
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/recommendation-service/.env.example
+        required: true
+      - path: ./cinema-services/recommendation-service/.env
+        required: false
+    environment:
+      DB_HOST: recommendation-db
+      DB_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      recommendation-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
+
+  api-gateway:
+    build:
+      context: ./cinema-services
+      args: { SERVICE: api-gateway }
+    restart: unless-stopped
+    env_file:
+      - path: ./cinema-services/api-gateway/.env.example
+        required: true
+      - path: ./cinema-services/api-gateway/.env
+        required: false
+    environment:
+      IDENTITY_SERVICE_URI: http://identity-service:8081
+      CATALOG_SERVICE_URI: http://catalog-service:8082
+      BOOKING_SERVICE_URI: http://booking-service:8083
+      PAYMENT_SERVICE_URI: http://payment-service:8084
+      RECOMMENDATION_SERVICE_URI: http://recommendation-service:8000
+    ports: ["${GATEWAY_PORT:-8080}:8080"]
+    depends_on:
+      identity-service: { condition: service_healthy }
+      catalog-service: { condition: service_healthy }
+      booking-service: { condition: service_healthy }
+      payment-service: { condition: service_healthy }
+      recommendation-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [cinema-network]
 
 networks:
   cinema-network:

@@ -122,8 +122,11 @@ public class SecurityConfig {
                                 "/swagger-ui.html"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/internal/**").permitAll()
+                        .requestMatchers("/api/v1/admin/users/manager", "/api/v1/admin/users/*/cinema").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/users", "/api/v1/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(errors -> errors

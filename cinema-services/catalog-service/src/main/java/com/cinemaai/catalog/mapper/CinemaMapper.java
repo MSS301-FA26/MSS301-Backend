@@ -40,6 +40,10 @@ public class CinemaMapper {
                 room.getRowCount(),
                 room.getColumnCount(),
                 room.getStatus(),
+                room.getStandardPrice(),
+                room.getVipPrice(),
+                room.getCouplePrice(),
+                room.getAislePosition(),
                 room.getCreatedAt(),
                 room.getUpdatedAt()
         );

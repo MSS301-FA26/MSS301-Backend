@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,7 +51,16 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse holdSeats(Long userId, HoldSeatsRequest request) {
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Race Condition check: Pessimistic Row Locking on requested seats
+        if (new HashSet<>(request.seatIds()).size() != request.seatIds().size()) {
+            throw new BadRequestException("Danh sách ghế không được chứa ghế trùng lặp.");
+        }
+
+        expireStaleHolds(request.showtimeId(), request.seatIds(), now);
+
+        // A retry replaces only this user's unfinished hold for the same showtime.
+        releaseExistingHolds(userId, request.showtimeId(), now);
+
+        // Existing active rows are locked here. V5 also protects the empty-row race at the database level.
         List<Long> conflicts = bookingSeatRepository.findConflictedSeatIds(
                 request.showtimeId(), request.seatIds(), now);
 
@@ -58,19 +68,7 @@ public class BookingServiceImpl implements BookingService {
             throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
         }
 
-        // 2. Release any previous active HOLDING booking for this user & showtime
-        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusIn(
-                userId, request.showtimeId(), List.of(BookingStatus.HOLDING));
-        for (Booking oldHold : existingHolds) {
-            oldHold.setStatus(BookingStatus.CANCELLED);
-            oldHold.setCancelledAt(now);
-            for (BookingSeat seat : oldHold.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
-            bookingRepository.save(oldHold);
-        }
-
-        // 3. Prepare quote request to fetch Authoritative metadata & pricing from Catalog
+        // 2. Prepare quote request to fetch Authoritative metadata & pricing from Catalog
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
         if (request.tickets() != null && !request.tickets().isEmpty()) {
             for (HoldSeatsRequest.TicketSelection t : request.tickets()) {
@@ -108,7 +106,7 @@ public class BookingServiceImpl implements BookingService {
 
         CatalogQuoteDto.Response quote = catalogClient.getQuote(quoteReq);
 
-        // 4. Create new Booking Entity with Snapshots
+        // 3. Create new Booking Entity with Snapshots
         String bookingCode = "BK" + now.format(DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", new Random().nextInt(10000));
 
@@ -120,6 +118,7 @@ public class BookingServiceImpl implements BookingService {
                 .movieTitleSnapshot(quote.showtime().movieTitle())
                 .moviePosterSnapshot(quote.showtime().posterUrl())
                 .cinemaNameSnapshot(quote.showtime().cinemaName())
+                .cinemaId(quote.showtime().cinemaId())
                 .roomNameSnapshot(quote.showtime().roomName())
                 .showtimeStartSnapshot(quote.showtime().startTime())
                 .subtotal(quote.subtotal())
@@ -132,7 +131,7 @@ public class BookingServiceImpl implements BookingService {
 
         booking = bookingRepository.save(booking);
 
-        // 5. Save BookingSeats
+        // 4. Save BookingSeats
         List<BookingSeat> seats = new ArrayList<>();
         Map<Long, CatalogQuoteDto.Response.SeatSnapshot> seatMap = new HashMap<>();
         for (CatalogQuoteDto.Response.SeatSnapshot s : quote.seats()) {
@@ -178,11 +177,48 @@ public class BookingServiceImpl implements BookingService {
         }
         booking.getSeats().addAll(seats);
 
-        // 6. Save Tickets & Foods if provided
+        // 5. Save Tickets & Foods if provided
         populateTicketsAndFoods(booking, quote);
-        booking = bookingRepository.save(booking);
+        try {
+            booking = bookingRepository.saveAndFlush(booking);
+        } catch (DataIntegrityViolationException exception) {
+            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
+        }
 
         return BookingMapper.toResponse(booking);
+    }
+
+    private void expireStaleHolds(Long showtimeId, Collection<Long> seatIds, LocalDateTime now) {
+        List<Booking> expiredBookings = bookingRepository.findExpiredHoldsForSeatsForUpdate(
+                showtimeId,
+                seatIds,
+                List.of(BookingStatus.HOLDING, BookingStatus.PENDING_PAYMENT),
+                now);
+        for (Booking expiredBooking : expiredBookings) {
+            expiredBooking.setStatus(BookingStatus.EXPIRED);
+            expiredBooking.setCancelledAt(now);
+            expiredBooking.getSeats().forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+        }
+        if (!expiredBookings.isEmpty()) {
+            bookingRepository.saveAll(expiredBookings);
+            bookingRepository.flush();
+        }
+    }
+
+    private void releaseExistingHolds(Long userId, Long showtimeId, LocalDateTime now) {
+        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusIn(
+                userId, showtimeId, List.of(BookingStatus.HOLDING));
+        for (Booking oldHold : existingHolds) {
+            oldHold.setStatus(BookingStatus.CANCELLED);
+            oldHold.setCancelledAt(now);
+            for (BookingSeat seat : oldHold.getSeats()) {
+                seat.setStatus(BookingSeatStatus.RELEASED);
+            }
+            bookingRepository.save(oldHold);
+        }
+        if (!existingHolds.isEmpty()) {
+            bookingRepository.flush();
+        }
     }
 
     @Override
@@ -450,5 +486,43 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         log.info("Admin cancelled booking #{} reason: {}", bookingId, reason);
         return BookingMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.cinemaai.booking.dto.response.BookingEligibilityResponse checkReviewEligibility(Long userId, Long movieId) {
+        java.util.List<BookingStatus> validStatuses = java.util.List.of(BookingStatus.PAID, BookingStatus.USED);
+        java.util.List<Booking> bookings = bookingRepository.findByUserIdAndMovieIdAndStatusIn(userId, movieId, validStatuses);
+        if (bookings.isEmpty()) {
+            return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(false, null, null, null, null, null);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Booking watchedBooking = bookings.stream()
+                .filter(b -> b.getStatus() == BookingStatus.USED ||
+                        (b.getShowtimeStartSnapshot() != null && b.getShowtimeStartSnapshot().isBefore(now)))
+                .findFirst()
+                .orElse(null);
+
+        if (watchedBooking != null) {
+            return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(
+                    true,
+                    watchedBooking.getId(),
+                    watchedBooking.getBookingCode(),
+                    watchedBooking.getShowtimeStartSnapshot(),
+                    watchedBooking.getCinemaNameSnapshot(),
+                    watchedBooking.getStatus().name()
+            );
+        }
+
+        Booking futureBooking = bookings.get(0);
+        return new com.cinemaai.booking.dto.response.BookingEligibilityResponse(
+                false,
+                futureBooking.getId(),
+                futureBooking.getBookingCode(),
+                futureBooking.getShowtimeStartSnapshot(),
+                futureBooking.getCinemaNameSnapshot(),
+                futureBooking.getStatus().name()
+        );
     }
 }
