@@ -19,6 +19,19 @@ public record SeatRowGenerationRequest(
         SeatType seatType,
 
         @NotEmpty(message = "Seat numbers are required")
-        List<@Min(value = 1, message = "Seat number must be positive") Integer> seatNumbers
+        List<@Min(value = 1, message = "Seat number must be positive") Integer> seatNumbers,
+
+        List<SeatType> seatTypes,
+
+        List<Integer> displayColumns
 ) {
+        public SeatRowGenerationRequest(
+                String rowLabel,
+                int displayOrder,
+                int startColumn,
+                SeatType seatType,
+                List<Integer> seatNumbers
+        ) {
+                this(rowLabel, displayOrder, startColumn, seatType, seatNumbers, null, null);
+        }
 }

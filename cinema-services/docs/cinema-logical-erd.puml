@@ -1,0 +1,390 @@
+@startuml
+
+title Cinema System - Logical Data Model
+left to right direction
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam nodesep 60
+skinparam ranksep 80
+
+hide methods
+hide stereotypes
+
+package "Identity Service" {
+    entity "Account" as ACCOUNT {
+        accountId : Identifier (PK)
+        --
+        email : String (UQ)
+        passwordHash : String
+        status : AccountStatus
+        emailVerified : Boolean
+        createdAt : DateTime
+        upDatedAt : DateTime
+    }
+
+    entity "Customer" as CUSTOMER {
+        accountId : Identifier (PK, FK)
+    }
+
+    entity "Customer Profile" as CUSTOMER_PROFILE {
+        profileId : Identifier (PK)
+        customerId : Identifier (FK, UQ)
+        fullName : String
+        phone : String
+        avatarUrl : String
+        birthYear : Integer
+    }
+
+    entity "Staff" as STAFF {
+        accountId : Identifier (PK, FK)
+        employeeCode : String (UQ)
+        position : String
+        cinemaId : Identifier (logical ref)
+        status : StaffStatus
+    }
+
+    entity "Admin" as ADMIN {
+        accountId : Identifier (PK, FK)
+    }
+
+    ACCOUNT ||--o| CUSTOMER
+    ACCOUNT ||--o| STAFF
+    ACCOUNT ||--o| ADMIN
+    CUSTOMER ||--|| CUSTOMER_PROFILE
+}
+
+package "Catalog Service" {
+    entity "Cinema" as CINEMA {
+        cinemaId : Identifier (PK)
+        name : String
+        address : String
+        city : String
+        phone : String
+        status : CinemaStatus
+    }
+
+    entity "Room" as ROOM {
+        roomId : Identifier (PK)
+        cinemaId : Identifier (FK)
+        name : String
+        roomType : RoomType
+        rowCount : Integer
+        columnCount : Integer
+        status : RoomStatus
+    }
+
+    entity "Seat Row" as SEAT_ROW {
+        seatRowId : Identifier (PK)
+        roomId : Identifier (FK)
+        rowLabel : String
+        displayOrder : Integer
+        startColumn : Integer
+        rowType : SeatType
+    }
+
+    entity "Seat" as SEAT {
+        seatId : Identifier (PK)
+        seatRowId : Identifier (FK)
+        rowLabel : String
+        seatNumber : Integer
+        displayColumn : Integer
+        seatType : SeatType
+        status : SeatStatus
+    }
+
+    entity "Movie" as MOVIE {
+        movieId : Identifier (PK)
+        title : String (UQ)
+        description : TEXT
+        trailerUrl : String
+        posterUrl : String
+        durationMinutes : Integer
+        releaseDate : Date
+        endDate : Date
+        language : String
+        subtitleLanguage : String
+        status : MovieStatus
+        ageRating : AgeRating
+        director : String
+    }
+
+    entity "Genre" as GENRE {
+        genreId : Identifier (PK)
+        name : String (UQ)
+        description : String
+    }
+
+    entity "Performer" as PERFORMER {
+        performerId : Identifier (PK)
+        name : String (UQ)
+        biography : TEXT
+        avatarUrl : String
+    }
+
+    entity "Movie Cast" as MOVIE_CAST {
+        movieCastId : Identifier (PK)
+        movieId : Identifier (FK)
+        performerId : Identifier (FK)
+        mainPerformer : Boolean
+    }
+
+    entity "ShowTime" as SHOWTime {
+        showTimeId : Identifier (PK)
+        movieId : Identifier (FK)
+        roomId : Identifier (FK)
+        startTime : DateTime
+        endTime : DateTime
+        status : ShowTimeStatus
+        cancellationReason : TEXT
+        cancelledAt : DateTime
+    }
+
+    entity "Ticket Category" as TICKET_CATEGORY {
+        ticketCategoryId : Identifier (PK)
+        name : String (UQ)
+        minimumAge : Integer
+        maximumAge : Integer
+        status : CategoryStatus
+    }
+
+    entity "Ticket Pricing Rule" as PRICING_RULE {
+        pricingRuleId : Identifier (PK)
+        cinemaId : Identifier (FK)
+        ticketCategoryId : Identifier (FK)
+        roomType : RoomType
+        seatType : SeatType
+        dayType : DayType
+        startTime : Time
+        endTime : Time
+        effectiveFrom : DateTime
+        effectiveTo : DateTime
+        price : Decimal
+        active : Boolean
+    }
+
+    entity "ShowTime Price" as SHOWTime_PRICE {
+        showTimePriceId : Identifier (PK)
+        showTimeId : Identifier (FK)
+        ticketCategoryId : Identifier (FK)
+        pricingRuleId : Identifier (FK, nullable)
+        seatType : SeatType
+        price : Decimal
+        createdAt : DateTime
+    }
+
+    entity "Food Item" as FOOD_ITEM {
+        foodItemId : Identifier (PK)
+        name : String
+        description : String
+        price : Decimal
+        imageUrl : String
+        status : FoodStatus
+    }
+
+    entity "Food Combo" as FOOD_COMBO {
+        foodComboId : Identifier (PK)
+        name : String
+        description : TEXT
+        price : Decimal
+        imageUrl : String
+        status : FoodStatus
+    }
+
+    entity "Food Combo Item" as FOOD_COMBO_ITEM {
+        foodComboItemId : Identifier (PK)
+        foodComboId : Identifier (FK)
+        foodItemId : Identifier (FK)
+        quantity : Integer
+    }
+
+    CINEMA ||--o{ ROOM
+    ROOM ||--|{ SEAT_ROW
+    SEAT_ROW ||--|{ SEAT
+    MOVIE }o--|{ GENRE
+    MOVIE ||--o{ MOVIE_CAST
+    PERFORMER ||--o{ MOVIE_CAST
+    MOVIE ||--o{ SHOWTime
+    ROOM ||--o{ SHOWTime
+    CINEMA ||--o{ PRICING_RULE
+    TICKET_CATEGORY ||--o{ PRICING_RULE
+    SHOWTime ||--|{ SHOWTime_PRICE
+    TICKET_CATEGORY ||--o{ SHOWTime_PRICE
+    PRICING_RULE |o--o{ SHOWTime_PRICE
+    FOOD_COMBO ||--|{ FOOD_COMBO_ITEM
+    FOOD_ITEM ||--o{ FOOD_COMBO_ITEM
+}
+
+package "Booking Service" {
+    entity "Booking" as BOOKING {
+        bookingId : Identifier (PK)
+        customerId : Identifier (logical ref)
+        showTimeId : Identifier (logical ref)
+        bookingCode : String (UQ)
+        status : BookingStatus
+        subtotal : Decimal
+        discountAmount : Decimal
+        totalAmount : Decimal
+        expiresAt : DateTime
+        createdAt : DateTime
+        upDatedAt : DateTime
+    }
+
+    entity "Ticket" as TICKET {
+        ticketId : Identifier (PK)
+        bookingId : Identifier (FK)
+        showTimeId : Identifier (logical ref)
+        seatId : Identifier (logical ref)
+        ticketCategoryId : Identifier (logical ref)
+        showTimePriceId : Identifier (logical ref)
+        ticketCode : String (UQ)
+        unitPrice : Decimal
+        status : TicketStatus
+        issuedAt : DateTime
+    }
+
+    entity "Ticket Check-in" as TICKET_CHECK_IN {
+        checkInId : Identifier (PK)
+        ticketId : Identifier (FK, UQ)
+        staffId : Identifier (logical ref)
+        checkedInAt : DateTime
+        status : CheckInStatus
+    }
+
+    entity "Concession Order Line" as CONCESSION_ORDER_LINE {
+        orderLineId : Identifier (PK)
+        bookingId : Identifier (FK)
+        foodItemId : Identifier (logical ref, nullable)
+        foodComboId : Identifier (logical ref, nullable)
+        quantity : Integer
+        unitPrice : Decimal
+        lineTotal : Decimal
+    }
+
+    BOOKING ||--|{ TICKET
+    BOOKING ||--o{ CONCESSION_ORDER_LINE
+    TICKET ||--o| TICKET_CHECK_IN
+}
+
+package "Payment Service" {
+    entity "Payment" as PAYMENT {
+        paymentId : Identifier (PK)
+        bookingId : Identifier (logical ref)
+        amount : Decimal
+        currency : String
+        method : PaymentMethod
+        status : PaymentStatus
+        createdAt : DateTime
+        completedAt : DateTime
+    }
+
+    entity "Payment Transaction" as PAYMENT_TRANSACTION {
+        transactionId : Identifier (PK)
+        paymentId : Identifier (FK)
+        provider : String
+        providerTransactionId : String
+        amount : Decimal
+        status : TransactionStatus
+        idempotencyKey : String (UQ)
+        processedAt : DateTime
+    }
+
+    entity "Refund" as REFUND {
+        refundId : Identifier (PK)
+        paymentId : Identifier (FK)
+        staffId : Identifier (logical ref, nullable)
+        amount : Decimal
+        reason : TEXT
+        status : RefundStatus
+        createdAt : DateTime
+        completedAt : DateTime
+    }
+
+    PAYMENT ||--|{ PAYMENT_TRANSACTION
+    PAYMENT ||--o{ REFUND
+}
+
+package "Recommendation Service" {
+    entity "Movie Interaction" as MOVIE_INTERACTION {
+        interactionId : Identifier (PK)
+        customerId : Identifier (logical ref)
+        movieId : Identifier (logical ref)
+        bookingId : Identifier (logical ref, nullable)
+        interactionType : InteractionType
+        weight : Decimal
+        occurredAt : DateTime
+    }
+
+    entity "Genre Preference" as GENRE_PREFERENCE {
+        preferenceId : Identifier (PK)
+        customerId : Identifier (logical ref)
+        genreId : Identifier (logical ref)
+        score : Decimal
+        calculatedAt : DateTime
+    }
+
+    entity "Performer Preference" as PERFORMER_PREFERENCE {
+        preferenceId : Identifier (PK)
+        customerId : Identifier (logical ref)
+        performerId : Identifier (logical ref)
+        score : Decimal
+        calculatedAt : DateTime
+    }
+
+    entity "Recommendation Set" as RECOMMENDATION_SET {
+        recommendationSetId : Identifier (PK)
+        customerId : Identifier (logical ref)
+        modelVersion : String
+        generatedAt : DateTime
+        expiresAt : DateTime
+    }
+
+    entity "Recommendation" as RECOMMENDATION {
+        recommendationId : Identifier (PK)
+        recommendationSetId : Identifier (FK)
+        movieId : Identifier (logical ref)
+        score : Decimal
+        reason : String
+        rank : Integer
+    }
+
+    RECOMMENDATION_SET ||--|{ RECOMMENDATION
+}
+
+' ===========================================
+' CROSS-SERVICE LOGICAL REFERENCES
+' ===========================================
+
+CINEMA |o..o{ STAFF
+CUSTOMER ||..o{ BOOKING
+SHOWTime ||..o{ BOOKING
+SHOWTime ||..o{ TICKET
+SEAT ||..o{ TICKET
+TICKET_CATEGORY ||..o{ TICKET
+FOOD_ITEM ||..o{ CONCESSION_ORDER_LINE
+FOOD_COMBO ||..o{ CONCESSION_ORDER_LINE
+STAFF ||..o{ TICKET_CHECK_IN
+BOOKING ||..o{ PAYMENT
+STAFF |o..o{ REFUND
+CUSTOMER ||..o{ MOVIE_INTERACTION
+MOVIE ||..o{ MOVIE_INTERACTION
+BOOKING |o..o| MOVIE_INTERACTION
+CUSTOMER ||..o{ GENRE_PREFERENCE
+GENRE ||..o{ GENRE_PREFERENCE
+CUSTOMER ||..o{ PERFORMER_PREFERENCE
+PERFORMER ||..o{ PERFORMER_PREFERENCE
+CUSTOMER ||..o{ RECOMMENDATION_SET
+MOVIE ||..o{ RECOMMENDATION
+
+legend bottom
+    (PK) primary key
+    (FK) logical foreign key inside the same service
+    (UQ) unique constraint
+    (logical ref) cross-service identifier, not a physical FK
+    Logical data types are DBMS-independent.
+    -- = same microservice relationship
+    .. = cross-service logical relationship
+endlegend
+
+@enduml

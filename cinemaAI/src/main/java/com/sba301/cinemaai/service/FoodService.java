@@ -5,6 +5,7 @@ import com.sba301.cinemaai.dto.request.food.FoodItemRequest;
 import com.sba301.cinemaai.dto.response.PageResponse;
 import com.sba301.cinemaai.dto.response.food.FoodComboResponse;
 import com.sba301.cinemaai.dto.response.food.FoodItemResponse;
+import com.sba301.cinemaai.dto.response.food.FoodPriceHistoryResponse;
 import com.sba301.cinemaai.entity.FoodCombo;
 import com.sba301.cinemaai.entity.FoodItem;
 import com.sba301.cinemaai.enums.FoodItemStatus;
@@ -28,6 +29,26 @@ public interface FoodService {
 
     PageResponse<FoodComboResponse> getAllCombos(int page, int size);
 
+    PageResponse<FoodItemResponse> searchItems(
+            String search,
+            Long categoryId,
+            FoodItemStatus status,
+            boolean includeDeleted,
+            int page,
+            int size,
+            String sort
+    );
+
+    PageResponse<FoodComboResponse> searchCombos(
+            String search,
+            Long categoryId,
+            FoodItemStatus status,
+            boolean includeDeleted,
+            int page,
+            int size,
+            String sort
+    );
+
     FoodItemResponse createItem(FoodItemRequest request);
 
     FoodComboResponse createCombo(FoodComboRequest request);
@@ -43,6 +64,20 @@ public interface FoodService {
     FoodItemResponse deleteItem(Long id);
 
     FoodComboResponse deleteCombo(Long id);
+
+    FoodItemResponse restoreItem(Long id);
+
+    FoodComboResponse restoreCombo(Long id);
+
+    FoodItemResponse duplicateItem(Long id);
+
+    FoodComboResponse duplicateCombo(Long id);
+
+    void bulkUpdateStatus(List<Long> ids, String kind, FoodItemStatus status);
+
+    void bulkDelete(List<Long> ids, String kind);
+
+    List<FoodPriceHistoryResponse> getPriceHistory(Long id, String kind);
 
     FoodItem findItem(Long id);
 

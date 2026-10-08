@@ -4,6 +4,7 @@ import com.sba301.cinemaai.dto.request.cinema.BulkShowtimeRequest;
 import com.sba301.cinemaai.dto.request.cinema.ShowtimeRequest;
 import com.sba301.cinemaai.dto.response.PageResponse;
 import com.sba301.cinemaai.dto.response.refund.BulkRefundResponse;
+import com.sba301.cinemaai.dto.response.cinema.CustomerShowtimeSlotResponse;
 import com.sba301.cinemaai.dto.response.cinema.ShowtimeResponse;
 import com.sba301.cinemaai.dto.response.cinema.ShowtimeSeatMapResponse;
 import com.sba301.cinemaai.enums.ShowtimeStatus;
@@ -13,6 +14,10 @@ import java.util.List;
 public interface ShowtimeService {
 
     PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, LocalDate date, int page, int size);
+
+    List<CustomerShowtimeSlotResponse> getCustomerAvailableSlots(Long movieId, LocalDate date);
+
+    CustomerShowtimeSlotResponse resolveCustomerShowtime(Long showtimeId);
 
     PageResponse<ShowtimeResponse> searchAdmin(Long movieId, Long roomId, Long cinemaId,
                                                ShowtimeStatus status, LocalDate date, int page, int size);

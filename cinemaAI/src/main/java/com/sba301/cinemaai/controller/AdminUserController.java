@@ -2,10 +2,16 @@ package com.sba301.cinemaai.controller;
 
 import com.sba301.cinemaai.dto.response.ApiResponse;
 import com.sba301.cinemaai.dto.request.user.AdminStaffCreateRequest;
+import com.sba301.cinemaai.dto.request.user.AdminManagerCreateRequest;
+import com.sba301.cinemaai.dto.request.user.ManagerCinemaAssignmentRequest;
 import com.sba301.cinemaai.dto.request.user.AdminUserStatusUpdateRequest;
 import com.sba301.cinemaai.dto.response.user.UserProfileResponse;
+import com.sba301.cinemaai.dto.response.cinema.CinemaResponse;
 import com.sba301.cinemaai.enums.RoleName;
 import com.sba301.cinemaai.service.UserService;
+import com.sba301.cinemaai.service.ManagerAccountService;
+import com.sba301.cinemaai.service.CinemaService;
+import com.sba301.cinemaai.repository.CinemaRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -21,6 +27,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 @RestController
 @RequestMapping("/api/v1/admin/users")
@@ -30,6 +38,36 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminUserController {
 
     private final UserService userService;
+    private final ManagerAccountService managerAccountService;
+    private final CinemaRepository cinemaRepository;
+    private final CinemaService cinemaService;
+
+    @GetMapping("/managers/cinemas")
+    @Operation(summary = "List cinemas available for manager assignment (Admin only)")
+    public ApiResponse<List<CinemaResponse>> assignmentCinemas() {
+        return ApiResponse.success(cinemaRepository.findAll().stream()
+                .map(cinema -> cinemaService.getCinema(cinema.getId())).toList());
+    }
+
+    @PostMapping("/managers")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Create manager with assigned cinemas (Admin only)")
+    public ApiResponse<UserProfileResponse> createManager(@Valid @RequestBody AdminManagerCreateRequest request) {
+        return ApiResponse.success(managerAccountService.create(request), "Manager created");
+    }
+
+    @GetMapping("/managers/{userId}/cinemas")
+    @Operation(summary = "Get manager cinema assignments (Admin only)")
+    public ApiResponse<List<Long>> managerCinemas(@PathVariable Long userId) {
+        return ApiResponse.success(managerAccountService.assignedCinemaIds(userId));
+    }
+
+    @PatchMapping("/managers/{userId}/cinemas")
+    @Operation(summary = "Replace manager cinema assignments (Admin only)")
+    public ApiResponse<List<Long>> assignManagerCinemas(@PathVariable Long userId,
+            @Valid @RequestBody ManagerCinemaAssignmentRequest request) {
+        return ApiResponse.success(managerAccountService.assignCinemas(userId, request.cinemaIds()));
+    }
 
     @GetMapping
     @Operation(summary = "Get all users (Admin)", description = "Get all users, optionally filtered by role (e.g. role=STAFF)")
