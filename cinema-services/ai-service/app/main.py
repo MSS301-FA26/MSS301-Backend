@@ -14,6 +14,7 @@ from api.recommendation_api import router as recommendation_router
 from api.search_api import router as search_router
 from api.chat_api import router as chat_router
 from api.telemetry_api import router as telemetry_router
+from api.prompt_api import router as prompt_router
 
 # Configure root logger with correlation_id
 handler = logging.StreamHandler()
@@ -78,6 +79,7 @@ app.include_router(recommendation_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(telemetry_router)
+app.include_router(prompt_router)
 
 
 if __name__ == "__main__":

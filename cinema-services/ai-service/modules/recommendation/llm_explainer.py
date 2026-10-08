@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 from core.openai_client import OpenAIClient
+from modules.prompt.service_impl import get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -8,12 +9,13 @@ logger = logging.getLogger(__name__)
 class LLMRecommendationExplainer:
     """
     Grounded explanation synthesizer for personalized movie recommendations.
-    Leverages LLM with factual constraint prompt guardrails to prevent hallucinations,
+    Leverages dynamic prompt templates with factual constraint guardrails to prevent hallucinations,
     with automatic graceful fallback to template rationale.
     """
 
     def __init__(self, openai_client: Optional[OpenAIClient] = None):
         self.openai_client = openai_client
+        self.prompt_service = get_prompt_service()
 
     def explain(
         self,
@@ -33,29 +35,28 @@ class LLMRecommendationExplainer:
         genres_str = ", ".join(genres) if genres else "Điện ảnh"
         recent_str = ", ".join(user_recent_genres) if user_recent_genres else "các phim chiếu rạp gần đây"
 
-        prompt = (
-            f"Phim được đề xuất: '{movie_title}' (Thể loại: {genres_str}).\n"
-            f"Lịch sử xem gần đây của người dùng: Thích các phim thể loại {recent_str}.\n"
-            f"Nguồn gợi ý thuật toán: {source}.\n\n"
-            "Nhiệm vụ: Viết đúng 1 câu tiếng Việt ngắn gọn (dưới 25 từ), tự nhiên và lịch sự để giải thích "
-            "tại sao hệ thống rạp CinePremier đề xuất phim này cho người dùng.\n"
-            "YÊU CẦU BẮT BUỘC: CHỈ ĐƯỢC dựa vào các thông tin thể loại và lịch sử cung cấp ở trên. "
-            "Tuyệt đối không bịa đặt nội dung phim hoặc diễn viên không có trong dữ liệu."
-        )
-
-        messages = [
-            {
-                "role": "system",
-                "content": "Bạn là chuyên viên đề xuất phim của CinePremier. Giải thích chính xác, súc tích và có căn cứ thực tế."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-
         try:
-            explanation = self.openai_client.chat_completion(messages, temperature=0.15, max_tokens=80)
+            sys_prompt, user_prompt, model_name, temp, max_tok = self.prompt_service.render_prompt(
+                "RECOMMENDATION_EXPLAINER",
+                {
+                    "movie_title": movie_title,
+                    "genres_str": genres_str,
+                    "recent_str": recent_str,
+                    "source": source
+                }
+            )
+
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+
+            explanation = self.openai_client.chat_completion(
+                messages,
+                temperature=temp,
+                max_tokens=max_tok,
+                model=model_name
+            )
             if explanation and len(explanation) > 5:
                 return explanation.strip().strip('"')
             return base_reason

@@ -19,6 +19,9 @@ class SentimentAnalysisResult:
     aspect_sentiment: Dict[str, float]
 
 
+from modules.prompt.service_impl import get_prompt_service
+
+
 class AspectSentimentAnalyzer:
     """
     Aspect-based sentiment analyzer leveraging LLM semantic reasoning.
@@ -28,6 +31,7 @@ class AspectSentimentAnalyzer:
 
     def __init__(self, openai_client: Optional[OpenAIClient] = None):
         self.openai_client = openai_client or get_openai_client()
+        self.prompt_service = get_prompt_service()
 
     def analyze(self, comment: str, rating: float) -> SentimentAnalysisResult:
         clean_text = (comment or "").strip()
@@ -43,33 +47,27 @@ class AspectSentimentAnalyzer:
                 aspect_sentiment={}
             )
 
-        # Attempt semantic sentiment analysis via LLM
-        prompt = (
-            f"User review for a cinema movie:\n"
-            f"- Star rating given by user: {rating} / 5.0\n"
-            f"- Review comment: \"{clean_text}\"\n\n"
-            "Analyze the review and return a valid JSON object with the following fields:\n"
-            "- \"sentiment_score\": float between -1.0 (most negative) and 1.0 (most positive)\n"
-            "- \"sentiment_label\": string, either \"POSITIVE\", \"NEGATIVE\", or \"NEUTRAL\"\n"
-            "- \"feedback_consistency\": string, \"CONSISTENT\" if rating matches comment tone, or \"INCONSISTENT\" if contradictory (e.g. 5 stars but harsh complaints, 1 star but glowing praise, sarcasm, spam, or off-topic)\n"
-            "- \"confidence_score\": float between 0.0 and 1.0 (lower <= 0.35 if sarcastic, contradictory, or noisy; high >= 0.85 if clear and consistent)\n"
-            "- \"aspect_sentiment\": object with keys \"plot\", \"acting\", \"visuals\", \"audio\" containing score between -1.0 and 1.0 for aspects mentioned in comment\n\n"
-            "Return ONLY the raw JSON object without markdown formatting, code block, or explanation."
-        )
-
-        messages = [
-            {
-                "role": "system",
-                "content": "You are an expert NLP cinema sentiment and aspect analyzer. Output strictly valid JSON."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-
+        # Attempt semantic sentiment analysis via dynamic prompt service
         try:
-            raw_reply = self.openai_client.chat_completion(messages, temperature=0.0, max_tokens=250)
+            sys_prompt, user_prompt, model_name, temp, max_tok = self.prompt_service.render_prompt(
+                "SENTIMENT_ASPECT_ANALYSIS",
+                {
+                    "rating": rating,
+                    "clean_text": clean_text
+                }
+            )
+
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+
+            raw_reply = self.openai_client.chat_completion(
+                messages,
+                temperature=temp,
+                max_tokens=max_tok,
+                model=model_name
+            )
             if raw_reply:
                 # Strip markdown code blocks if wrapped
                 cleaned_json = raw_reply.strip()
