@@ -29,8 +29,8 @@ public class LoyaltyController {
 
     @Operation(summary = "Xem cấu hình quy đổi điểm thưởng")
     @GetMapping("/config")
-    public ApiResponse<LoyaltyConfigurationResponse> getConfiguration() {
-        return ApiResponse.success(loyaltyService.getConfiguration());
+    public ApiResponse<LoyaltyConfigurationResponse> getConfiguration(@RequestParam(required = false) Long cinemaId) {
+        return ApiResponse.success(loyaltyService.getConfiguration(cinemaId));
     }
 
     @Operation(summary = "Khách hàng đổi điểm thưởng lấy voucher giảm giá")
