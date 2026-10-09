@@ -16,6 +16,7 @@ import com.cinemaai.payment.repository.OutboxEventRepository;
 import com.cinemaai.payment.repository.PaymentRepository;
 import com.cinemaai.payment.service.OutboxPublisherWorker;
 import com.cinemaai.payment.service.PaymentService;
+import com.cinemaai.payment.service.LoyaltyService;
 import com.cinemaai.payment.util.VNPayUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -41,6 +42,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxPublisherWorker outboxPublisherWorker;
     private final BookingClient bookingClient;
+    private final LoyaltyService loyaltyService;
     private final ObjectMapper objectMapper;
 
     @Value("${vnpay.tmn-code}")
@@ -61,21 +63,26 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal amount = BigDecimal.ZERO;
         Long targetUserId = userId;
 
-        BookingClient.BookingInfo booking = null;
         if (bookingId != null) {
-            booking = bookingClient.getBooking(bookingId);
+            BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
             amount = booking.totalAmount();
             if (targetUserId == null) {
                 targetUserId = booking.userId();
             }
+        } else if (foodOrderId != null) {
+            BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            amount = foodOrder.totalAmount();
+            if (targetUserId == null) {
+                targetUserId = foodOrder.userId();
+            }
         } else {
-            throw new BadRequestException("Phải chỉ định bookingId để thanh toán.");
+            throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
 
         // Create or reuse pending payment
-        Payment payment = paymentRepository.findByBookingId(bookingId)
-                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
-                .orElse(null);
+        Payment payment = (bookingId != null)
+                ? paymentRepository.findByBookingId(bookingId).filter(p -> p.getStatus() == PaymentStatus.PENDING).orElse(null)
+                : paymentRepository.findByFoodOrderId(foodOrderId).filter(p -> p.getStatus() == PaymentStatus.PENDING).orElse(null);
 
         if (payment == null) {
             payment = Payment.builder()
@@ -93,9 +100,18 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Generate VNPay URL
-        String bookingCode = booking != null ? booking.bookingCode() : null;
-        String txnRef = payment.getId() + "-" + (bookingCode != null && !bookingCode.isBlank() ? bookingCode : System.currentTimeMillis());
-        String orderInfo = "Thanh toan ve xem phim ma " + (bookingCode != null ? bookingCode : bookingId);
+        String orderRefCode = null;
+        String orderInfo = null;
+        if (bookingId != null) {
+            BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
+            orderRefCode = booking.bookingCode();
+            orderInfo = "Thanh toan ve xem phim ma " + orderRefCode;
+        } else if (foodOrderId != null) {
+            BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            orderRefCode = foodOrder.foodOrderCode();
+            orderInfo = "Thanh toan bap nuoc ma " + orderRefCode;
+        }
+        String txnRef = payment.getId() + "-" + (orderRefCode != null && !orderRefCode.isBlank() ? orderRefCode : System.currentTimeMillis());
 
         Map<String, String> vnpParams = new HashMap<>();
         vnpParams.put("vnp_Version", "2.1.0");
@@ -161,9 +177,19 @@ public class PaymentServiceImpl implements PaymentService {
             if (targetUserId == null) {
                 targetUserId = booking.userId();
             }
+        } else if (foodOrderId != null) {
+            BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            amount = foodOrder.totalAmount();
+            if (targetUserId == null) {
+                targetUserId = foodOrder.userId();
+            }
+        } else {
+            throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
 
-        Payment payment = paymentRepository.findByBookingId(bookingId).orElse(null);
+        Payment payment = (bookingId != null)
+                ? paymentRepository.findByBookingId(bookingId).orElse(null)
+                : paymentRepository.findByFoodOrderId(foodOrderId).orElse(null);
         if (payment == null) {
             payment = Payment.builder()
                     .bookingId(bookingId)
@@ -184,6 +210,40 @@ public class PaymentServiceImpl implements PaymentService {
         // Transactional Outbox: Write PaymentSucceededEvent in the same DB transaction
         writeOutboxEvent(payment, now);
         triggerOutboxPublishImmediately();
+
+        if (payment.getBookingId() != null) {
+            bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), now);
+            try {
+                var bInfo = bookingClient.getBooking(payment.getBookingId());
+                if (bInfo != null && bInfo.userId() != null) {
+                    loyaltyService.awardPointsForBooking(new com.cinemaai.payment.dto.request.AwardBookingPointsRequest(
+                            bInfo.userId(),
+                            bInfo.id(),
+                            bInfo.bookingCode(),
+                            payment.getAmount(),
+                            bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0
+                    ));
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to award loyalty points for booking {} in mockPayment: {}", payment.getBookingId(), ex.getMessage());
+            }
+        }
+        if (payment.getFoodOrderId() != null) {
+            bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), now);
+            try {
+                var foInfo = bookingClient.getFoodOrder(payment.getFoodOrderId());
+                if (foInfo != null && foInfo.userId() != null) {
+                    loyaltyService.awardPointsForFoodOrder(
+                            foInfo.userId(),
+                            foInfo.id(),
+                            foInfo.foodOrderCode(),
+                            payment.getAmount()
+                    );
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to award loyalty points for food order {} in mockPayment: {}", payment.getFoodOrderId(), ex.getMessage());
+            }
+        }
 
         return PaymentMapper.toResponse(payment);
     }
@@ -227,7 +287,13 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Idempotency check: Already processed
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            return Map.of("RspCode", "02", "Message", "Order already confirmed");
+            if (payment.getBookingId() != null) {
+                bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), payment.getPaidAt());
+            }
+            if (payment.getFoodOrderId() != null) {
+                bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), payment.getPaidAt());
+            }
+            return Map.of("RspCode", "00", "Message", "Order already confirmed");
         }
 
         String responseCode = params.get("vnp_ResponseCode");
@@ -245,7 +311,41 @@ public class PaymentServiceImpl implements PaymentService {
             writeOutboxEvent(payment, now);
             triggerOutboxPublishImmediately();
 
-            log.info("VNPay IPN Success for Payment id={}, Booking id={}", payment.getId(), payment.getBookingId());
+            if (payment.getBookingId() != null) {
+                bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), now);
+                try {
+                    var bInfo = bookingClient.getBooking(payment.getBookingId());
+                    if (bInfo != null && bInfo.userId() != null) {
+                        loyaltyService.awardPointsForBooking(new com.cinemaai.payment.dto.request.AwardBookingPointsRequest(
+                                bInfo.userId(),
+                                bInfo.id(),
+                                bInfo.bookingCode(),
+                                payment.getAmount(),
+                                bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0
+                        ));
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to award loyalty points for booking {} in VNPay IPN: {}", payment.getBookingId(), ex.getMessage());
+                }
+            }
+            if (payment.getFoodOrderId() != null) {
+                bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), now);
+                try {
+                    var foInfo = bookingClient.getFoodOrder(payment.getFoodOrderId());
+                    if (foInfo != null && foInfo.userId() != null) {
+                        loyaltyService.awardPointsForFoodOrder(
+                                foInfo.userId(),
+                                foInfo.id(),
+                                foInfo.foodOrderCode(),
+                                payment.getAmount()
+                        );
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to award loyalty points for food order {} in VNPay IPN: {}", payment.getFoodOrderId(), ex.getMessage());
+                }
+            }
+
+            log.info("VNPay IPN Success for Payment id={}, Booking id={}, FoodOrder id={}", payment.getId(), payment.getBookingId(), payment.getFoodOrderId());
             return Map.of("RspCode", "00", "Message", "Confirm Success");
         } else {
             payment.setStatus(PaymentStatus.FAILED);
@@ -310,6 +410,14 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse getPaymentByBooking(Long bookingId) {
         Payment payment = paymentRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán cho booking: " + bookingId));
+        return PaymentMapper.toResponse(payment);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentResponse getPaymentByFoodOrder(Long foodOrderId) {
+        Payment payment = paymentRepository.findByFoodOrderId(foodOrderId)
+                .orElseThrow(() -> new NotFoundException("Khong tim thay giao dich thanh toan cho don bap nuoc: " + foodOrderId));
         return PaymentMapper.toResponse(payment);
     }
 

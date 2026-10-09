@@ -14,5 +14,7 @@ public interface PaymentService {
 
     PaymentResponse getPaymentByBooking(Long bookingId);
 
+    PaymentResponse getPaymentByFoodOrder(Long foodOrderId);
+
     PaymentResponse getPaymentById(Long paymentId);
 }

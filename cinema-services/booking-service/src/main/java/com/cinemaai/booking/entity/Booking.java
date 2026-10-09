@@ -59,6 +59,18 @@ public class Booking extends BaseEntity {
     @Column(name = "showtime_start_snapshot", nullable = false)
     private LocalDateTime showtimeStartSnapshot;
 
+    @Column(name = "showtime_end_snapshot")
+    private LocalDateTime showtimeEndSnapshot;
+
+    @Column(name = "customer_name_snapshot")
+    private String customerNameSnapshot;
+
+    @Column(name = "customer_phone_snapshot", length = 50)
+    private String customerPhoneSnapshot;
+
+    @Column(name = "customer_email_snapshot")
+    private String customerEmailSnapshot;
+
     @Builder.Default
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;

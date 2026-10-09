@@ -34,6 +34,15 @@ public class FoodOrder extends BaseEntity {
     @Column(name = "booking_id")
     private Long bookingId;
 
+    @Column(name = "cinema_id")
+    private Long cinemaId;
+
+    @Column(name = "cinema_name", length = 255)
+    private String cinemaName;
+
+    @Column(name = "cinema_address", length = 500)
+    private String cinemaAddress;
+
     @Builder.Default
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;

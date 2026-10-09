@@ -22,4 +22,6 @@ public interface WalletTransactionRepository extends JpaRepository<WalletTransac
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM WalletTransaction t WHERE t.type = :type")
     BigDecimal sumAmountByType(@Param("type") WalletTransactionType type);
+
+    boolean existsByReferenceCode(String referenceCode);
 }

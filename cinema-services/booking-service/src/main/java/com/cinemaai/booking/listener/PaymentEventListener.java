@@ -8,6 +8,7 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.event.PaymentSucceededEvent;
 import com.cinemaai.booking.repository.BookingRepository;
+import com.cinemaai.booking.repository.FoodOrderRepository;
 import com.cinemaai.booking.repository.ProcessedEventRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentEventListener {
 
     private final BookingRepository bookingRepository;
+    private final FoodOrderRepository foodOrderRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final com.cinemaai.booking.client.PaymentClient paymentClient;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @RabbitListener(queues = RabbitMqConfig.PAYMENT_SUCCEEDED_QUEUE)
@@ -36,8 +39,8 @@ public class PaymentEventListener {
             return;
         }
 
-        log.info("Received PaymentSucceededEvent: eventId={}, bookingId={}, amount={}",
-                event.eventId(), event.bookingId(), event.amount());
+        log.info("Received PaymentSucceededEvent: eventId={}, bookingId={}, foodOrderId={}, amount={}",
+                event.eventId(), event.bookingId(), event.foodOrderId(), event.amount());
 
         // 1. Idempotency Check: prevent duplicate processing
         if (processedEventRepository.existsById(event.eventId())) {
@@ -72,6 +75,26 @@ public class PaymentEventListener {
 
             bookingRepository.save(booking);
             log.info("Successfully marked Booking {} as PAID with QR code.", booking.getBookingCode());
+
+            // Tich diem thuong loyalty cho khach hang
+            if (booking.getUserId() != null) {
+                paymentClient.awardLoyaltyPoints(
+                        booking.getUserId(),
+                        booking.getId(),
+                        booking.getBookingCode(),
+                        booking.getTotalAmount(),
+                        booking.getLoyaltyPointsRedeemed()
+                );
+            }
+        }
+
+        if (event.foodOrderId() != null) {
+            foodOrderRepository.findById(event.foodOrderId()).ifPresent(order -> {
+                order.setStatus("PAID");
+                order.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());
+                foodOrderRepository.save(order);
+                log.info("Successfully marked FoodOrder {} as PAID.", order.getFoodOrderCode());
+            });
         }
 
         // 5. Record processed event for idempotent consumer guarantee

@@ -64,10 +64,8 @@ public class StaffAccountSeeder implements Seeder {
             userRoleRepository.save(new UserRole(staff, staffRole));
         }
 
-        Long cinemaId = staffAccount.getCinemaId() != null ? staffAccount.getCinemaId() : 1L;
-        if (userCinemaAssignmentService.getCinemaIdByUserId(staff.getId()).isEmpty()) {
-            userCinemaAssignmentService.assignCinema(staff, cinemaId, null);
-        }
+        Long cinemaId = staffAccount.getCinemaId() != null ? staffAccount.getCinemaId() : 5L;
+        userCinemaAssignmentService.assignCinema(staff, cinemaId, null);
         log.info("Staff account seeded successfully: {}", staff.getEmail());
     }
 }
