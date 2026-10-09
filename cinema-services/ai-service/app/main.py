@@ -54,8 +54,39 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from fastapi.openapi.utils import get_openapi
+
 # Global Exception Handlers
 register_exception_handlers(app)
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "GatewaySecret": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Gateway-Secret",
+            "description": "Shared Gateway Secret Token (Default: cinema-gateway-secret-key-change-in-production)"
+        },
+        "InternalServiceSecret": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Internal-Service-Secret",
+            "description": "Internal Microservice Secret Token (Default: cinema-internal-service-secret-key-change-in-production)"
+        }
+    }
+    openapi_schema["security"] = [{"GatewaySecret": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Middlewares
 app.add_middleware(CorrelationIdMiddleware)
