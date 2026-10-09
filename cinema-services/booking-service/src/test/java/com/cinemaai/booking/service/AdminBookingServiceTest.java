@@ -17,6 +17,8 @@ import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.TicketAuditLogRepository;
 import com.cinemaai.booking.security.AuthenticatedUser;
 import com.cinemaai.booking.security.CinemaSecurityService;
+import com.cinemaai.booking.client.IdentityClient;
+import com.cinemaai.booking.client.PaymentClient;
 import com.cinemaai.booking.service.impl.AdminBookingServiceImpl;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,6 +47,12 @@ class AdminBookingServiceTest {
     private TicketAuditLogRepository ticketAuditLogRepository;
     @Mock
     private CinemaSecurityService cinemaSecurityService;
+    @Mock
+    private PaymentClient paymentClient;
+    @Mock
+    private com.cinemaai.booking.repository.BookingSeatRepository bookingSeatRepository;
+    @Mock
+    private IdentityClient identityClient;
 
     private AdminBookingServiceImpl adminBookingService;
 
@@ -53,7 +61,10 @@ class AdminBookingServiceTest {
         adminBookingService = new AdminBookingServiceImpl(
                 bookingRepository,
                 ticketAuditLogRepository,
-                cinemaSecurityService
+                cinemaSecurityService,
+                paymentClient,
+                bookingSeatRepository,
+                identityClient
         );
     }
 
@@ -267,5 +278,51 @@ class AdminBookingServiceTest {
         assertEquals(2L, metrics.totalCancelledTickets());
         assertEquals(1L, metrics.totalRefundedTickets());
         assertEquals(new BigDecimal("100000.00"), metrics.totalRefundedAmount());
+    }
+
+    @Test
+    void testRefundBooking_SendsWalletRefundEmailNotice() {
+        Long managerId = 10L;
+        Long cinemaAId = 101L;
+        Long bookingId = 506L;
+
+        AuthenticatedUser manager = new AuthenticatedUser(managerId, "mgr@test.com", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), cinemaAId);
+
+        BookingSeat seat = BookingSeat.builder().seatNumber(1).rowLabel("B").status(BookingSeatStatus.BOOKED).build();
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingCode("BK_REFUND_MAIL")
+                .cinemaId(cinemaAId)
+                .userId(99L)
+                .customerEmailSnapshot("customer@example.com")
+                .showtimeId(1L)
+                .movieId(1L)
+                .cinemaNameSnapshot("Cinema A")
+                .roomNameSnapshot("Room 1")
+                .showtimeStartSnapshot(LocalDateTime.now().plusHours(2))
+                .status(BookingStatus.PAID)
+                .totalAmount(new BigDecimal("150000.00"))
+                .seats(new ArrayList<>(List.of(seat)))
+                .build();
+
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(managerId, "mgr@test.com", "ACTIVE", List.of("MANAGER"), cinemaAId)
+        );
+        when(paymentClient.creditWalletForRefund(eq(99L), eq(new BigDecimal("150000.00")), eq(bookingId), eq("BK_REFUND_MAIL"), any()))
+                .thenReturn(new BigDecimal("200000.00"));
+
+        AdminRefundTicketRequest req = new AdminRefundTicketRequest("Đổi lịch chiếu cá nhân");
+        BookingResponse resp = adminBookingService.refundBooking(manager, bookingId, req);
+
+        assertNotNull(resp);
+        assertEquals(BookingStatus.REFUNDED, booking.getStatus());
+        verify(identityClient).sendWalletRefundNotice(
+                eq("customer@example.com"),
+                eq("BK_REFUND_MAIL"),
+                eq(new BigDecimal("150000.00")),
+                eq(new BigDecimal("200000.00")),
+                eq("Đổi lịch chiếu cá nhân")
+        );
     }
 }

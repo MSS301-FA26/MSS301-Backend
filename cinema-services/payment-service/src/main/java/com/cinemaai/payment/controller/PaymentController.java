@@ -91,9 +91,42 @@ public class PaymentController {
         return ApiResponse.success(paymentService.getPaymentByBooking(bookingId));
     }
 
+    @Operation(summary = "Lay thong tin thanh toan theo ma don bap nuoc")
+    @GetMapping({"/food-order/{foodOrderId}", "/food-orders/{foodOrderId}/info"})
+    public ApiResponse<PaymentResponse> getPaymentByFoodOrder(@PathVariable Long foodOrderId) {
+        return ApiResponse.success(paymentService.getPaymentByFoodOrder(foodOrderId));
+    }
+
     @Operation(summary = "Lấy thông tin thanh toán theo paymentId")
     @GetMapping("/{paymentId}")
     public ApiResponse<PaymentResponse> getPaymentById(@PathVariable Long paymentId) {
         return ApiResponse.success(paymentService.getPaymentById(paymentId));
+    }
+
+    @Operation(summary = "Tạo URL thanh toán VNPay cho đơn bắp nước")
+    @PostMapping({"/food-orders/{foodOrderId}/vnpay", "/food-orders/{foodOrderId}/vnpay/create"})
+    public ApiResponse<VNPayPaymentResponse> createFoodOrderVnpayPayment(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long foodOrderId,
+            HttpServletRequest request
+    ) {
+        Long userId = user != null ? user.id() : 1L;
+        String clientIp = request.getHeader("X-Forwarded-For");
+        if (clientIp == null || clientIp.isBlank()) {
+            clientIp = request.getRemoteAddr();
+        }
+        VNPayPaymentResponse response = paymentService.createVnpayPayment(userId, null, foodOrderId, clientIp);
+        return ApiResponse.success(response, "Khởi tạo thanh toán VNPay bắp nước thành công");
+    }
+
+    @Operation(summary = "Thanh toán giả lập cho đơn bắp nước (Mock Payment)")
+    @PostMapping("/food-orders/{foodOrderId}/mock")
+    public ApiResponse<PaymentResponse> mockFoodOrderPayment(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long foodOrderId
+    ) {
+        Long userId = user != null ? user.id() : 1L;
+        PaymentResponse response = paymentService.mockPayment(userId, null, foodOrderId);
+        return ApiResponse.success(response, "Thanh toán giả lập bắp nước thành công");
     }
 }
