@@ -1,18 +1,32 @@
 package com.cinemaai.payment.service;
 
+import com.cinemaai.payment.dto.request.AwardBookingPointsRequest;
+import com.cinemaai.payment.dto.request.LoyaltyAddRequest;
+import com.cinemaai.payment.dto.request.LoyaltyConfigurationRequest;
+import com.cinemaai.payment.dto.request.RefundBookingPointsRequest;
 import com.cinemaai.payment.dto.response.LoyaltyConfigurationResponse;
+import com.cinemaai.payment.dto.response.LoyaltyReportResponse;
 import com.cinemaai.payment.dto.response.LoyaltyResponse;
+import com.cinemaai.payment.dto.response.LoyaltyTransactionResponse;
+import com.cinemaai.payment.dto.response.PageResponse;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 public interface LoyaltyService {
     LoyaltyResponse getMyPoints(Long userId, String email);
     LoyaltyConfigurationResponse getConfiguration();
     LoyaltyResponse redeemMyPoints(Long userId, String email, int points);
 
-    LoyaltyConfigurationResponse updateConfiguration(com.cinemaai.payment.dto.request.LoyaltyConfigurationRequest request);
-    com.cinemaai.payment.dto.response.PageResponse<com.cinemaai.payment.dto.response.LoyaltyTransactionResponse> searchTransactions(
-            String keyword, java.time.LocalDateTime from, java.time.LocalDateTime to, int page, int size);
-    com.cinemaai.payment.dto.response.LoyaltyReportResponse getReport(java.time.LocalDateTime from, java.time.LocalDateTime to);
+    LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request);
+    PageResponse<LoyaltyTransactionResponse> searchTransactions(
+            String keyword, LocalDateTime from, LocalDateTime to, int page, int size);
+    LoyaltyReportResponse getReport(LocalDateTime from, LocalDateTime to);
     int expireAllActivePoints(String source);
-    LoyaltyResponse addPoints(com.cinemaai.payment.dto.request.LoyaltyAddRequest request);
+    LoyaltyResponse addPoints(LoyaltyAddRequest request);
     LoyaltyResponse redeemPoints(Long userId, int points);
+
+    LoyaltyResponse awardPointsForBooking(AwardBookingPointsRequest request);
+    LoyaltyResponse refundPointsForBooking(RefundBookingPointsRequest request);
+    LoyaltyResponse awardPointsForFoodOrder(Long userId, Long foodOrderId, String orderCode, BigDecimal amount);
 }

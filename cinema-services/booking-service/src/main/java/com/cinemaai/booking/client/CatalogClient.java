@@ -1,5 +1,6 @@
 package com.cinemaai.booking.client;
 
+import com.cinemaai.booking.client.dto.CatalogFoodQuoteDto;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.exception.BadRequestException;
@@ -45,5 +46,24 @@ public class CatalogClient {
             log.error("Failed to fetch quote from Catalog Service: {}", ex.getMessage());
             throw new BadRequestException("Không thể lấy giá có thẩm quyền từ Catalog Service: " + ex.getMessage());
         }
+    }
+
+    public CatalogFoodQuoteDto.Response getFoodQuote(CatalogFoodQuoteDto.Request request) {
+        try {
+            ApiResponse<CatalogFoodQuoteDto.Response> response = restClient.post()
+                    .uri("/internal/v1/foods/quote")
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<CatalogFoodQuoteDto.Response>>() {});
+
+            if (response != null && response.data() != null) {
+                return response.data();
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to fetch food quote from /internal/v1/foods/quote: {}", ex.getMessage());
+        }
+        return null;
     }
 }

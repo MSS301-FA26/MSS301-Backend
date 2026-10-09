@@ -257,13 +257,63 @@ public class StaffCheckInController {
         return ApiResponse.success(responses, "Lấy danh sách vé theo suất chiếu thành công");
     }
 
-    @Operation(summary = "Tra cứu đơn bắp nước cho Staff soát món")
+    @Operation(summary = "Tra cuu don bap nuoc cho Staff soat mon")
     @GetMapping("/food-orders/lookup")
     @Transactional(readOnly = true)
     public ApiResponse<Map<String, Object>> lookupFoodOrder(@RequestParam String code) {
         String cleanCode = extractFoodOrderCode(code);
-        FoodOrder order = foodOrderRepository.findByFoodOrderCode(cleanCode)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước: " + cleanCode));
+        if (cleanCode == null || cleanCode.isBlank()) {
+            throw new BadRequestException("Ma tra cuu bap nuoc khong duoc de trong");
+        }
+
+        java.util.Optional<FoodOrder> orderOpt = foodOrderRepository.findByFoodOrderCode(cleanCode);
+
+        if (orderOpt.isEmpty()) {
+            String bookingCode = extractBookingCode(code);
+            java.util.Optional<Booking> bookingOpt = bookingRepository.findByBookingCode(bookingCode);
+            if (bookingOpt.isPresent()) {
+                Booking booking = bookingOpt.get();
+                List<FoodOrder> linkedOrders = foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+                if (!linkedOrders.isEmpty()) {
+                    orderOpt = java.util.Optional.of(linkedOrders.get(0));
+                } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", booking.getId());
+                    map.put("orderCode", booking.getBookingCode());
+                    map.put("foodOrderCode", booking.getBookingCode());
+                    map.put("bookingCode", booking.getBookingCode());
+                    map.put("bookingId", booking.getId());
+                    map.put("status", "USED".equalsIgnoreCase(String.valueOf(booking.getStatus())) ? "PICKED_UP" : "PAID");
+                    map.put("customerName", booking.getCustomerNameSnapshot());
+                    map.put("customerPhone", booking.getCustomerPhoneSnapshot());
+                    map.put("cinemaId", booking.getCinemaId());
+                    map.put("cinemaName", booking.getCinemaNameSnapshot());
+                    map.put("cinemaAddress", booking.getCinemaNameSnapshot());
+                    map.put("createdAt", booking.getCreatedAt());
+                    map.put("paidAt", booking.getPaidAt());
+                    java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+                    List<Map<String, Object>> itemsList = new ArrayList<>();
+                    for (com.cinemaai.booking.entity.BookingFoodItem f : booking.getFoodItems()) {
+                        Map<String, Object> itemMap = new HashMap<>();
+                        itemMap.put("id", f.getId());
+                        itemMap.put("productId", f.getProductId());
+                        itemMap.put("isCombo", f.isCombo());
+                        itemMap.put("name", f.getProductNameSnapshot());
+                        itemMap.put("quantity", f.getQuantity());
+                        itemMap.put("unitPrice", f.getUnitPrice());
+                        itemMap.put("totalPrice", f.getLineTotal());
+                        total = total.add(f.getLineTotal());
+                        itemsList.add(itemMap);
+                    }
+                    map.put("totalAmount", total);
+                    map.put("subtotal", total);
+                    map.put("items", itemsList);
+                    return ApiResponse.success(map, "Tim thay don bap nuoc tu ve xem phim");
+                }
+            }
+        }
+
+        FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
 
         Map<String, Object> map = new HashMap<>();
         map.put("id", order.getId());
@@ -273,26 +323,74 @@ public class StaffCheckInController {
         map.put("totalAmount", order.getTotalAmount());
         map.put("subtotal", order.getSubtotal());
         map.put("paidAt", order.getPaidAt());
+        map.put("createdAt", order.getCreatedAt());
         map.put("bookingId", order.getBookingId());
-        return ApiResponse.success(map, "Tìm thấy đơn bắp nước");
+        map.put("cinemaId", order.getCinemaId());
+        map.put("cinemaName", order.getCinemaName());
+        map.put("cinemaAddress", order.getCinemaAddress());
+
+        if (order.getBookingId() != null) {
+            bookingRepository.findById(order.getBookingId()).ifPresent(b -> {
+                map.put("bookingCode", b.getBookingCode());
+                map.put("customerName", b.getCustomerNameSnapshot());
+                map.put("customerPhone", b.getCustomerPhoneSnapshot());
+                if (map.get("cinemaName") == null) map.put("cinemaName", b.getCinemaNameSnapshot());
+                if (map.get("cinemaId") == null) map.put("cinemaId", b.getCinemaId());
+            });
+        }
+
+        List<Map<String, Object>> itemsList = order.getItems() != null ? order.getItems().stream().map(item -> {
+            Map<String, Object> itemMap = new HashMap<>();
+            itemMap.put("id", item.getId());
+            itemMap.put("productId", item.getProductId());
+            itemMap.put("isCombo", item.isCombo());
+            itemMap.put("name", item.getProductNameSnapshot());
+            itemMap.put("quantity", item.getQuantity());
+            itemMap.put("unitPrice", item.getUnitPrice());
+            itemMap.put("totalPrice", item.getLineTotal());
+            return itemMap;
+        }).toList() : List.of();
+        map.put("items", itemsList);
+
+        return ApiResponse.success(map, "Tim thay don bap nuoc");
     }
 
-    @Operation(summary = "Xác nhận giao món cho khách (Staff Pick-up)")
+    @Operation(summary = "Xac nhan giao mon cho khach (Staff Pick-up)")
     @PostMapping("/food-orders/pickup")
     @Transactional
     public ApiResponse<Map<String, Object>> pickUpFoodOrder(@RequestBody Map<String, String> body) {
         String code = body.get("code");
         if (code == null || code.isBlank()) code = body.get("foodOrderCode");
         if (code == null || code.isBlank()) {
-            throw new BadRequestException("Mã đơn bắp nước không được để trống.");
+            throw new BadRequestException("Ma don bap nuoc khong duoc de trong.");
         }
 
         String cleanCode = extractFoodOrderCode(code);
-        FoodOrder order = foodOrderRepository.findByFoodOrderCode(cleanCode)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước: " + cleanCode));
+        java.util.Optional<FoodOrder> orderOpt = foodOrderRepository.findByFoodOrderCode(cleanCode);
+
+        if (orderOpt.isEmpty()) {
+            String bookingCode = extractBookingCode(code);
+            java.util.Optional<Booking> bookingOpt = bookingRepository.findByBookingCode(bookingCode);
+            if (bookingOpt.isPresent()) {
+                Booking booking = bookingOpt.get();
+                List<FoodOrder> linkedOrders = foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+                if (!linkedOrders.isEmpty()) {
+                    orderOpt = java.util.Optional.of(linkedOrders.get(0));
+                } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", booking.getId());
+                    map.put("orderCode", booking.getBookingCode());
+                    map.put("foodOrderCode", booking.getBookingCode());
+                    map.put("status", "PICKED_UP");
+                    return ApiResponse.success(map, "Xac nhan giao mon bap nuoc thanh cong");
+                }
+            }
+        }
+
+        FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
 
         if ("PICKED_UP".equalsIgnoreCase(order.getStatus())) {
-            throw new ConflictException("Đơn bắp nước này đã được giao cho khách trước đó.");
+            throw new ConflictException("Don bap nuoc nay da duoc giao cho khach truoc do.");
         }
 
         order.setStatus("PICKED_UP");
@@ -303,9 +401,69 @@ public class StaffCheckInController {
         map.put("orderCode", order.getFoodOrderCode());
         map.put("foodOrderCode", order.getFoodOrderCode());
         map.put("status", "PICKED_UP");
-        return ApiResponse.success(map, "Xác nhận giao món thành công");
+        return ApiResponse.success(map, "Xac nhan giao mon thanh cong");
     }
 
+    @Operation(summary = "Lay danh sach don bap nuoc gan day tai rap cho Staff F&B")
+    @GetMapping("/food-orders/recent")
+    @Transactional(readOnly = true)
+    public ApiResponse<List<Map<String, Object>>> getRecentFoodOrders(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestParam(defaultValue = "50") int limit
+    ) {
+        Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(user, null, true);
+        List<FoodOrder> orders = foodOrderRepository.findAll(
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt")
+        );
+        if (enforcedCinemaId != null) {
+            orders = orders.stream()
+                    .filter(o -> o.getCinemaId() == null || enforcedCinemaId.equals(o.getCinemaId()))
+                    .toList();
+        }
+        if (orders.size() > limit) {
+            orders = orders.subList(0, limit);
+        }
+        List<Map<String, Object>> responses = orders.stream().map(order -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", order.getId());
+            map.put("orderCode", order.getFoodOrderCode());
+            map.put("foodOrderCode", order.getFoodOrderCode());
+            map.put("status", order.getStatus());
+            map.put("totalAmount", order.getTotalAmount());
+            map.put("subtotal", order.getSubtotal());
+            map.put("paidAt", order.getPaidAt());
+            map.put("createdAt", order.getCreatedAt());
+            map.put("bookingId", order.getBookingId());
+            map.put("cinemaId", order.getCinemaId());
+            map.put("cinemaName", order.getCinemaName());
+            map.put("cinemaAddress", order.getCinemaAddress());
+
+            if (order.getBookingId() != null) {
+                bookingRepository.findById(order.getBookingId()).ifPresent(b -> {
+                    map.put("bookingCode", b.getBookingCode());
+                    map.put("customerName", b.getCustomerNameSnapshot());
+                    map.put("customerPhone", b.getCustomerPhoneSnapshot());
+                    if (map.get("cinemaName") == null) map.put("cinemaName", b.getCinemaNameSnapshot());
+                    if (map.get("cinemaId") == null) map.put("cinemaId", b.getCinemaId());
+                });
+            }
+
+            List<Map<String, Object>> itemsList = order.getItems() != null ? order.getItems().stream().map(item -> {
+                Map<String, Object> itemMap = new HashMap<>();
+                itemMap.put("id", item.getId());
+                itemMap.put("productId", item.getProductId());
+                itemMap.put("isCombo", item.isCombo());
+                itemMap.put("name", item.getProductNameSnapshot());
+                itemMap.put("quantity", item.getQuantity());
+                itemMap.put("unitPrice", item.getUnitPrice());
+                itemMap.put("totalPrice", item.getLineTotal());
+                return itemMap;
+            }).toList() : List.of();
+            map.put("items", itemsList);
+            return map;
+        }).toList();
+        return ApiResponse.success(responses, "Lay danh sach don bap nuoc thanh cong");
+    }
     private void ensureSeatTicketCodes(Booking booking) {
         if (booking.getQrCode() == null || booking.getQrCode().isBlank()) {
             booking.setQrCode("CINEMA:" + booking.getBookingCode() + ":" + booking.getId());

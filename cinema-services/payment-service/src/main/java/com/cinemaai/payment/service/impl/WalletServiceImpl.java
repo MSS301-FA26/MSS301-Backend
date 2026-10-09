@@ -1,5 +1,6 @@
 package com.cinemaai.payment.service.impl;
 
+import com.cinemaai.payment.dto.request.CreditWalletInternalRequest;
 import com.cinemaai.payment.dto.request.WithdrawalCreateRequest;
 import com.cinemaai.payment.dto.request.WithdrawalProcessRequest;
 import com.cinemaai.payment.dto.response.PageResponse;
@@ -220,6 +221,57 @@ public class WalletServiceImpl implements WalletService {
                 totalWallets,
                 recentTx
         );
+    }
+
+
+    @Override
+    @Transactional
+    public WalletResponse creditWalletInternal(CreditWalletInternalRequest request) {
+        if (request == null || request.userId() == null) {
+            throw new BadRequestException("User ID khong duoc de trong");
+        }
+        if (request.amount() == null || request.amount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("So tien hoan vao vi phai lon hon 0");
+        }
+
+        String refCode = "REFUND-" + (request.bookingCode() != null && !request.bookingCode().isBlank()
+                ? request.bookingCode() : ("BK-" + request.bookingId()));
+
+        if (walletTransactionRepository.existsByReferenceCode(refCode)) {
+            log.warn("Giao dich hoan tien da ton tai cho ma tham chieu: {}", refCode);
+            CineWallet wallet = cineWalletRepository.findByUserId(request.userId()).orElse(null);
+            if (wallet != null) {
+                return new WalletResponse(wallet.getId(), wallet.getBalance(), wallet.getCreatedAt());
+            }
+        }
+
+        CineWallet wallet = cineWalletRepository.findByUserIdForUpdate(request.userId())
+                .orElseGet(() -> cineWalletRepository.save(CineWallet.builder()
+                        .userId(request.userId())
+                        .balance(BigDecimal.ZERO)
+                        .build()));
+
+        BigDecimal newBalance = wallet.getBalance().add(request.amount());
+        wallet.setBalance(newBalance);
+        cineWalletRepository.save(wallet);
+
+        String desc = request.reason() != null && !request.reason().isBlank()
+                ? request.reason() : ("Hoan tien ve " + (request.bookingCode() != null ? request.bookingCode() : ""));
+
+        WalletTransaction tx = WalletTransaction.builder()
+                .wallet(wallet)
+                .userId(request.userId())
+                .bookingId(request.bookingId())
+                .type(WalletTransactionType.REFUND_CREDIT)
+                .amount(request.amount())
+                .balanceAfter(newBalance)
+                .referenceCode(refCode)
+                .description(desc)
+                .build();
+        walletTransactionRepository.save(tx);
+
+        log.info("Da hoan {} vao CineWallet cua userId {} (so du moi: {}, ref: {})", request.amount(), request.userId(), newBalance, refCode);
+        return new WalletResponse(wallet.getId(), wallet.getBalance(), wallet.getCreatedAt());
     }
 
     private CineWallet getOrCreateWallet(Long userId) {

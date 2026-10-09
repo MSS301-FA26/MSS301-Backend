@@ -14,5 +14,33 @@ public record HoldSeatsRequest(
         Integer loyaltyPointsToRedeem
 ) {
     public record TicketSelection(Long seatId, String ticketType, Integer viewerAge, Integer quantity) {}
-    public record FoodSelection(Long productId, Boolean isCombo, Integer quantity) {}
+    public record FoodSelection(
+            Long productId,
+            Boolean isCombo,
+            Integer quantity,
+            Long foodItemId,
+            Long foodComboId
+    ) {
+        public FoodSelection(Long productId, Boolean isCombo, Integer quantity) {
+            this(productId, isCombo, quantity, null, null);
+        }
+
+        public FoodSelection {
+            if (productId == null) {
+                if (foodComboId != null) {
+                    productId = foodComboId;
+                    isCombo = true;
+                } else if (foodItemId != null) {
+                    productId = foodItemId;
+                    isCombo = false;
+                }
+            }
+            if (isCombo == null) {
+                isCombo = false;
+            }
+            if (quantity == null || quantity <= 0) {
+                quantity = 1;
+            }
+        }
+    }
 }

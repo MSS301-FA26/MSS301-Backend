@@ -45,6 +45,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingTicketRepository bookingTicketRepository;
     private final BookingFoodItemRepository bookingFoodItemRepository;
     private final CatalogClient catalogClient;
+    private final com.cinemaai.booking.client.PaymentClient paymentClient;
 
     @Override
     @Transactional
@@ -86,16 +87,7 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
-        if (request.foods() != null) {
-            for (HoldSeatsRequest.FoodSelection f : request.foods()) {
-                quoteFoods.add(new CatalogQuoteDto.Request.Food(
-                        f.productId(),
-                        Boolean.TRUE.equals(f.isCombo()),
-                        f.quantity() == null ? 1 : f.quantity()
-                ));
-            }
-        }
+        List<CatalogQuoteDto.Request.Food> quoteFoods = mapQuoteFoods(request.foods());
 
         CatalogQuoteDto.Request quoteReq = new CatalogQuoteDto.Request(
                 request.showtimeId(),
@@ -110,6 +102,12 @@ public class BookingServiceImpl implements BookingService {
         String bookingCode = "BK" + now.format(DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", new Random().nextInt(10000));
 
+        int holdPoints = request.loyaltyPointsToRedeem() != null ? request.loyaltyPointsToRedeem() : 0;
+        BigDecimal holdDiscount = BigDecimal.valueOf(holdPoints);
+        if (holdDiscount.compareTo(quote.subtotal()) > 0) {
+            holdDiscount = quote.subtotal();
+        }
+
         Booking booking = Booking.builder()
                 .bookingCode(bookingCode)
                 .userId(userId)
@@ -122,9 +120,9 @@ public class BookingServiceImpl implements BookingService {
                 .roomNameSnapshot(quote.showtime().roomName())
                 .showtimeStartSnapshot(quote.showtime().startTime())
                 .subtotal(quote.subtotal())
-                .discountAmount(BigDecimal.ZERO)
-                .loyaltyPointsRedeemed(request.loyaltyPointsToRedeem() != null ? request.loyaltyPointsToRedeem() : 0)
-                .totalAmount(quote.subtotal())
+                .discountAmount(holdDiscount)
+                .loyaltyPointsRedeemed(holdPoints)
+                .totalAmount(quote.subtotal().subtract(holdDiscount).max(BigDecimal.ZERO))
                 .status(BookingStatus.HOLDING)
                 .holdExpiresAt(now.plusMinutes(3))
                 .build();
@@ -277,16 +275,7 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
-        if (foods != null) {
-            for (HoldSeatsRequest.FoodSelection f : foods) {
-                quoteFoods.add(new CatalogQuoteDto.Request.Food(
-                        f.productId(),
-                        Boolean.TRUE.equals(f.isCombo()),
-                        f.quantity() == null ? 1 : f.quantity()
-                ));
-            }
-        }
+        List<CatalogQuoteDto.Request.Food> quoteFoods = mapQuoteFoods(foods);
 
         CatalogQuoteDto.Request quoteReq = new CatalogQuoteDto.Request(
                 booking.getShowtimeId(),
@@ -307,7 +296,7 @@ public class BookingServiceImpl implements BookingService {
 
         // Calculate discount if loyalty points redeemed (1 point = 1,000 VND example or configurable)
         int points = loyaltyPointsToRedeem != null ? loyaltyPointsToRedeem : booking.getLoyaltyPointsRedeemed();
-        BigDecimal discount = BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(1000));
+        BigDecimal discount = BigDecimal.valueOf(points);
         if (discount.compareTo(quote.subtotal()) > 0) {
             discount = quote.subtotal();
         }
@@ -323,6 +312,38 @@ public class BookingServiceImpl implements BookingService {
 
         bookingRepository.save(booking);
         return BookingMapper.toResponse(booking);
+    }
+
+    
+    private List<CatalogQuoteDto.Request.Food> mapQuoteFoods(List<HoldSeatsRequest.FoodSelection> foods) {
+        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
+        if (foods != null) {
+            for (HoldSeatsRequest.FoodSelection f : foods) {
+                Long pId = f.productId();
+                Boolean combo = f.isCombo();
+                if (pId == null) {
+                    if (f.foodComboId() != null) {
+                        pId = f.foodComboId();
+                        combo = true;
+                    } else if (f.foodItemId() != null) {
+                        pId = f.foodItemId();
+                        combo = false;
+                    }
+                }
+                if (pId != null) {
+                    boolean isCombo = Boolean.TRUE.equals(combo);
+                    int qty = f.quantity() == null || f.quantity() <= 0 ? 1 : f.quantity();
+                    quoteFoods.add(new CatalogQuoteDto.Request.Food(
+                            pId,
+                            isCombo,
+                            qty,
+                            isCombo ? null : pId,
+                            isCombo ? pId : null
+                    ));
+                }
+            }
+        }
+        return quoteFoods;
     }
 
     private void populateTicketsAndFoods(Booking booking, CatalogQuoteDto.Response quote) {
@@ -499,8 +520,14 @@ public class BookingServiceImpl implements BookingService {
 
         LocalDateTime now = LocalDateTime.now();
         Booking watchedBooking = bookings.stream()
-                .filter(b -> b.getStatus() == BookingStatus.USED ||
-                        (b.getShowtimeStartSnapshot() != null && b.getShowtimeStartSnapshot().isBefore(now)))
+                .filter(b -> {
+                    LocalDateTime endTime = b.getShowtimeEndSnapshot();
+                    if (endTime == null && b.getShowtimeStartSnapshot() != null) {
+                        endTime = b.getShowtimeStartSnapshot().plusMinutes(120);
+                    }
+                    boolean isEnded = endTime != null && !now.isBefore(endTime);
+                    return isEnded && (b.getStatus() == BookingStatus.USED || b.getStatus() == BookingStatus.PAID);
+                })
                 .findFirst()
                 .orElse(null);
 
@@ -524,5 +551,44 @@ public class BookingServiceImpl implements BookingService {
                 futureBooking.getCinemaNameSnapshot(),
                 futureBooking.getStatus().name()
         );
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse markPaidInternal(Long bookingId, String transactionId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking #" + bookingId + " not found"));
+
+        booking.setStatus(BookingStatus.PAID);
+        if (booking.getPaidAt() == null) {
+            booking.setPaidAt(LocalDateTime.now());
+        }
+        String bookingQr = "CINEMA:" + booking.getBookingCode() + ":" + booking.getId();
+        booking.setQrCode(bookingQr);
+
+        if (booking.getSeats() != null) {
+            for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
+                seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.BOOKED);
+                String ticketCode = booking.getBookingCode() + "-" + seat.getRowLabel() + seat.getSeatNumber();
+                seat.setTicketCode(ticketCode);
+                seat.setQrCode("TICKET:" + ticketCode);
+            }
+        }
+
+        bookingRepository.save(booking);
+        log.info("Directly marked Booking {} as PAID via internal REST call (transactionId: {})", booking.getBookingCode(), transactionId);
+
+        // Tich diem thuong loyalty cho khach hang
+        if (booking.getUserId() != null) {
+            paymentClient.awardLoyaltyPoints(
+                    booking.getUserId(),
+                    booking.getId(),
+                    booking.getBookingCode(),
+                    booking.getTotalAmount(),
+                    booking.getLoyaltyPointsRedeemed()
+            );
+        }
+
+        return BookingMapper.toResponse(booking);
     }
 }

@@ -125,6 +125,7 @@ public class SecurityConfig {
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/api/v1/admin/users/manager", "/api/v1/admin/users/*/cinema").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/users", "/api/v1/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/v1/admin/staff-profiles", "/api/v1/admin/staff-profiles/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .anyRequest().authenticated()
