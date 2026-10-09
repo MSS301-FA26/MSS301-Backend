@@ -259,6 +259,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             if (room.getStatus() != RoomStatus.ACTIVE) {
                 throw new BadRequestException(slotLabel + ": room " + room.getName() + " is not active");
             }
+            validateRoomPricingConfigured(room);
             if (!slot.startTime().isAfter(LocalDateTime.now())) {
                 throw new BadRequestException(slotLabel + ": start time must be in the future");
             }
@@ -330,6 +331,14 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     public ShowtimeResponse cancelShowtime(Long id, String reason) {
         Showtime showtime = findById(id);
         validateStatusTransition(showtime, ShowtimeStatus.CANCELLED);
+        
+        // Coordinately refund all bookings in booking-service
+        try {
+            bookingClient.cancelAndRefundShowtime(id, reason, "ADMIN", null);
+        } catch (Exception ex) {
+            log.warn("Notice: booking client refund coordination returned: {}", ex.getMessage());
+        }
+
         applyShowtimeCancellation(showtime, reason);
         showtime.setStatus(ShowtimeStatus.CANCELLED);
         auditLogService.record(AuditActionType.DELETE, "SHOWTIME", showtime.getId(),
@@ -429,6 +438,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         if (room.getStatus() != RoomStatus.ACTIVE) {
             throw new BadRequestException("Cannot schedule showtime in room " + room.getName() + " because it is not active");
         }
+        validateRoomPricingConfigured(room);
         if (!startTime.isAfter(LocalDateTime.now())) {
             throw new BadRequestException("Showtime start time must be in the future");
         }
@@ -446,6 +456,34 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
     }
 
+    private void validateRoomPricingConfigured(Room room) {
+        if (room == null) {
+            throw new BadRequestException("Phòng chiếu không tồn tại");
+        }
+        // 1. Kiểm tra giá vé cơ bản của phòng chiếu (Standard, VIP, Couple)
+        if (room.getStandardPrice() == null || room.getStandardPrice().compareTo(java.math.BigDecimal.ZERO) <= 0
+                || room.getVipPrice() == null || room.getVipPrice().compareTo(java.math.BigDecimal.ZERO) <= 0
+                || room.getCouplePrice() == null || room.getCouplePrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Phòng " + room.getName()
+                    + " chưa hoàn thành thiết lập Giá vé phòng chiếu (Ghế thường, VIP, Ghế đôi). Vui lòng hoàn thành bảng giá trước khi tạo suất chiếu.");
+        }
+
+        // 2. Kiểm tra Bảng giá vé theo lứa tuổi của Cụm rạp (Trẻ em, HSSV, Người lớn)
+        Long cinemaId = room.getCinema() != null ? room.getCinema().getId() : null;
+        if (cinemaId != null && audiencePriceRepository != null) {
+            var audList = audiencePriceRepository.findByCinemaId(cinemaId);
+            boolean hasChild = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.CHILD && a.getAdditionalPrice() != null);
+            boolean hasStudent = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.STUDENT && a.getAdditionalPrice() != null);
+            boolean hasAdult = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.ADULT && a.getAdditionalPrice() != null);
+
+            if (audList.size() < 3 || !hasChild || !hasStudent || !hasAdult) {
+                String cinemaName = room.getCinema() != null ? room.getCinema().getName() : "Chi nhánh";
+                throw new BadRequestException("Cụm rạp " + cinemaName
+                        + " chưa hoàn thành Bảng giá vé theo lứa tuổi (Trẻ em, Sinh viên, Người lớn). Vui lòng cấu hình và lưu bảng giá trước khi tạo suất chiếu ở phòng này.");
+            }
+        }
+    }
+
     private void validateShowtimeWithinMovieReleaseWindow(Movie movie, LocalDateTime startTime, String label) {
         if (startTime == null) {
             return;
@@ -457,7 +495,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
         LocalDate showtimeDate = startTime.toLocalDate();
         if (showtimeDate.isBefore(releaseDate) || showtimeDate.isAfter(endDate)) {
-            throw new BadRequestException(label + "showtime date must be within movie release window");
+            throw new BadRequestException(label + "Ngay chieu (" + showtimeDate + ") phai nam trong thoi gian chieu cua phim (" + releaseDate + " den " + endDate + ")");
         }
     }
 
@@ -503,9 +541,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             throw new BadRequestException("Showtime status is required");
         }
         ShowtimeStatus currentStatus = showtime.getStatus();
-        if (requestedStatus == ShowtimeStatus.CANCELLED && currentStatus == ShowtimeStatus.OPEN) {
-            throw new ConflictException("Published showtime cancellation requires Booking refund coordination");
-        }
+        // Cancellation is now coordinated with Booking service
+
         if (currentStatus == requestedStatus) {
             return; // no-op
         }

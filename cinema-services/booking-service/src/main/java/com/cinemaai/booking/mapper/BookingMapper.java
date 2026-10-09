@@ -55,7 +55,12 @@ public class BookingMapper {
                 seatResponses,
                 ticketResponses,
                 foodResponses,
-                booking.getCreatedAt()
+                booking.getCreatedAt(),
+                booking.getCustomerNameSnapshot(),
+                booking.getCustomerPhoneSnapshot(),
+                booking.getCustomerEmailSnapshot(),
+                booking.getShowtimeEndSnapshot(),
+                booking.getRefundReason()
         );
     }
 

@@ -132,7 +132,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         BigDecimal discount = BigDecimal.ZERO;
         BigDecimal cinePointsDiscount = BigDecimal.ZERO;
         if (request.cinePointsToUse() != null && request.cinePointsToUse() > 0) {
-            cinePointsDiscount = BigDecimal.valueOf(request.cinePointsToUse()).multiply(BigDecimal.valueOf(1000));
+            cinePointsDiscount = BigDecimal.valueOf(request.cinePointsToUse());
         }
         BigDecimal subtotal = ticketTotal.add(foodTotal);
         BigDecimal total = subtotal.subtract(discount).subtract(cinePointsDiscount);
@@ -213,7 +213,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 };
                 if (base != null) {
                     BigDecimal calculated = seatType == SeatType.COUPLE
-                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2)))
+                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2))).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
                             : base.add(surcharge);
                     return calculated.add(showtime.getSurchargeAmount());
                 }
@@ -221,22 +221,28 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         } catch (Exception ignored) {}
 
         // 2. Priority 2: Cinema-specific local override rule
+        BigDecimal resolved = null;
         Optional<com.cinemaai.catalog.entity.TicketPricingRule> cinemaRule = pricingRules
                 .findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
                         cinemaId, ticketType, roomType, seatType, weekend, holiday);
         if (cinemaRule.isPresent()) {
-            return cinemaRule.get().getPrice();
+            resolved = cinemaRule.get().getPrice();
+        } else {
+            // 3. Priority 3: Global default rule
+            Optional<com.cinemaai.catalog.entity.TicketPricingRule> globalRule = pricingRules
+                    .findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                            ticketType, roomType, seatType, weekend, holiday);
+            if (globalRule.isPresent()) {
+                resolved = globalRule.get().getPrice();
+            } else {
+                // 4. Priority 4: Fallback to showtime/room configured price
+                resolved = showtime.getPriceForTicketAndSeatType(ticketType, seatType);
+            }
         }
 
-        // 3. Priority 3: Global default rule
-        Optional<com.cinemaai.catalog.entity.TicketPricingRule> globalRule = pricingRules
-                .findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
-                        ticketType, roomType, seatType, weekend, holiday);
-        if (globalRule.isPresent()) {
-            return globalRule.get().getPrice();
+        if (resolved != null && seatType == SeatType.COUPLE) {
+            return resolved.divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP);
         }
-
-        // 4. Priority 4: Fallback to showtime/room configured price
-        return showtime.getPriceForTicketAndSeatType(ticketType, seatType);
+        return resolved;
     }
 }

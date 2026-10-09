@@ -79,4 +79,40 @@ public class BookingClient {
         }
         return java.util.Optional.empty();
     }
+
+    public record ShowtimeCancelRefundResult(
+            Long showtimeId,
+            int totalBookingsProcessed,
+            int refundedTicketsCount,
+            int cancelledTicketsCount,
+            java.math.BigDecimal totalRefundedAmount,
+            String message
+    ) {}
+
+    public ShowtimeCancelRefundResult cancelAndRefundShowtime(Long showtimeId, String reason, String actorRole, Long actorUserId) {
+        try {
+            java.util.Map<String, Object> body = java.util.Map.of(
+                    "reason", reason != null ? reason : "Su co ky thuat phong chieu",
+                    "actorRole", actorRole != null ? actorRole : "ADMIN",
+                    "actorUserId", actorUserId != null ? actorUserId : 1L
+            );
+
+            ApiResponse<ShowtimeCancelRefundResult> response = restClient.post()
+                    .uri("/internal/v1/bookings/showtimes/{showtimeId}/cancel-and-refund", showtimeId)
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<ShowtimeCancelRefundResult>>() {});
+
+            if (response != null && response.data() != null) {
+                log.info("Coordinated cancellation with booking-service for showtimeId {}: {}", showtimeId, response.data());
+                return response.data();
+            }
+        } catch (Exception ex) {
+            log.error("Failed to coordinate cancellation and refund with booking-service for showtimeId {}: {}", showtimeId, ex.getMessage());
+        }
+        return null;
+    }
+
 }

@@ -174,6 +174,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/admin/reviews", "/api/v1/admin/reviews/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/reviews/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/reviews/**").authenticated()
+                        .requestMatchers("/api/v1/staff/foods", "/api/v1/staff/foods/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/foods/**", "/api/v1/staff/foods/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()

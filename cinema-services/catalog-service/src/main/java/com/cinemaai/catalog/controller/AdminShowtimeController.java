@@ -258,20 +258,28 @@ public class AdminShowtimeController {
         return ApiResponse.success(showtimeService.updateStatus(showtimeId, status), "Showtime status updated successfully");
     }
 
-    @PostMapping("/{showtimeId}/cancel")
+    @PostMapping(value = {"/{showtimeId}/cancel", "/{showtimeId}/cancel-and-refund"})
     @Operation(
             summary = "Cancel showtime and trigger automatic refunds (Admin / Manager)",
             description = "Cancels the showtime and automatically processes refunds. Manager can only cancel showtimes of their assigned cinema."
     )
     public ApiResponse<ShowtimeResponse> cancelShowtime(
             @PathVariable Long showtimeId,
-            @RequestParam String reason,
+            @RequestParam(required = false) String reason,
+            @RequestBody(required = false) com.cinemaai.catalog.dto.request.refund.CancelShowtimeRequest requestBody,
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
+        String finalReason = reason;
+        if ((finalReason == null || finalReason.isBlank()) && requestBody != null) {
+            finalReason = requestBody.reason();
+        }
+        if (finalReason == null || finalReason.isBlank()) {
+            finalReason = "Huy suat chieu do su co ky thuat";
+        }
         Showtime showtime = showtimeService.findById(showtimeId);
         cinemaSecurityService.validateCinemaAccess(user, showtime.getRoom().getCinema().getId());
         return ApiResponse.success(
-                showtimeService.cancelShowtime(showtimeId, reason),
+                showtimeService.cancelShowtime(showtimeId, finalReason),
                 "Showtime cancelled and refund process initiated"
         );
     }
