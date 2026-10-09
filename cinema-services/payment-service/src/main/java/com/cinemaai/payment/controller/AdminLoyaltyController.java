@@ -8,6 +8,7 @@ import com.cinemaai.payment.dto.response.LoyaltyReportResponse;
 import com.cinemaai.payment.dto.response.LoyaltyResponse;
 import com.cinemaai.payment.dto.response.LoyaltyTransactionResponse;
 import com.cinemaai.payment.dto.response.PageResponse;
+import com.cinemaai.payment.security.AuthenticatedUser;
 import com.cinemaai.payment.service.LoyaltyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,28 +17,32 @@ import jakarta.validation.constraints.Min;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/loyalty")
 @RequiredArgsConstructor
-@Tag(name = "Admin - Loyalty", description = "Quản lý điểm thưởng loyalty cho Admin")
+@Tag(name = "Admin - Loyalty", description = "Quản lý điểm thưởng loyalty cho Admin và Manager")
 public class AdminLoyaltyController {
 
     private final LoyaltyService loyaltyService;
 
     @GetMapping("/config")
-    @Operation(summary = "Xem cấu hình tích điểm và quy đổi")
-    public ApiResponse<LoyaltyConfigurationResponse> getConfiguration() {
-        return ApiResponse.success(loyaltyService.getConfiguration());
+    @Operation(summary = "Xem cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
+    public ApiResponse<LoyaltyConfigurationResponse> getConfiguration(
+            @RequestParam(required = false) Long cinemaId
+    ) {
+        return ApiResponse.success(loyaltyService.getConfiguration(cinemaId));
     }
 
     @PutMapping("/config")
-    @Operation(summary = "Cập nhật cấu hình tích điểm và quy đổi")
+    @Operation(summary = "Cập nhật cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
     public ApiResponse<LoyaltyConfigurationResponse> updateConfiguration(
-            @Valid @RequestBody LoyaltyConfigurationRequest request
+            @Valid @RequestBody LoyaltyConfigurationRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return ApiResponse.success(loyaltyService.updateConfiguration(request), "Cập nhật cấu hình loyalty thành công");
+        return ApiResponse.success(loyaltyService.updateConfiguration(request, user), "Cập nhật cấu hình loyalty thành công");
     }
 
     @GetMapping("/transactions")

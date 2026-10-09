@@ -18,6 +18,11 @@ import com.cinemaai.payment.exception.NotFoundException;
 import com.cinemaai.payment.repository.LoyaltyPointRepository;
 import com.cinemaai.payment.repository.LoyaltyPointTransactionRepository;
 import com.cinemaai.payment.service.LoyaltyService;
+import com.cinemaai.payment.entity.LoyaltyConfiguration;
+import com.cinemaai.payment.repository.LoyaltyConfigurationRepository;
+import com.cinemaai.payment.exception.ForbiddenException;
+import com.cinemaai.payment.security.AuthenticatedUser;
+
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +39,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -43,6 +49,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     private final LoyaltyPointRepository loyaltyPointRepository;
     private final LoyaltyPointTransactionRepository loyaltyPointTransactionRepository;
+    private final LoyaltyConfigurationRepository loyaltyConfigurationRepository;
 
     private final AtomicReference<BigDecimal> earningRatePercent = new AtomicReference<>(BigDecimal.valueOf(1.0));
     private final AtomicReference<Integer> redemptionPoints = new AtomicReference<>(1000);
@@ -81,20 +88,61 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                 .build();
     }
 
+    private LoyaltyConfigurationResponse mapToResponse(LoyaltyConfiguration cfg, Long requestedCinemaId) {
+        if (cfg == null) {
+            return new LoyaltyConfigurationResponse(
+                    null,
+                    requestedCinemaId,
+                    null,
+                    BigDecimal.valueOf(1.00),
+                    BigDecimal.valueOf(100.00),
+                    1000,
+                    BigDecimal.valueOf(1000.00),
+                    BigDecimal.valueOf(100.00),
+                    12,
+                    31,
+                    "23:59:59",
+                    lastResetAt.get() != null ? lastResetAt.get().toLocalDate() : null,
+                    lastResetAt.get(),
+                    lastResetSource.get()
+            );
+        }
+        return new LoyaltyConfigurationResponse(
+                cfg.getId(),
+                cfg.getCinemaId() != null ? cfg.getCinemaId() : requestedCinemaId,
+                cfg.getCinemaName(),
+                cfg.getEarningRatePercent(),
+                cfg.getRedemptionRatePercent(),
+                cfg.getRedemptionPoints(),
+                cfg.getRedemptionValueVnd(),
+                cfg.getMaxRedemptionPercent(),
+                cfg.getExpiryMonth(),
+                cfg.getExpiryDay(),
+                cfg.getExpiryTime(),
+                cfg.getLastExpiredAt() != null ? cfg.getLastExpiredAt().toLocalDate() : null,
+                cfg.getLastResetAt() != null ? cfg.getLastResetAt() : lastResetAt.get(),
+                cfg.getLastResetSource() != null ? cfg.getLastResetSource() : lastResetSource.get()
+        );
+    }
+
     @Override
     public LoyaltyConfigurationResponse getConfiguration() {
-        return new LoyaltyConfigurationResponse(
-                1L,
-                earningRatePercent.get(),
-                redemptionPoints.get(),
-                redemptionValueVnd.get(),
-                12,
-                31,
-                "23:59:59",
-                lastResetAt.get() != null ? lastResetAt.get().toLocalDate() : null,
-                lastResetAt.get(),
-                lastResetSource.get()
-        );
+        return getConfiguration(null);
+    }
+
+    @Override
+    public LoyaltyConfigurationResponse getConfiguration(Long cinemaId) {
+        if (cinemaId != null) {
+            Optional<LoyaltyConfiguration> branchOpt = loyaltyConfigurationRepository.findByCinemaId(cinemaId);
+            if (branchOpt.isPresent()) {
+                return mapToResponse(branchOpt.get(), cinemaId);
+            }
+        }
+        Optional<LoyaltyConfiguration> globalOpt = loyaltyConfigurationRepository.findByCinemaIdIsNull();
+        if (globalOpt.isPresent()) {
+            return mapToResponse(globalOpt.get(), cinemaId);
+        }
+        return mapToResponse(null, cinemaId);
     }
 
     @Override
@@ -137,20 +185,88 @@ public class LoyaltyServiceImpl implements LoyaltyService {
 
     @Override
     public LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request) {
+        return updateConfiguration(request, null);
+    }
+
+    @Override
+    @Transactional
+    public LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request, AuthenticatedUser user) {
+        if (request == null) {
+            throw new BadRequestException("Cấu hình không hợp lệ");
+        }
+        Long targetCinemaId = request.cinemaId();
+
+        // Kiểm tra phân quyền Manager: nếu là Manager thì bắt buộc phải có chi nhánh và chỉ được cấu hình chi nhánh của mình
+        if (user != null) {
+            boolean isAdmin = user.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            boolean isManager = user.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_MANAGER"));
+
+            if (isManager && !isAdmin && targetCinemaId == null) {
+                throw new ForbiddenException("Quản lý rạp chỉ có thể cấu hình điểm thưởng cho chi nhánh của mình");
+            }
+        }
+
+        LoyaltyConfiguration cfg;
+        if (targetCinemaId != null) {
+            cfg = loyaltyConfigurationRepository.findByCinemaId(targetCinemaId)
+                    .orElseGet(() -> LoyaltyConfiguration.builder()
+                            .cinemaId(targetCinemaId)
+                            .cinemaName(request.cinemaName())
+                            .build());
+        } else {
+            cfg = loyaltyConfigurationRepository.findByCinemaIdIsNull()
+                    .orElseGet(() -> LoyaltyConfiguration.builder()
+                            .cinemaName("Toàn hệ thống (Mặc định)")
+                            .build());
+        }
+
+        if (request.cinemaName() != null && !request.cinemaName().isBlank()) {
+            cfg.setCinemaName(request.cinemaName());
+        }
         if (request.earningRatePercent() != null) {
-            earningRatePercent.set(request.earningRatePercent());
+            cfg.setEarningRatePercent(request.earningRatePercent());
+            if (targetCinemaId == null) {
+                earningRatePercent.set(request.earningRatePercent());
+            }
+        }
+        if (request.redemptionRatePercent() != null) {
+            cfg.setRedemptionRatePercent(request.redemptionRatePercent());
         }
         if (request.redemptionPoints() > 0) {
-            redemptionPoints.set(request.redemptionPoints());
+            cfg.setRedemptionPoints(request.redemptionPoints());
+            if (targetCinemaId == null) {
+                redemptionPoints.set(request.redemptionPoints());
+            }
         }
         if (request.redemptionValueVnd() != null) {
-            redemptionValueVnd.set(request.redemptionValueVnd());
+            cfg.setRedemptionValueVnd(request.redemptionValueVnd());
+            if (targetCinemaId == null) {
+                redemptionValueVnd.set(request.redemptionValueVnd());
+            }
+        }
+        if (request.maxRedemptionPercent() != null) {
+            cfg.setMaxRedemptionPercent(request.maxRedemptionPercent());
+        }
+        if (request.expiryMonth() >= 1 && request.expiryMonth() <= 12) {
+            cfg.setExpiryMonth(request.expiryMonth());
+        }
+        if (request.expiryDay() >= 1 && request.expiryDay() <= 31) {
+            cfg.setExpiryDay(request.expiryDay());
+        }
+        if (request.expiryTime() != null && !request.expiryTime().isBlank()) {
+            cfg.setExpiryTime(request.expiryTime());
+        }
+        if (request.expiryDate() != null) {
+            cfg.setExpiryDate(request.expiryDate());
         }
 
-        log.info("Admin updated loyalty config: earningRate={}, redemptionPoints={}, redemptionValue={}",
-                earningRatePercent.get(), redemptionPoints.get(), redemptionValueVnd.get());
+        LoyaltyConfiguration saved = loyaltyConfigurationRepository.save(cfg);
+        log.info("Updated loyalty config for cinemaId={}: earningRate={}, redemptionRate={}, redemptionPoints={}, redemptionValue={}",
+                targetCinemaId, saved.getEarningRatePercent(), saved.getRedemptionRatePercent(), saved.getRedemptionPoints(), saved.getRedemptionValueVnd());
 
-        return getConfiguration();
+        return mapToResponse(saved, targetCinemaId);
     }
 
     @Override

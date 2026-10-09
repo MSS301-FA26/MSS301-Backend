@@ -9,6 +9,7 @@ import com.cinemaai.payment.dto.response.LoyaltyReportResponse;
 import com.cinemaai.payment.dto.response.LoyaltyResponse;
 import com.cinemaai.payment.dto.response.LoyaltyTransactionResponse;
 import com.cinemaai.payment.dto.response.PageResponse;
+import com.cinemaai.payment.security.AuthenticatedUser;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -16,9 +17,11 @@ import java.time.LocalDateTime;
 public interface LoyaltyService {
     LoyaltyResponse getMyPoints(Long userId, String email);
     LoyaltyConfigurationResponse getConfiguration();
+    LoyaltyConfigurationResponse getConfiguration(Long cinemaId);
     LoyaltyResponse redeemMyPoints(Long userId, String email, int points);
 
     LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request);
+    LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request, AuthenticatedUser user);
     PageResponse<LoyaltyTransactionResponse> searchTransactions(
             String keyword, LocalDateTime from, LocalDateTime to, int page, int size);
     LoyaltyReportResponse getReport(LocalDateTime from, LocalDateTime to);
