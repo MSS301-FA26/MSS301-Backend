@@ -62,24 +62,46 @@ class ChatServiceImpl:
                 """, (json.dumps(history, ensure_ascii=False), last_movie_id, conv_id))
             conn.commit()
 
+    def _get_movie_context(self, movie_id: Optional[int]) -> Optional[Dict[str, Any]]:
+        if not movie_id:
+            return None
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT movie_id, title, genres, director, actors, description, status
+                        FROM movie_embeddings
+                        WHERE movie_id = %s
+                    """, (movie_id,))
+                    return cur.fetchone()
+        except Exception as e:
+            logger.warning(f"Failed to fetch movie context for movie_id={movie_id}: {e}")
+            return None
+
     def chat(self, request: ChatMessageRequest) -> ChatMessageResponse:
+        logger.info(f"[Chatbot] User Message (movieId={request.movieId}): '{request.message}'")
         conv_id, history, last_movie_id = self._get_or_create_session(request.conversationId, request.userId)
+
+        target_movie_id = request.movieId or last_movie_id
+        movie_context = self._get_movie_context(target_movie_id)
 
         # Execute Single-Hop Agent Runtime (Docstring-driven, Bounded Latency)
         agent_result = self.executor.execute(
             message=request.message,
             history=history,
-            user_id=request.userId
+            user_id=request.userId,
+            movie_context=movie_context
         )
+        logger.info(f"[Chatbot] AI Reply: '{agent_result.reply}'")
 
         # Update Session History
         history.append({"role": "user", "content": request.message})
         history.append({"role": "assistant", "content": agent_result.reply})
 
-        new_last_mid = last_movie_id
+        new_last_mid = target_movie_id
         serialized_data = None
         if agent_result.movies:
-            new_last_mid = agent_result.movies[0].get("movieId", last_movie_id)
+            new_last_mid = agent_result.movies[0].get("movieId", target_movie_id)
             serialized_data = {"movies": agent_result.movies}
 
         self._save_session(conv_id, history, new_last_mid)
