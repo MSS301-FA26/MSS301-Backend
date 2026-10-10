@@ -6,6 +6,8 @@ import os
 os.environ["SERVER_PORT"] = "8000"
 os.environ["INTERNAL_GATEWAY_SECRET"] = "valid-test-gateway-secret-12345"
 os.environ["INTERNAL_SERVICE_SECRET"] = "valid-test-internal-secret-67890"
+os.environ["CATALOG_SERVICE_URL"] = "http://localhost:8082"
+os.environ["BOOKING_SERVICE_URL"] = "http://localhost:8083"
 os.environ["DB_HOST"] = "localhost"
 os.environ["DB_PORT"] = "5435"
 os.environ["DB_NAME"] = "recommendation_db"
@@ -55,3 +57,20 @@ def test_valid_secret_passes_security_middleware():
         headers={"X-Gateway-Secret": "valid-test-gateway-secret-12345"}
     )
     assert response.status_code in [200, 500]
+
+
+def test_internal_endpoint_requires_internal_service_secret():
+    """Verify that accessing /internal/ paths without X-Internal-Service-Secret is rejected with 403."""
+    response = client.get("/internal/v1/sync/status")
+    assert response.status_code == 403
+    assert response.json()["message"] == "Trusted service access required"
+
+
+def test_internal_endpoint_accepts_valid_internal_secret():
+    """Verify that supplying valid X-Internal-Service-Secret passes security middleware for /internal/ paths."""
+    response = client.get(
+        "/internal/v1/sync/status",
+        headers={"X-Internal-Service-Secret": "valid-test-internal-secret-67890"}
+    )
+    assert response.status_code in [200, 500]
+

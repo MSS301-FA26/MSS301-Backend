@@ -28,6 +28,16 @@ class Settings(BaseSettings):
         description="Secret key for service-to-service calls in X-Internal-Service-Secret header"
     )
 
+    # Inter-Service URLs
+    CATALOG_SERVICE_URL: str = Field(
+        ...,
+        description="Base URL for catalog-service (Single Source of Truth for movies and showtimes)"
+    )
+    BOOKING_SERVICE_URL: str = Field(
+        ...,
+        description="Base URL for booking-service (Single Source of Truth for bookings)"
+    )
+
     # PostgreSQL Database
     DB_HOST: str = Field(..., description="Postgres host")
     DB_PORT: int = Field(..., description="Postgres port")
