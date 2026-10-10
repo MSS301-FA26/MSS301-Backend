@@ -1,7 +1,6 @@
 package com.cinemaai.booking.controller;
 
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
-import com.cinemaai.booking.dto.request.AdminRefundTicketRequest;
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
 import java.util.Map;
@@ -61,17 +60,6 @@ public class AdminBookingController {
     ) {
         BookingResponse response = adminBookingService.cancelBooking(user, id, request);
         return ApiResponse.success(response, "Hủy vé thành công");
-    }
-
-    @Operation(summary = "Xử lý hoàn tiền cho vé (Admin & Manager)")
-    @PostMapping("/{id}/refund")
-    public ApiResponse<BookingResponse> refundBooking(
-            @AuthenticationPrincipal AuthenticatedUser user,
-            @PathVariable Long id,
-            @Valid @RequestBody AdminRefundTicketRequest request
-    ) {
-        BookingResponse response = adminBookingService.refundBooking(user, id, request);
-        return ApiResponse.success(response, "Xử lý hoàn tiền vé thành công");
     }
 
     @Operation(summary = "Lịch sử thao tác hủy và hoàn tiền")

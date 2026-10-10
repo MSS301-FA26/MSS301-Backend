@@ -29,4 +29,6 @@ public interface ReportService {
     List<ExpiredUserResponse> getExpiredUsers(LocalDate from, LocalDate to);
 
     ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to);
+
+    ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to, Long cinemaId);
 }
