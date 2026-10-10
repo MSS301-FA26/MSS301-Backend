@@ -47,6 +47,10 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - ./:/app
+      - /app/.venv
+      - ./logs:/app/logs
     networks:
       - cinema-ai-internal
       - mss301-backend_cinema-network

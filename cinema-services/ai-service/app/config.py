@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
     OPENAI_MODEL: str = Field(default="gpt-4o-mini", description="Model name for query rewriting and chat")
 
+    # Logging Configuration
+    LOG_DIR: str = Field(default="logs", description="Directory to store application logs")
+    LOG_FILE: str = Field(default="logs/ai-service.log", description="Path to main log file")
+
 
 @lru_cache()
 def get_settings() -> Settings:

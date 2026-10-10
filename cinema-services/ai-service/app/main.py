@@ -16,15 +16,10 @@ from api.chat_api import router as chat_router
 from api.telemetry_api import router as telemetry_router
 from api.prompt_api import router as prompt_router
 
-# Configure root logger with correlation_id
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("[%(correlation_id)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-handler.addFilter(CorrelationIdLogFilter())
+from core.logger import setup_logging
 
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-root_logger.handlers = [handler]
-logger = logging.getLogger("ai_service")
+# Configure logging (console + rotating file handler with correlation_id)
+logger = setup_logging()
 
 
 @asynccontextmanager
@@ -39,6 +34,13 @@ async def lifespan(app: FastAPI):
         start_rabbitmq_consumer()
     except Exception as e:
         logger.warning(f"RabbitMQ consumer initialization deferred: {e}")
+
+    try:
+        from core.shared_embeddings import get_embedding_service
+        logger.info("Pre-warming SentenceTransformer embedding model into RAM...")
+        get_embedding_service()
+    except Exception as e:
+        logger.warning(f"Embedding model pre-warm deferred: {e}")
 
     yield
 
