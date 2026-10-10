@@ -13,7 +13,7 @@ COPY . .
 
 ARG SERVICE
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -pl ${SERVICE} -am package -DskipTests
+    mvn -B -pl ${SERVICE} -am package -DskipTests -Dmaven.test.skip=true
 
 FROM eclipse-temurin:21-jre-jammy
 
