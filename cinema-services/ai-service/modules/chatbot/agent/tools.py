@@ -4,12 +4,18 @@ from .tool import tool
 from .registry import ToolRegistry
 from modules.search.interfaces import ISearchService
 from modules.recommendation.interfaces import IRecommendationService
+from core.clients.catalog_client import ICatalogClient, get_catalog_client
 
 logger = logging.getLogger(__name__)
 
 
-def create_cinema_tools(search_service: ISearchService, rec_service: IRecommendationService) -> List[Any]:
+def create_cinema_tools(
+    search_service: ISearchService,
+    rec_service: IRecommendationService,
+    catalog_client: Optional[ICatalogClient] = None
+) -> List[Any]:
     """Create and bind cinema tools with clean docstrings to the underlying services."""
+    cat_client = catalog_client or get_catalog_client()
 
     @tool()
     def search_movies(query: str) -> Dict[str, Any]:
@@ -57,13 +63,57 @@ def create_cinema_tools(search_service: ISearchService, rec_service: IRecommenda
             "rewritten_query": mood_or_topic
         }
 
-    return [search_movies, recommend_movies]
+    @tool()
+    def get_available_showtimes(movie_id: int, date: Optional[str] = None) -> Dict[str, Any]:
+        """Tra cứu lịch chiếu và suất chiếu thực tế tại rạp theo mã phim (movie_id) và ngày xem.
+        Gọi trực tiếp dịch vụ Catalog Service để lấy các khung giờ chiếu, phòng chiếu và trạng thái còn vé.
+
+        Args:
+            movie_id: Mã định danh của bộ phim cần xem suất chiếu (lấy từ kết quả tìm kiếm hoặc ngữ cảnh).
+            date: Ngày xem phim theo định dạng YYYY-MM-DD (nếu không truyền sẽ tra cứu ngày gần nhất hôm nay).
+        """
+        logger.info(f"[Agent Tool] get_available_showtimes invoked for movie_id={movie_id}, date={date}")
+        slots = cat_client.fetch_available_showtimes(movie_id=movie_id, date=date)
+        if slots:
+            summary = f"Tìm thấy {len(slots)} cụm suất chiếu khả dụng cho phim #{movie_id}."
+        else:
+            summary = f"Hiện tại chưa có suất chiếu phù hợp cho phim #{movie_id} vào ngày đã chọn."
+        return {
+            "movie_id": movie_id,
+            "showtimes": slots,
+            "summary": summary,
+            "subsystem": "CATALOG_SHOWTIMES"
+        }
+
+    @tool()
+    def get_cinemas() -> Dict[str, Any]:
+        """Tra cứu danh sách các cụm rạp chiếu phim CinePremier, địa chỉ chi tiết và thông tin liên hệ.
+        Sử dụng khi khách hàng hỏi rạp ở đâu, có rạp nào gần đây hoặc danh sách rạp CinePremier.
+        """
+        logger.info("[Agent Tool] get_cinemas invoked")
+        cinemas = cat_client.fetch_cinemas()
+        summary = (
+            f"Hệ thống rạp CinePremier gồm {len(cinemas)} cụm rạp: " +
+            ", ".join([c.get("name", "") for c in cinemas[:5]])
+            if cinemas else "Hiện hệ thống đang cập nhật danh sách cụm rạp."
+        )
+        return {
+            "cinemas": cinemas,
+            "summary": summary,
+            "subsystem": "CATALOG_CINEMAS"
+        }
+
+    return [search_movies, recommend_movies, get_available_showtimes, get_cinemas]
 
 
-def build_default_registry(search_service: ISearchService, rec_service: IRecommendationService) -> ToolRegistry:
+def build_default_registry(
+    search_service: ISearchService,
+    rec_service: IRecommendationService,
+    catalog_client: Optional[ICatalogClient] = None
+) -> ToolRegistry:
     """Factory helper initializing a ToolRegistry with default cinema tools."""
     registry = ToolRegistry()
-    tools = create_cinema_tools(search_service, rec_service)
+    tools = create_cinema_tools(search_service, rec_service, catalog_client)
     for t in tools:
         registry.register(t)
     return registry

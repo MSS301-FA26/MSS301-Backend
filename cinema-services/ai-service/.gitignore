@@ -7,3 +7,6 @@ __pycache__/
 .coverage
 htmlcov/
 *.log
+*.log*
+logs/
+models/

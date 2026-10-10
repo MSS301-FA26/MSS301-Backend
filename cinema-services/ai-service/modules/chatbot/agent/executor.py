@@ -39,10 +39,29 @@ class SingleHopTagExecutor:
         self,
         message: str,
         history: List[Dict[str, str]],
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        movie_context: Optional[Dict[str, Any]] = None
     ) -> AgentResult:
         # Build conversational context
         messages: List[Dict[str, Any]] = [{"role": "system", "content": PURE_PERSONA_PROMPT}]
+        if movie_context:
+            title = movie_context.get("title", "")
+            genres = ", ".join(movie_context.get("genres") or [])
+            director = movie_context.get("director") or "Chưa rõ"
+            actors = ", ".join(movie_context.get("actors") or [])
+            desc = movie_context.get("description") or ""
+            trailer_info = (
+                f"[NGỮ CẢNH TRANG HIỆN TẠI]: Khách hàng đang ở trang chi tiết hoặc đang xem Trailer của bộ phim: "
+                f"'{title}'.\n"
+                f"- Thể loại: {genres}\n"
+                f"- Đạo diễn: {director}\n"
+                f"- Diễn viên: {actors}\n"
+                f"- Nội dung/Tóm tắt: {desc}\n"
+                f"Khi khách hàng dùng các từ chỉ định như 'phim này', 'trailer này', 'nó', 'diễn viên chính', 'nội dung phim', 'phim có gì', "
+                f"bạn BẮT BUỘC phải hiểu là khách đang hỏi về phim '{title}' và trả lời ngay dựa trên thông tin trên mà KHÔNG ĐƯỢC hỏi lại khách 'bạn đang muốn hỏi phim nào'."
+            )
+            messages.append({"role": "system", "content": trailer_info})
+
         recent_history = history[-6:] if len(history) > 6 else history
         for turn in recent_history:
             messages.append({"role": turn["role"], "content": turn["content"]})

@@ -53,6 +53,11 @@ yarn-error.log*
 # Logs
 # ===============================
 *.log
+*.log.*
+logs/
+**/logs/
+models/
+**/models/
 
 # ===============================
 # Java / Maven
