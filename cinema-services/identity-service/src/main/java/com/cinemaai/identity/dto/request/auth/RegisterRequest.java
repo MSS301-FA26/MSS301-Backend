@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public record RegisterRequest(
@@ -28,6 +29,16 @@ public record RegisterRequest(
 
         @Min(value = 1900, message = "Birth year must be after 1900")
         @Max(value = 2100, message = "Birth year is invalid")
-        Integer birthYear
+        Integer birthYear,
+
+        @Size(max = 255, message = "Username must not exceed 255 characters")
+        @Pattern(regexp = "^\\S+$", message = "Username must not contain whitespace")
+        String username,
+
+        @Pattern(regexp = "^(?:\\d{9}|\\d{12})$", message = "Identity number must contain 9 or 12 digits")
+        String identityNumber,
+
+        @Positive(message = "Preferred cinema ID must be positive")
+        Long preferredCinemaId
 ) {
 }

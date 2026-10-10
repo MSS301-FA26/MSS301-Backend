@@ -50,15 +50,40 @@ public class User extends BaseEntity {
     @Column(name = "birth_year")
     private Integer birthYear;
 
+    @Column(unique = true, length = 255)
+    private String username;
+
+    @Column(name = "identity_number", unique = true, length = 12)
+    private String identityNumber;
+
+    @Column(name = "preferred_cinema_id")
+    private Long preferredCinemaId;
+
     public User(String email, String passwordHash, String fullName, String phone) {
         this(email, passwordHash, fullName, phone, null);
     }
 
     public User(String email, String passwordHash, String fullName, String phone, Integer birthYear) {
+        this(email, passwordHash, fullName, phone, birthYear, null, null, null);
+    }
+
+    public User(
+            String email,
+            String passwordHash,
+            String fullName,
+            String phone,
+            Integer birthYear,
+            String username,
+            String identityNumber,
+            Long preferredCinemaId
+    ) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.profile = new UserProfile(this, fullName, phone);
         this.birthYear = birthYear;
+        this.username = username;
+        this.identityNumber = identityNumber;
+        this.preferredCinemaId = preferredCinemaId;
     }
 
     public String getFullName() {

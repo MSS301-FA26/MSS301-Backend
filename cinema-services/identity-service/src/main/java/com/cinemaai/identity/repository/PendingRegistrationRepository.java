@@ -10,5 +10,9 @@ public interface PendingRegistrationRepository extends JpaRepository<PendingRegi
 
     Optional<PendingRegistration> findByPhone(String phone);
 
+    Optional<PendingRegistration> findByUsername(String username);
+
+    Optional<PendingRegistration> findByIdentityNumber(String identityNumber);
+
     Optional<PendingRegistration> findFirstByOtpOrderByCreatedAtDesc(String otp);
 }
