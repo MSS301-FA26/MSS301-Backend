@@ -15,6 +15,7 @@ from api.search_api import router as search_router
 from api.chat_api import router as chat_router
 from api.telemetry_api import router as telemetry_router
 from api.prompt_api import router as prompt_router
+from api.sync_api import router as sync_router
 
 from core.logger import setup_logging
 
@@ -41,6 +42,18 @@ async def lifespan(app: FastAPI):
         get_embedding_service()
     except Exception as e:
         logger.warning(f"Embedding model pre-warm deferred: {e}")
+
+    try:
+        from modules.sync.service_impl import get_catalog_sync_service
+        sync_svc = get_catalog_sync_service()
+        current_count = sync_svc.get_embedding_count()
+        logger.info(f"Checking local movie embeddings: {current_count} movies found in pgvector.")
+        if current_count == 0:
+            logger.info("Local movie embeddings table is empty. Triggering background catalog sync from Catalog Service...")
+            import threading
+            threading.Thread(target=sync_svc.sync_catalog, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Auto catalog sync check deferred: {e}")
 
     yield
 
@@ -113,6 +126,7 @@ app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(telemetry_router)
 app.include_router(prompt_router)
+app.include_router(sync_router)
 
 
 if __name__ == "__main__":

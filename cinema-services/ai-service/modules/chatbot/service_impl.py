@@ -18,15 +18,16 @@ logger = logging.getLogger(__name__)
 class ChatServiceImpl:
     """Implementation of IChatService using SingleHopTagExecutor."""
 
-    def __init__(self, search_service=None, rec_service=None, openai_client=None, executor=None):
+    def __init__(self, search_service=None, rec_service=None, openai_client=None, executor=None, catalog_client=None):
         self.search_service = search_service if search_service is not None else get_search_service()
         self.rec_service = rec_service if rec_service is not None else get_recommendation_service()
         self.openai_client = openai_client if openai_client is not None else get_openai_client()
+        self.catalog_client = catalog_client
 
         if executor is not None:
             self.executor = executor
         else:
-            registry = build_default_registry(self.search_service, self.rec_service)
+            registry = build_default_registry(self.search_service, self.rec_service, self.catalog_client)
             self.executor = SingleHopTagExecutor(registry, self.openai_client)
 
     def _get_or_create_session(
