@@ -1,7 +1,6 @@
 package com.cinemaai.booking.service;
 
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
-import com.cinemaai.booking.dto.request.AdminRefundTicketRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
 import java.util.Map;
@@ -21,8 +20,6 @@ public interface AdminBookingService {
     BookingResponse getBookingById(AuthenticatedUser actor, Long bookingId);
 
     BookingResponse cancelBooking(AuthenticatedUser actor, Long bookingId, AdminCancelTicketRequest request);
-
-    BookingResponse refundBooking(AuthenticatedUser actor, Long bookingId, AdminRefundTicketRequest request);
 
     Page<TicketAuditLogResponse> getAuditLogs(AuthenticatedUser actor, Long requestedCinemaId, Pageable pageable);
 
