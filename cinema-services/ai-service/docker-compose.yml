@@ -41,12 +41,18 @@ services:
       - RABBITMQ_PASS=guest
       - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-cinema-internal-service-secret-key-change-in-production}
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8082}
+      - BOOKING_SERVICE_URL=${BOOKING_SERVICE_URL:-http://booking-service:8083}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
     env_file:
       - path: .env
         required: false
+    volumes:
+      - ./:/app
+      - /app/.venv
+      - ./logs:/app/logs
     networks:
       - cinema-ai-internal
       - mss301-backend_cinema-network
