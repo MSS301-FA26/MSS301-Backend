@@ -42,6 +42,10 @@ public class FoodItem extends BaseEntity {
     private String imageUrl;
 
     @Setter
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    @Setter
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private FoodItemStatus status = FoodItemStatus.ACTIVE;

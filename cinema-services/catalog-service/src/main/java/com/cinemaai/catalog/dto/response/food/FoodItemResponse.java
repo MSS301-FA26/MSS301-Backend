@@ -9,6 +9,11 @@ public record FoodItemResponse(
         String description,
         BigDecimal price,
         String imageUrl,
-        FoodItemStatus status
+        FoodItemStatus status,
+        Long categoryId,
+        String categoryName
 ) {
+    public FoodItemResponse(Long id, String name, String description, BigDecimal price, String imageUrl, FoodItemStatus status) {
+        this(id, name, description, price, imageUrl, status, null, null);
+    }
 }

@@ -2,21 +2,35 @@ package com.cinemaai.catalog.mapper;
 
 import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
 import com.cinemaai.catalog.dto.response.food.FoodItemResponse;
+import com.cinemaai.catalog.entity.FoodCategory;
 import com.cinemaai.catalog.entity.FoodCombo;
 import com.cinemaai.catalog.entity.FoodItem;
+import com.cinemaai.catalog.repository.FoodCategoryRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class FoodMapper {
 
+    private final FoodCategoryRepository foodCategoryRepository;
+
     public FoodItemResponse toFoodItemResponse(FoodItem foodItem) {
+        String categoryName = null;
+        if (foodItem.getCategoryId() != null) {
+            categoryName = foodCategoryRepository.findById(foodItem.getCategoryId())
+                    .map(FoodCategory::getName)
+                    .orElse(null);
+        }
         return new FoodItemResponse(
                 foodItem.getId(),
                 foodItem.getName(),
                 foodItem.getDescription(),
                 foodItem.getPrice(),
                 foodItem.getImageUrl(),
-                foodItem.getStatus()
+                foodItem.getStatus(),
+                foodItem.getCategoryId(),
+                categoryName
         );
     }
 
