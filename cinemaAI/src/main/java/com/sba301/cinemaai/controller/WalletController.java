@@ -1,4 +1,4 @@
-package com.sba301.cinemaai.controller;
+﻿package com.sba301.cinemaai.controller;
 
 import com.sba301.cinemaai.dto.request.wallet.WithdrawalCreateRequest;
 import com.sba301.cinemaai.dto.response.ApiResponse;
@@ -46,7 +46,7 @@ public class WalletController {
     }
 
     @PostMapping("/withdrawals")
-    @Operation(summary = "Create withdrawal request", description = "Request withdrawal from CineWallet to bank account. Staff will process manually.")
+    @Operation(summary = "Create withdrawal request", description = "Request withdrawal from CineWallet to bank account. Admin will process manually.")
     public ApiResponse<WithdrawalResponse> createWithdrawal(
             Principal principal,
             @Valid @RequestBody WithdrawalCreateRequest request

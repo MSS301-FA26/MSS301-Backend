@@ -1,4 +1,4 @@
-package com.sba301.cinemaai.security;
+﻿package com.sba301.cinemaai.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -91,7 +91,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/uploads/images", "/api/v1/admin/uploads/videos")
                                 .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/v1/admin/hero-banners/**").hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers("/api/v1/admin/wallet/**").hasAnyRole("ADMIN", "STAFF")
+                        .requestMatchers("/api/v1/admin/wallet/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/manager/**").hasRole("MANAGER")
                         .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")

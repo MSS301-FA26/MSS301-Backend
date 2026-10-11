@@ -2,14 +2,17 @@ package com.cinemaai.catalog.controller;
 
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
+import com.cinemaai.catalog.dto.response.food.FoodCategoryResponse;
 import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
 import com.cinemaai.catalog.dto.response.food.FoodItemResponse;
 import com.cinemaai.catalog.enums.FoodItemStatus;
+import com.cinemaai.catalog.service.FoodCategoryService;
 import com.cinemaai.catalog.service.FoodService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,6 +22,12 @@ import java.util.Map;
 public class StaffFoodController {
 
     private final FoodService foodService;
+    private final FoodCategoryService foodCategoryService;
+
+    @GetMapping("/categories")
+    public ApiResponse<List<FoodCategoryResponse>> getCategories() {
+        return ApiResponse.success(foodCategoryService.getActiveCategories());
+    }
 
     @GetMapping("/items")
     public ApiResponse<PageResponse<FoodItemResponse>> getItems(

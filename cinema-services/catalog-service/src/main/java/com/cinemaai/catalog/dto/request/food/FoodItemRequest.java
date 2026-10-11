@@ -21,6 +21,11 @@ public record FoodItemRequest(
         @Size(max = 500, message = "Image URL must be at most 500 characters")
         String imageUrl,
 
-        FoodItemStatus status
+        FoodItemStatus status,
+
+        Long categoryId
 ) {
+    public FoodItemRequest(String name, String description, BigDecimal price, String imageUrl, FoodItemStatus status) {
+        this(name, description, price, imageUrl, status, null);
+    }
 }

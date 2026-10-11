@@ -343,9 +343,16 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional(readOnly = true)
     public ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to) {
+        return getShowtimeIncidents(from, to, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to, Long cinemaId) {
         List<Booking> inRange = getBookingsInRange(from, to);
         List<Booking> cancelled = inRange.stream()
                 .filter(b -> b.getStatus() == BookingStatus.CANCELLED || b.getStatus() == BookingStatus.REFUNDED)
+                .filter(b -> cinemaId == null || (b.getCinemaId() != null && b.getCinemaId().equals(cinemaId)))
                 .toList();
 
         long totalIncidents = cancelled.stream().map(Booking::getShowtimeId).filter(Objects::nonNull).distinct().count();
@@ -374,19 +381,29 @@ public class ReportServiceImpl implements ReportService {
                                     b.getId(),
                                     b.getBookingCode(),
                                     b.getUserId(),
-                                    "Khách hàng #" + b.getUserId(),
-                                    "user" + b.getUserId() + "@example.com",
-                                    "0900000000",
+                                    b.getCustomerNameSnapshot() != null && !b.getCustomerNameSnapshot().isBlank() 
+                                            ? b.getCustomerNameSnapshot() : ("Khách hàng #" + (b.getUserId() != null ? b.getUserId() : b.getId())),
+                                    b.getCustomerEmailSnapshot() != null && !b.getCustomerEmailSnapshot().isBlank() 
+                                            ? b.getCustomerEmailSnapshot() : "—",
+                                    b.getCustomerPhoneSnapshot() != null && !b.getCustomerPhoneSnapshot().isBlank() 
+                                            ? b.getCustomerPhoneSnapshot() : "—",
                                     b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO,
                                     "CINEWALLET",
-                                    b.getCancelledAt() != null ? b.getCancelledAt() : b.getCreatedAt(),
+                                    b.getRefundedAt() != null ? b.getRefundedAt() : (b.getCancelledAt() != null ? b.getCancelledAt() : b.getCreatedAt()),
                                     b.getSeats() != null ? b.getSeats().stream().map(s -> s.getRowLabel() + s.getSeatNumber()).collect(Collectors.joining(", ")) : ""
                             ))
                             .toList();
 
+                    String cancellationReason = list.stream()
+                            .map(Booking::getRefundReason)
+                            .filter(Objects::nonNull)
+                            .filter(s -> !s.isBlank())
+                            .findFirst()
+                            .orElse("Sự cố kỹ thuật / Hủy bởi Quản lý rạp");
+
                     return new ShowtimeIncidentItem(
                             showtimeId, movie, room, cinema, start,
-                            "Sự cố kỹ thuật / Hủy bởi Admin",
+                            cancellationReason,
                             list.stream().map(Booking::getCancelledAt).filter(Objects::nonNull).findFirst().orElse(LocalDateTime.now()),
                             users.size(), amt, users
                     );

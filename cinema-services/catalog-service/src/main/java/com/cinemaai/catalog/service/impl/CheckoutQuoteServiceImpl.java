@@ -40,7 +40,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
     public CheckoutQuoteResponse quote(CheckoutQuoteRequest request) {
         var showtime = showtimes.findWithDetailsById(request.showtimeId())
                 .orElseThrow(() -> new BadRequestException("Showtime does not exist"));
-        if ((showtime.getStatus() != ShowtimeStatus.OPEN && showtime.getStatus() != ShowtimeStatus.SCHEDULED)
+        if (showtime.getStatus() != ShowtimeStatus.OPEN
                 || !showtime.getStartTime().isAfter(LocalDateTime.now()))
             throw new BadRequestException("Showtime is not open for booking");
         if (showtime.getMovie().getStatus() == MovieStatus.INACTIVE || showtime.getRoom().getStatus() != RoomStatus.ACTIVE
@@ -213,7 +213,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 };
                 if (base != null) {
                     BigDecimal calculated = seatType == SeatType.COUPLE
-                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2))).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
+                            ? base.add(surcharge).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
                             : base.add(surcharge);
                     return calculated.add(showtime.getSurchargeAmount());
                 }

@@ -1,4 +1,4 @@
-package com.sba301.cinemaai.controller;
+﻿package com.sba301.cinemaai.controller;
 
 import com.sba301.cinemaai.dto.request.wallet.WithdrawalProcessRequest;
 import com.sba301.cinemaai.dto.response.ApiResponse;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/admin/wallet")
-@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "Bearer Authentication")
 @Tag(name = "Admin - CineWallet", description = "Admin dashboard and withdrawal management for CineWallet")
@@ -47,7 +47,7 @@ public class AdminWalletController {
     }
 
     @PostMapping("/withdrawals/{id}/approve")
-    @Operation(summary = "Approve withdrawal request", description = "Mark withdrawal as PAID after staff has completed manual bank transfer.")
+    @Operation(summary = "Approve withdrawal request", description = "Mark withdrawal as PAID after admin has completed manual bank transfer.")
     public ApiResponse<WithdrawalResponse> approveWithdrawal(
             @PathVariable Long id,
             @Valid @RequestBody WithdrawalProcessRequest request

@@ -1,9 +1,9 @@
 package com.cinemaai.catalog.service.impl;
 
 import com.cinemaai.catalog.dto.request.food.FoodComboRequest;
-import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
 import com.cinemaai.catalog.dto.request.food.FoodItemRequest;
 import com.cinemaai.catalog.dto.response.PageResponse;
+import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
 import com.cinemaai.catalog.dto.response.food.FoodItemResponse;
 import com.cinemaai.catalog.entity.FoodCombo;
 import com.cinemaai.catalog.entity.FoodItem;
@@ -173,6 +173,9 @@ public class FoodServiceImpl implements FoodService {
         foodItem.setDescription(request.description());
         foodItem.setPrice(request.price());
         foodItem.setImageUrl(request.imageUrl());
+        if (request.categoryId() != null) {
+            foodItem.setCategoryId(request.categoryId());
+        }
     }
 
     private void applyComboFields(FoodCombo foodCombo, FoodComboRequest request) {

@@ -4,7 +4,6 @@ import com.cinemaai.booking.client.IdentityClient;
 import com.cinemaai.booking.client.PaymentClient;
 import com.cinemaai.booking.client.dto.UserAccessScopeDto;
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
-import com.cinemaai.booking.dto.request.AdminRefundTicketRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.dto.response.CinemaDashboardResponse;
 import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
@@ -123,88 +122,6 @@ public class AdminBookingServiceImpl implements AdminBookingService {
         ticketAuditLogRepository.save(auditLog);
 
         log.info("Ticket #{} cancelled by user {} with role {}", booking.getBookingCode(), actor.id(), actorRole);
-        return BookingMapper.toResponse(booking);
-    }
-
-    @Override
-    @Transactional
-    public BookingResponse refundBooking(AuthenticatedUser actor, Long bookingId, AdminRefundTicketRequest request) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
-
-        cinemaSecurityService.validateCinemaAccess(actor, booking.getCinemaId(), false);
-
-        if (booking.getStatus() == BookingStatus.REFUNDED) {
-            throw new ConflictException("Vé này đã được hoàn tiền trước đó. Hệ thống ngăn chặn việc hoàn tiền trùng lặp.");
-        }
-        if (booking.getStatus() == BookingStatus.USED) {
-            throw new ConflictException("Không thể hoàn tiền cho vé đã được check-in vào rạp xem phim.");
-        }
-        if (booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
-            throw new BadRequestException("Vé chưa được thanh toán, không phát sinh số tiền nào cần hoàn.");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        booking.setStatus(BookingStatus.REFUNDED);
-        booking.setRefundedAt(now);
-        booking.setRefundReason(request.reason());
-
-        if (booking.getSeats() != null) {
-            for (BookingSeat seat : booking.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
-        }
-        bookingRepository.save(booking);
-
-        BigDecimal finalAmount = booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO;
-
-        BigDecimal newBalance = null;
-        // Credit to customer CineWallet
-        if (booking.getUserId() != null && finalAmount.compareTo(BigDecimal.ZERO) > 0) {
-            newBalance = paymentClient.creditWalletForRefund(
-                    booking.getUserId(),
-                    finalAmount,
-                    booking.getId(),
-                    booking.getBookingCode(),
-                    request.reason() != null && !request.reason().isBlank() ? request.reason() : ("Hoan tien ve #" + booking.getBookingCode())
-            );
-        }
-
-        // Hoan diem va thu hoi diem tich luy
-        if (booking.getUserId() != null) {
-            paymentClient.refundLoyaltyPoints(
-                    booking.getUserId(),
-                    booking.getId(),
-                    booking.getBookingCode(),
-                    finalAmount,
-                    booking.getLoyaltyPointsRedeemed(),
-                    request.reason() != null && !request.reason().isBlank() ? request.reason() : ("Hoan tien ve #" + booking.getBookingCode())
-            );
-        }
-
-        // Send email notice to customer
-        sendRefundEmailNotice(booking, finalAmount, newBalance,
-                request.reason() != null && !request.reason().isBlank() ? request.reason() : "Hoàn tiền vé #" + booking.getBookingCode());
-
-        UserAccessScopeDto scope = cinemaSecurityService.getAuthoritativeScope(actor);
-        String actorRole = (scope.roles() != null && scope.roles().stream().anyMatch(r -> r.equalsIgnoreCase("ADMIN") || r.equalsIgnoreCase("ROLE_ADMIN")))
-                ? "ADMIN" : "MANAGER";
-
-        TicketAuditLog auditLog = TicketAuditLog.builder()
-                .bookingId(booking.getId())
-                .ticketCode(booking.getBookingCode())
-                .cinemaId(booking.getCinemaId())
-                .actorUserId(actor.id())
-                .actorEmail(actor.email())
-                .actorRole(actorRole)
-                .action("REFUND")
-                .amount(finalAmount)
-                .reason(request.reason())
-                .status("SUCCESS")
-                .build();
-        ticketAuditLogRepository.save(auditLog);
-
-        log.info("Ticket #{} refunded by user {} with role {}", booking.getBookingCode(), actor.id(), actorRole);
         return BookingMapper.toResponse(booking);
     }
 

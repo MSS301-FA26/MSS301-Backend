@@ -165,8 +165,12 @@ public class UserServiceImpl implements UserService {
         if (actorRoles.contains(RoleName.MANAGER.name())) {
             User targetUser = findById(id);
             List<String> targetRoles = userRoleService.getRoleNames(targetUser.getId());
+            // Manager can view Customer profiles (e.g. for loyalty audit trail, booking info)
+            if (targetRoles.contains(RoleName.CUSTOMER.name())) {
+                return toProfile(targetUser);
+            }
             if (!targetRoles.contains(RoleName.STAFF.name())) {
-                throw new ForbiddenException("Quản lý chỉ có quyền xem thông tin tài khoản Staff.");
+                throw new ForbiddenException("Quản lý chỉ có quyền xem thông tin tài khoản Staff và Khách hàng.");
             }
 
             Long managerCinema = userCinemaAssignmentService.getCinemaIdByUserId(actor.getId())

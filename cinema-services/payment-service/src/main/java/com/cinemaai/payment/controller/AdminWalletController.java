@@ -9,18 +9,20 @@ import com.cinemaai.payment.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping({"/api/v1/admin/wallet", "/api/v1/admin/wallets"})
 @RequiredArgsConstructor
-@Tag(name = "Admin / Staff - CineWallet", description = "Quản lý ví và duyệt yêu cầu rút tiền cho Staff/Admin")
+@PreAuthorize("hasRole('ADMIN')")
+@Tag(name = "Admin - CineWallet", description = "Quản lý ví và duyệt yêu cầu rút tiền cho Admin")
 public class AdminWalletController {
 
     private final WalletService walletService;
 
     @GetMapping("/dashboard")
-    @Operation(summary = "Lấy dữ liệu Dashboard CineWallet cho Staff / Admin")
+    @Operation(summary = "Lấy dữ liệu Dashboard CineWallet cho Admin")
     public ApiResponse<WalletDashboardResponse> getDashboard() {
         return ApiResponse.success(walletService.getDashboard(), "Lấy dữ liệu Dashboard ví thành công");
     }
