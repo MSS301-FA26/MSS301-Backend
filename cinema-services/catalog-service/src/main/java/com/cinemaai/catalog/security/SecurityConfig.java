@@ -153,6 +153,11 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Allow both ADMIN and MANAGER to read and update audience prices and day surcharges (with controller-level cinema scoping)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/cinemas/*/audience-prices", "/api/v1/admin/cinemas/*/audience-prices/**",
+                                "/api/v1/admin/cinemas/*/day-surcharges", "/api/v1/admin/cinemas/*/day-surcharges/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/cinemas/*/audience-prices", "/api/v1/admin/cinemas/*/audience-prices/**",
+                                "/api/v1/admin/cinemas/*/day-surcharges", "/api/v1/admin/cinemas/*/day-surcharges/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/cinemas", "/api/v1/admin/cinemas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema/**").hasRole("ADMIN")

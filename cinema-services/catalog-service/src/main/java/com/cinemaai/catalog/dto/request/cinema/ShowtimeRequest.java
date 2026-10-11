@@ -20,60 +20,60 @@ public record ShowtimeRequest(
         LocalDateTime startTime,
 
         @NotNull(message = "Base price is required")
-        @DecimalMin(value = "10000", message = "Base price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Base price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Base price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Base price must be at most 10000000")
         BigDecimal basePrice,
 
-        @DecimalMin(value = "10000", message = "VIP price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "VIP price must be at most 1000000")
+        @DecimalMin(value = "0", message = "VIP price must be at least 0")
+        @DecimalMax(value = "10000000", message = "VIP price must be at most 10000000")
         BigDecimal vipPrice,
 
-        @DecimalMin(value = "10000", message = "Couple price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Couple price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Couple price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Couple price must be at most 10000000")
         BigDecimal couplePrice,
 
-        @DecimalMin(value = "10000", message = "Adult standard price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Adult standard price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Adult standard price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Adult standard price must be at most 10000000")
         BigDecimal adultStandardPrice,
 
-        @DecimalMin(value = "10000", message = "Child standard price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Child standard price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Child standard price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Child standard price must be at most 10000000")
         BigDecimal childStandardPrice,
 
-        @DecimalMin(value = "10000", message = "Student standard price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Student standard price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Student standard price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Student standard price must be at most 10000000")
         BigDecimal studentStandardPrice,
 
-        @DecimalMin(value = "10000", message = "Adult VIP price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Adult VIP price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Adult VIP price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Adult VIP price must be at most 10000000")
         BigDecimal adultVipPrice,
 
-        @DecimalMin(value = "10000", message = "Child VIP price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Child VIP price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Child VIP price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Child VIP price must be at most 10000000")
         BigDecimal childVipPrice,
 
-        @DecimalMin(value = "10000", message = "Student VIP price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Student VIP price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Student VIP price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Student VIP price must be at most 10000000")
         BigDecimal studentVipPrice,
 
-        @DecimalMin(value = "10000", message = "Adult couple price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Adult couple price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Adult couple price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Adult couple price must be at most 10000000")
         BigDecimal adultCouplePrice,
 
-        @DecimalMin(value = "10000", message = "Child couple price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Child couple price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Child couple price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Child couple price must be at most 10000000")
         BigDecimal childCouplePrice,
 
-        @DecimalMin(value = "10000", message = "Student couple price must be at least 10000")
-        @DecimalMax(value = "1000000", message = "Student couple price must be at most 1000000")
+        @DecimalMin(value = "0", message = "Student couple price must be at least 0")
+        @DecimalMax(value = "10000000", message = "Student couple price must be at most 10000000")
         BigDecimal studentCouplePrice,
 
         Boolean weekendSurcharge,
 
         Boolean holidaySurcharge,
 
-        @DecimalMin(value = "10000", message = "Late night surcharge amount must be at least 10000")
-        @DecimalMax(value = "100000", message = "Late night surcharge amount must be at most 100000")
+        @DecimalMin(value = "0", message = "Late night surcharge amount must be at least 0")
+        @DecimalMax(value = "10000000", message = "Late night surcharge amount must be at most 10000000")
         BigDecimal lateNightSurchargeAmount,
 
         ShowtimeStatus status

@@ -213,7 +213,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 };
                 if (base != null) {
                     BigDecimal calculated = seatType == SeatType.COUPLE
-                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2))).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
+                            ? base.add(surcharge).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
                             : base.add(surcharge);
                     return calculated.add(showtime.getSurchargeAmount());
                 }

@@ -1,5 +1,7 @@
 package com.cinemaai.booking.service.impl;
 
+import com.cinemaai.booking.client.PaymentClient;
+
 import com.cinemaai.booking.client.CatalogClient;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
 import com.cinemaai.booking.dto.request.CheckoutBookingRequest;
@@ -39,6 +41,37 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
+
+    private BigDecimal calculateLoyaltyDiscount(int points, Long cinemaId, BigDecimal subtotal) {
+        if (points <= 0 || subtotal == null || subtotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        PaymentClient.InternalLoyaltyConfigDto cfg = paymentClient.getLoyaltyConfiguration(cinemaId);
+        BigDecimal pointValueVnd = BigDecimal.ONE;
+        BigDecimal maxPercent = BigDecimal.valueOf(100);
+
+        if (cfg != null) {
+            BigDecimal redPoints = cfg.redemptionPoints() != null && cfg.redemptionPoints() > 0
+                    ? BigDecimal.valueOf(cfg.redemptionPoints()) : BigDecimal.valueOf(1000);
+            BigDecimal redValue = cfg.redemptionValueVnd() != null ? cfg.redemptionValueVnd() : BigDecimal.valueOf(1000);
+            BigDecimal redRate = cfg.redemptionRatePercent() != null ? cfg.redemptionRatePercent() : BigDecimal.valueOf(100);
+            pointValueVnd = redValue.divide(redPoints, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(redRate).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP);
+            if (cfg.maxRedemptionPercent() != null) {
+                maxPercent = cfg.maxRedemptionPercent();
+            }
+        }
+
+        BigDecimal discount = BigDecimal.valueOf(points).multiply(pointValueVnd).setScale(0, java.math.RoundingMode.DOWN);
+        BigDecimal maxDiscount = subtotal.multiply(maxPercent).divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.DOWN);
+        if (discount.compareTo(maxDiscount) > 0) {
+            discount = maxDiscount;
+        }
+        if (discount.compareTo(subtotal) > 0) {
+            discount = subtotal;
+        }
+        return discount;
+    }
 
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
@@ -103,10 +136,7 @@ public class BookingServiceImpl implements BookingService {
                 + String.format("%04d", new Random().nextInt(10000));
 
         int holdPoints = request.loyaltyPointsToRedeem() != null ? request.loyaltyPointsToRedeem() : 0;
-        BigDecimal holdDiscount = BigDecimal.valueOf(holdPoints);
-        if (holdDiscount.compareTo(quote.subtotal()) > 0) {
-            holdDiscount = quote.subtotal();
-        }
+        BigDecimal holdDiscount = calculateLoyaltyDiscount(holdPoints, quote.showtime().cinemaId(), quote.subtotal());
 
         Booking booking = Booking.builder()
                 .bookingCode(bookingCode)
@@ -294,12 +324,9 @@ public class BookingServiceImpl implements BookingService {
         booking.setShowtimeStartSnapshot(quote.showtime().startTime());
         booking.setSubtotal(quote.subtotal());
 
-        // Calculate discount if loyalty points redeemed (1 point = 1,000 VND example or configurable)
+        // Calculate discount if loyalty points redeemed according to branch-specific configuration
         int points = loyaltyPointsToRedeem != null ? loyaltyPointsToRedeem : booking.getLoyaltyPointsRedeemed();
-        BigDecimal discount = BigDecimal.valueOf(points);
-        if (discount.compareTo(quote.subtotal()) > 0) {
-            discount = quote.subtotal();
-        }
+        BigDecimal discount = calculateLoyaltyDiscount(points, booking.getCinemaId(), quote.subtotal());
         booking.setDiscountAmount(discount);
         booking.setLoyaltyPointsRedeemed(points);
         booking.setTotalAmount(quote.subtotal().subtract(discount).max(BigDecimal.ZERO));
@@ -585,7 +612,8 @@ public class BookingServiceImpl implements BookingService {
                     booking.getId(),
                     booking.getBookingCode(),
                     booking.getTotalAmount(),
-                    booking.getLoyaltyPointsRedeemed()
+                    booking.getLoyaltyPointsRedeemed(),
+                    booking.getCinemaId()
             );
         }
 

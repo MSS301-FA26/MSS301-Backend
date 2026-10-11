@@ -24,4 +24,10 @@ public class InternalUserController {
     public ApiResponse<UserAccessScopeResponse> getUserAccessScope(@PathVariable Long userId) {
         return ApiResponse.success(userService.getAccessScope(userId));
     }
+
+    @GetMapping("/{userId}")
+    @Operation(summary = "Get user profile for internal microservices")
+    public ApiResponse<com.cinemaai.identity.dto.response.user.UserProfileResponse> getUserProfileInternal(@PathVariable Long userId) {
+        return ApiResponse.success(userService.getById(userId));
+    }
 }

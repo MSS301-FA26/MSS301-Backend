@@ -20,6 +20,8 @@ import com.cinemaai.payment.repository.LoyaltyPointTransactionRepository;
 import com.cinemaai.payment.service.LoyaltyService;
 import com.cinemaai.payment.entity.LoyaltyConfiguration;
 import com.cinemaai.payment.repository.LoyaltyConfigurationRepository;
+import com.cinemaai.payment.client.IdentityClient;
+
 import com.cinemaai.payment.exception.ForbiddenException;
 import com.cinemaai.payment.security.AuthenticatedUser;
 
@@ -50,6 +52,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     private final LoyaltyPointRepository loyaltyPointRepository;
     private final LoyaltyPointTransactionRepository loyaltyPointTransactionRepository;
     private final LoyaltyConfigurationRepository loyaltyConfigurationRepository;
+    private final IdentityClient identityClient;
 
     private final AtomicReference<BigDecimal> earningRatePercent = new AtomicReference<>(BigDecimal.valueOf(1.0));
     private final AtomicReference<Integer> redemptionPoints = new AtomicReference<>(1000);
@@ -263,6 +266,27 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         }
 
         LoyaltyConfiguration saved = loyaltyConfigurationRepository.save(cfg);
+
+        // Khi cấu hình toàn hệ thống (targetCinemaId == null), đồng bộ cập nhật tất cả các chi nhánh rạp hiện có
+        if (targetCinemaId == null) {
+            List<LoyaltyConfiguration> branchConfigs = loyaltyConfigurationRepository.findAll();
+            for (LoyaltyConfiguration branch : branchConfigs) {
+                if (branch.getCinemaId() != null) {
+                    if (request.earningRatePercent() != null) branch.setEarningRatePercent(request.earningRatePercent());
+                    if (request.redemptionRatePercent() != null) branch.setRedemptionRatePercent(request.redemptionRatePercent());
+                    if (request.redemptionPoints() > 0) branch.setRedemptionPoints(request.redemptionPoints());
+                    if (request.redemptionValueVnd() != null) branch.setRedemptionValueVnd(request.redemptionValueVnd());
+                    if (request.maxRedemptionPercent() != null) branch.setMaxRedemptionPercent(request.maxRedemptionPercent());
+                    if (request.expiryMonth() >= 1 && request.expiryMonth() <= 12) branch.setExpiryMonth(request.expiryMonth());
+                    if (request.expiryDay() >= 1 && request.expiryDay() <= 31) branch.setExpiryDay(request.expiryDay());
+                    if (request.expiryTime() != null && !request.expiryTime().isBlank()) branch.setExpiryTime(request.expiryTime());
+                    if (request.expiryDate() != null) branch.setExpiryDate(request.expiryDate());
+                    loyaltyConfigurationRepository.save(branch);
+                }
+            }
+            log.info("Synchronized global loyalty configuration to all existing cinema branches");
+        }
+
         log.info("Updated loyalty config for cinemaId={}: earningRate={}, redemptionRate={}, redemptionPoints={}, redemptionValue={}",
                 targetCinemaId, saved.getEarningRatePercent(), saved.getRedemptionRatePercent(), saved.getRedemptionPoints(), saved.getRedemptionValueVnd());
 
@@ -295,24 +319,36 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size), Sort.by(Sort.Direction.DESC, "occurredAt"));
         Page<LoyaltyPointTransaction> txPage = loyaltyPointTransactionRepository.findAll(spec, pageable);
 
+        java.util.Map<Long, IdentityClient.UserProfileDto> userCache = new java.util.concurrent.ConcurrentHashMap<>();
+
         List<LoyaltyTransactionResponse> items = txPage.getContent().stream()
-                .map(tx -> new LoyaltyTransactionResponse(
-                        tx.getId(),
-                        tx.getUserId(),
-                        null,
-                        null,
-                        null,
-                        tx.getBookingId(),
-                        tx.getBookingCode(),
-                        null,
-                        null,
-                        null,
-                        tx.getType().name(),
-                        tx.getPointsDelta(),
-                        tx.getBalanceAfter(),
-                        tx.getOccurredAt(),
-                        tx.getNote()
-                ))
+                .map(tx -> {
+                    IdentityClient.UserProfileDto user = null;
+                    if (tx.getUserId() != null && identityClient != null) {
+                        user = userCache.computeIfAbsent(tx.getUserId(), id -> identityClient.getUserProfile(id));
+                    }
+                    String custName = user != null && user.fullName() != null && !user.fullName().isBlank() ? user.fullName() : null;
+                    String custPhone = user != null ? user.phone() : null;
+                    String custEmail = user != null ? user.email() : null;
+
+                    return new LoyaltyTransactionResponse(
+                            tx.getId(),
+                            tx.getUserId(),
+                            custName,
+                            custPhone,
+                            custEmail,
+                            tx.getBookingId(),
+                            tx.getBookingCode(),
+                            null,
+                            null,
+                            null,
+                            tx.getType().name(),
+                            tx.getPointsDelta(),
+                            tx.getBalanceAfter(),
+                            tx.getOccurredAt(),
+                            tx.getNote()
+                    );
+                })
                 .toList();
 
         return new PageResponse<>(
@@ -477,8 +513,16 @@ public class LoyaltyServiceImpl implements LoyaltyService {
             }
         }
 
-        // 3. Calculate points to earn (1% of paid amount, based on configurable rate)
-        int earned = amount.multiply(earningRatePercent.get())
+        // 3. Calculate points to earn (based on cinema-specific or global rate)
+        BigDecimal rate = earningRatePercent.get();
+        if (request.cinemaId() != null && request.cinemaId() > 0) {
+            Optional<LoyaltyConfiguration> branchOpt = loyaltyConfigurationRepository.findByCinemaId(request.cinemaId());
+            if (branchOpt.isPresent() && branchOpt.get().getEarningRatePercent() != null) {
+                rate = branchOpt.get().getEarningRatePercent();
+            }
+        }
+
+        int earned = amount.multiply(rate)
                 .divide(BigDecimal.valueOf(100), 0, RoundingMode.DOWN)
                 .intValue();
 
@@ -494,10 +538,10 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                     .type(LoyaltyPointType.EARN)
                     .pointsDelta(earned)
                     .balanceAfter(lp.getPoints())
-                    .note("Tích điểm từ đơn đặt vé " + bookingCode + " (1% trên " + amount + "đ)")
+                    .note("Tích điểm từ đơn đặt vé " + bookingCode + " (" + rate + "% trên " + amount + "đ)")
                     .occurredAt(LocalDateTime.now())
                     .build());
-            log.info("Awarded {} loyalty points to userId {} for booking {}", earned, userId, bookingCode);
+            log.info("Awarded {} loyalty points to userId {} for booking {} at rate {}%", earned, userId, bookingCode, rate);
         }
 
         return LoyaltyResponse.builder()

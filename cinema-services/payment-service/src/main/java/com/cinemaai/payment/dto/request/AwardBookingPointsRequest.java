@@ -7,5 +7,10 @@ public record AwardBookingPointsRequest(
         Long bookingId,
         String bookingCode,
         BigDecimal amount,
-        Integer redeemedPoints
-) {}
+        Integer redeemedPoints,
+        Long cinemaId
+) {
+    public AwardBookingPointsRequest(Long userId, Long bookingId, String bookingCode, BigDecimal amount, Integer redeemedPoints) {
+        this(userId, bookingId, bookingCode, amount, redeemedPoints, null);
+    }
+}

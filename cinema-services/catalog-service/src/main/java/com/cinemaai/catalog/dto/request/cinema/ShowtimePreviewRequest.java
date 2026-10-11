@@ -1,7 +1,6 @@
 package com.cinemaai.catalog.dto.request.cinema;
 
 import jakarta.validation.constraints.NotNull;
-
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -26,6 +25,14 @@ public record ShowtimePreviewRequest(
             LocalDateTime startTime,
 
             /** Optional temp ID from frontend draft state (echoed back in response). */
-            String tempId
-    ) {}
+            String tempId,
+
+            Boolean weekendSurcharge,
+            Boolean holidaySurcharge,
+            java.math.BigDecimal lateNightSurchargeAmount
+    ) {
+        public PreviewSlot(Long roomId, LocalDateTime startTime, String tempId) {
+            this(roomId, startTime, tempId, null, null, null);
+        }
+    }
 }

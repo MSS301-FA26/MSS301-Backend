@@ -221,7 +221,8 @@ public class PaymentServiceImpl implements PaymentService {
                             bInfo.id(),
                             bInfo.bookingCode(),
                             payment.getAmount(),
-                            bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0
+                            bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0,
+                            bInfo.cinemaId()
                     ));
                 }
             } catch (Exception ex) {
