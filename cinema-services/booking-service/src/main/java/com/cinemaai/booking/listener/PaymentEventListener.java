@@ -83,7 +83,8 @@ public class PaymentEventListener {
                         booking.getId(),
                         booking.getBookingCode(),
                         booking.getTotalAmount(),
-                        booking.getLoyaltyPointsRedeemed()
+                        booking.getLoyaltyPointsRedeemed(),
+                        booking.getCinemaId()
                 );
             }
         }
