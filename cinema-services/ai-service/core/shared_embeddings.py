@@ -20,13 +20,26 @@ class SharedEmbeddingService:
 
     def _load_model(self):
         try:
+            import os
             from sentence_transformers import SentenceTransformer
-            logger.info(f"Loading SentenceTransformer model '{self.model_name}' into RAM...")
-            self.model = SentenceTransformer(self.model_name)
-            logger.info("SentenceTransformer model loaded successfully.")
+
+            # Priority 1: Check pre-downloaded local models directory
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_model_path = os.path.join(base_dir, "models", "all-MiniLM-L6-v2")
+
+            if os.path.isdir(local_model_path):
+                logger.info(f"Loading local SentenceTransformer model from '{local_model_path}' (100% offline)...")
+                self.model = SentenceTransformer(local_model_path, local_files_only=True)
+            else:
+                logger.info(f"Loading cached SentenceTransformer model '{self.model_name}'...")
+                try:
+                    self.model = SentenceTransformer(self.model_name, local_files_only=True)
+                except Exception:
+                    self.model = SentenceTransformer(self.model_name)
+            logger.info("SentenceTransformer model loaded successfully into RAM.")
         except Exception as e:
-            logger.error(f"Failed to load SentenceTransformer model '{self.model_name}': {e}")
-            raise RuntimeError(f"Failed to load SentenceTransformer model '{self.model_name}': {e}") from e
+            logger.error(f"Failed to load SentenceTransformer model: {e}")
+            raise RuntimeError(f"Failed to load SentenceTransformer model: {e}") from e
 
     def encode(self, text: str) -> List[float]:
         if not text:

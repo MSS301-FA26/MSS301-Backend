@@ -25,14 +25,16 @@ class OpenAIClient:
         self,
         messages: List[Dict[str, Any]],
         temperature: float = 0.1,
-        max_tokens: int = 500
+        max_tokens: int = 500,
+        model: Optional[str] = None
     ) -> Optional[str]:
         """Execute chat completion API request."""
         if not self._client:
             raise RuntimeError("OpenAI API Key is not configured.")
 
+        chosen_model = model or self.model
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=chosen_model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -46,14 +48,16 @@ class OpenAIClient:
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],
         temperature: float = 0.1,
-        max_tokens: int = 500
+        max_tokens: int = 500,
+        model: Optional[str] = None
     ):
         """Execute chat completion with tool/function definitions."""
         if not self._client:
             raise RuntimeError("OpenAI API Key is not configured for Chatbot Agent.")
 
+        chosen_model = model or self.model
         response = self._client.chat.completions.create(
-            model=self.model,
+            model=chosen_model,
             messages=messages,
             tools=tools,
             temperature=temperature,

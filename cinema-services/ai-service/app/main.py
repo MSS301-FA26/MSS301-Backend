@@ -15,16 +15,12 @@ from api.search_api import router as search_router
 from api.chat_api import router as chat_router
 from api.telemetry_api import router as telemetry_router
 from api.prompt_api import router as prompt_router
+from api.sync_api import router as sync_router
 
-# Configure root logger with correlation_id
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("[%(correlation_id)s] %(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-handler.addFilter(CorrelationIdLogFilter())
+from core.logger import setup_logging
 
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-root_logger.handlers = [handler]
-logger = logging.getLogger("ai_service")
+# Configure logging (console + rotating file handler with correlation_id)
+logger = setup_logging()
 
 
 @asynccontextmanager
@@ -40,6 +36,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"RabbitMQ consumer initialization deferred: {e}")
 
+    try:
+        from core.shared_embeddings import get_embedding_service
+        logger.info("Pre-warming SentenceTransformer embedding model into RAM...")
+        get_embedding_service()
+    except Exception as e:
+        logger.warning(f"Embedding model pre-warm deferred: {e}")
+
+    try:
+        from modules.sync.service_impl import get_catalog_sync_service
+        sync_svc = get_catalog_sync_service()
+        current_count = sync_svc.get_embedding_count()
+        logger.info(f"Checking local movie embeddings: {current_count} movies found in pgvector.")
+        if current_count == 0:
+            logger.info("Local movie embeddings table is empty. Triggering background catalog sync from Catalog Service...")
+            import threading
+            threading.Thread(target=sync_svc.sync_catalog, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Auto catalog sync check deferred: {e}")
+
     yield
 
     logger.info("Stopping CinemaAI ai-service...")
@@ -54,8 +69,39 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from fastapi.openapi.utils import get_openapi
+
 # Global Exception Handlers
 register_exception_handlers(app)
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "GatewaySecret": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Gateway-Secret",
+            "description": "Shared Gateway Secret Token (Default: cinema-gateway-secret-key-change-in-production)"
+        },
+        "InternalServiceSecret": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Internal-Service-Secret",
+            "description": "Internal Microservice Secret Token (Default: cinema-internal-service-secret-key-change-in-production)"
+        }
+    }
+    openapi_schema["security"] = [{"GatewaySecret": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Middlewares
 app.add_middleware(CorrelationIdMiddleware)
@@ -80,6 +126,7 @@ app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(telemetry_router)
 app.include_router(prompt_router)
+app.include_router(sync_router)
 
 
 if __name__ == "__main__":

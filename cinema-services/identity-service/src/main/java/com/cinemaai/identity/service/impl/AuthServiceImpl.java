@@ -1,6 +1,7 @@
 package com.cinemaai.identity.service.impl;
 
 import com.cinemaai.identity.config.JwtProperties;
+import com.cinemaai.identity.client.CatalogClient;
 import com.cinemaai.identity.dto.request.auth.GoogleLoginRequest;
 import com.cinemaai.identity.dto.request.auth.GoogleOtpVerifyRequest;
 import com.cinemaai.identity.dto.request.auth.LoginRequest;
@@ -60,13 +61,16 @@ public class AuthServiceImpl implements AuthService {
     private final UserService userService;
     private final UserCinemaAssignmentService userCinemaAssignmentService;
     private final GoogleTokenVerifier googleTokenVerifier;
+    private final CatalogClient catalogClient;
     private final MailService mailService;
 
     @Override
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
-            throw new ConflictException("Email already exists");
+        validateEmailAvailability(request.email());
+        validateUniqueRegistrationFields(request);
+        if (request.preferredCinemaId() != null) {
+            catalogClient.validateActiveCinema(request.preferredCinemaId());
         }
         if (request.phone() != null && !request.phone().isBlank()) {
             if (userProfileRepository.existsByPhone(request.phone())) {
@@ -89,6 +93,9 @@ public class AuthServiceImpl implements AuthService {
                             request.fullName(),
                             request.phone(),
                             request.birthYear(),
+                            request.username(),
+                            request.identityNumber(),
+                            request.preferredCinemaId(),
                             otp,
                             expiresAt
                     );
@@ -100,6 +107,9 @@ public class AuthServiceImpl implements AuthService {
                         request.fullName(),
                         request.phone(),
                         request.birthYear(),
+                        request.username(),
+                        request.identityNumber(),
+                        request.preferredCinemaId(),
                         otp,
                         expiresAt
                 )));
@@ -126,6 +136,9 @@ public class AuthServiceImpl implements AuthService {
                 pendingRegistration.getFullName(),
                 pendingRegistration.getPhone(),
                 pendingRegistration.getBirthYear(),
+                pendingRegistration.getUsername(),
+                pendingRegistration.getIdentityNumber(),
+                pendingRegistration.getPreferredCinemaId(),
                 generateOtp(),
                 LocalDateTime.now().plusSeconds(EMAIL_VERIFICATION_EXPIRES_IN_SECONDS)
         );
@@ -152,13 +165,21 @@ public class AuthServiceImpl implements AuthService {
             pendingRegistrationRepository.delete(pendingRegistration);
             throw new ConflictException("Phone already exists");
         }
+        validateUniqueRegistrationFields(
+                pendingRegistration.getEmail(),
+                pendingRegistration.getUsername(),
+                pendingRegistration.getIdentityNumber()
+        );
 
         User user = userRepository.save(new User(
                 pendingRegistration.getEmail(),
                 pendingRegistration.getPasswordHash(),
                 pendingRegistration.getFullName(),
                 pendingRegistration.getPhone(),
-                pendingRegistration.getBirthYear()
+                pendingRegistration.getBirthYear(),
+                pendingRegistration.getUsername(),
+                pendingRegistration.getIdentityNumber(),
+                pendingRegistration.getPreferredCinemaId()
         ));
         activateEmail(user);
         userRoleService.assignRole(user, RoleName.CUSTOMER);
@@ -178,7 +199,8 @@ public class AuthServiceImpl implements AuthService {
             throw new UnauthorizedException("Invalid username or password");
         }
 
-        User user = userService.getByEmail(request.username());
+        User user = userRepository.findByEmailOrUsername(request.username(), request.username())
+                .orElseThrow(() -> new UnauthorizedException("Invalid username or password"));
         return createAuthResponse(user);
     }
 
@@ -245,6 +267,9 @@ public class AuthServiceImpl implements AuthService {
             String fullName,
             String phone,
             Integer birthYear,
+            String username,
+            String identityNumber,
+            Long preferredCinemaId,
             String otp,
             LocalDateTime expiresAt
     ) {
@@ -252,6 +277,9 @@ public class AuthServiceImpl implements AuthService {
         pendingRegistration.setFullName(fullName);
         pendingRegistration.setPhone(phone);
         pendingRegistration.setBirthYear(birthYear);
+        pendingRegistration.setUsername(username);
+        pendingRegistration.setIdentityNumber(identityNumber);
+        pendingRegistration.setPreferredCinemaId(preferredCinemaId);
         pendingRegistration.setOtp(otp);
         pendingRegistration.setExpiresAt(expiresAt);
     }
@@ -288,14 +316,17 @@ public class AuthServiceImpl implements AuthService {
         return new UserProfileResponse(
                 null,
                 pendingRegistration.getEmail(),
+                pendingRegistration.getUsername(),
                 pendingRegistration.getFullName(),
                 pendingRegistration.getPhone(),
                 null,
                 pendingRegistration.getBirthYear(),
+                pendingRegistration.getPreferredCinemaId(),
                 UserStatus.PENDING_VERIFICATION,
                 false,
                 false,
                 List.of(RoleName.CUSTOMER.name()),
+                null,
                 pendingRegistration.getCreatedAt(),
                 pendingRegistration.getUpdatedAt()
         );
@@ -303,5 +334,48 @@ public class AuthServiceImpl implements AuthService {
 
     private String generateOtp() {
         return String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+    }
+
+    private void validateUniqueRegistrationFields(RegisterRequest request) {
+        validateUniqueRegistrationFields(request.email(), request.username(), request.identityNumber());
+    }
+
+    private void validateUniqueRegistrationFields(String email, String username, String identityNumber) {
+        if (username != null && !username.isBlank()) {
+            if (userRepository.existsByUsername(username) || userRepository.existsByEmail(username)) {
+                throw new ConflictException("Username already exists");
+            }
+            pendingRegistrationRepository.findByUsername(username)
+                    .filter(pendingRegistration -> !pendingRegistration.getEmail().equals(email))
+                    .ifPresent(pendingRegistration -> {
+                        throw new ConflictException("Username already exists");
+                    });
+            pendingRegistrationRepository.findByEmail(username)
+                    .filter(pendingRegistration -> !pendingRegistration.getEmail().equals(email))
+                    .ifPresent(pendingRegistration -> {
+                        throw new ConflictException("Username already exists");
+                    });
+        }
+        if (identityNumber != null && !identityNumber.isBlank()) {
+            if (userRepository.existsByIdentityNumber(identityNumber)) {
+                throw new ConflictException("Identity number already exists");
+            }
+            pendingRegistrationRepository.findByIdentityNumber(identityNumber)
+                    .filter(pendingRegistration -> !pendingRegistration.getEmail().equals(email))
+                    .ifPresent(pendingRegistration -> {
+                        throw new ConflictException("Identity number already exists");
+                    });
+        }
+    }
+
+    private void validateEmailAvailability(String email) {
+        if (userRepository.existsByEmail(email) || userRepository.existsByUsername(email)) {
+            throw new ConflictException("Email already exists");
+        }
+        pendingRegistrationRepository.findByUsername(email)
+                .filter(pendingRegistration -> !pendingRegistration.getEmail().equals(email))
+                .ifPresent(pendingRegistration -> {
+                    throw new ConflictException("Email already exists");
+                });
     }
 }

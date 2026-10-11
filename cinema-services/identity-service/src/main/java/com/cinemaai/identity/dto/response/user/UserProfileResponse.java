@@ -7,10 +7,12 @@ import java.util.List;
 public record UserProfileResponse(
         Long id,
         String email,
+        String username,
         String fullName,
         String phone,
         String avatarUrl,
         Integer birthYear,
+        Long preferredCinemaId,
         UserStatus status,
         boolean emailVerified,
         boolean phoneVerified,
@@ -33,6 +35,6 @@ public record UserProfileResponse(
             LocalDateTime createdAt,
             LocalDateTime updatedAt
     ) {
-        this(id, email, fullName, phone, avatarUrl, birthYear, status, emailVerified, phoneVerified, roles, null, createdAt, updatedAt);
+        this(id, email, null, fullName, phone, avatarUrl, birthYear, null, status, emailVerified, phoneVerified, roles, null, createdAt, updatedAt);
     }
 }

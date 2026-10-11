@@ -1,0 +1,67 @@
+services:
+  ai-db:
+    image: pgvector/pgvector:pg16
+    container_name: cinema-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: recommendation_db
+      POSTGRES_USER: rec_user
+      POSTGRES_PASSWORD: rec_pass_123
+    volumes:
+      - cinema_ai_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rec_user -d recommendation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cinema-ai-internal
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cinema-ai-service
+    restart: unless-stopped
+    depends_on:
+      ai-db:
+        condition: service_healthy
+    ports:
+      - "8032:8000"
+    environment:
+      - SERVER_PORT=8000
+      - DB_HOST=ai-db
+      - DB_PORT=5432
+      - DB_NAME=recommendation_db
+      - DB_USER=rec_user
+      - DB_PASSWORD=rec_pass_123
+      - RABBITMQ_HOST=cinema-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
+      - INTERNAL_GATEWAY_SECRET=${INTERNAL_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-cinema-internal-service-secret-key-change-in-production}
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8082}
+      - BOOKING_SERVICE_URL=${BOOKING_SERVICE_URL:-http://booking-service:8083}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./:/app
+      - /app/.venv
+      - ./logs:/app/logs
+    networks:
+      - cinema-ai-internal
+      - mss301-backend_cinema-network
+
+volumes:
+  cinema_ai_db_data:
+
+networks:
+  cinema-ai-internal:
+    driver: bridge
+  mss301-backend_cinema-network:
+    external: true
