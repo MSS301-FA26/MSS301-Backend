@@ -21,6 +21,12 @@ import com.cinemaai.catalog.repository.CinemaAudiencePriceRepository;
 import com.cinemaai.catalog.repository.CinemaRepository;
 import com.cinemaai.catalog.repository.RoomRepository;
 import com.cinemaai.catalog.repository.TicketPricingRuleRepository;
+import com.cinemaai.catalog.dto.request.cinema.DaySurchargeRequest;
+import com.cinemaai.catalog.dto.response.cinema.DaySurchargeResponse;
+import com.cinemaai.catalog.entity.SystemSetting;
+import com.cinemaai.catalog.repository.SystemSettingRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDateTime;
 import com.cinemaai.catalog.service.AuditLogService;
 import com.cinemaai.catalog.service.CinemaService;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +50,8 @@ public class CinemaServiceImpl implements CinemaService {
     private final AuditLogService auditLogService;
     private final CinemaAudiencePriceRepository audiencePriceRepository;
     private final TicketPricingRuleRepository ticketPricingRuleRepository;
+    private final SystemSettingRepository systemSettingRepository;
+    private final ObjectMapper objectMapper;
 
     // =========================================================================
     // READ OPERATIONS
@@ -209,6 +217,111 @@ public class CinemaServiceImpl implements CinemaService {
     }
 
     @Transactional(readOnly = true)
+    public DaySurchargeResponse getDaySurcharges(Long cinemaId) {
+        findById(cinemaId); // validate cinema exists
+        String key = "cinema_day_surcharge_" + cinemaId;
+        return systemSettingRepository.findByConfigKey(key)
+                .map(setting -> {
+                    try {
+                        var node = objectMapper.readTree(setting.getConfigValue());
+                        BigDecimal weekend = node.has("weekendSurcharge") ? new BigDecimal(node.get("weekendSurcharge").asText()) : BigDecimal.valueOf(10000);
+                        BigDecimal holiday = node.has("holidaySurcharge") ? new BigDecimal(node.get("holidaySurcharge").asText()) : BigDecimal.valueOf(20000);
+                        BigDecimal night = node.has("nightSurcharge") ? new BigDecimal(node.get("nightSurcharge").asText()) : BigDecimal.valueOf(20000);
+                        return new DaySurchargeResponse(cinemaId, weekend, holiday, night, setting.getUpdatedAt());
+                    } catch (Exception e) {
+                        return new DaySurchargeResponse(cinemaId, BigDecimal.valueOf(10000), BigDecimal.valueOf(20000), BigDecimal.valueOf(20000), setting.getUpdatedAt());
+                    }
+                })
+                .orElseGet(() -> new DaySurchargeResponse(cinemaId, BigDecimal.valueOf(10000), BigDecimal.valueOf(20000), BigDecimal.valueOf(20000), LocalDateTime.now()));
+    }
+
+    @Transactional
+    public DaySurchargeResponse updateDaySurcharges(Long cinemaId, DaySurchargeRequest request) {
+        findById(cinemaId); // validate cinema exists
+        String key = "cinema_day_surcharge_" + cinemaId;
+        BigDecimal night = request.nightSurcharge() != null ? request.nightSurcharge() : BigDecimal.valueOf(20000);
+        String jsonVal;
+        try {
+            Map<String, Object> dataMap = new java.util.HashMap<>();
+            dataMap.put("weekendSurcharge", request.weekendSurcharge());
+            dataMap.put("holidaySurcharge", request.holidaySurcharge());
+            dataMap.put("nightSurcharge", night);
+            jsonVal = objectMapper.writeValueAsString(dataMap);
+        } catch (Exception e) {
+            jsonVal = "{\"weekendSurcharge\":" + request.weekendSurcharge() + ",\"holidaySurcharge\":" + request.holidaySurcharge() + ",\"nightSurcharge\":" + night + "}";
+        }
+
+        SystemSetting setting = systemSettingRepository.findByConfigKey(key)
+                .orElseGet(() -> new SystemSetting(key, "", "Cấu hình phụ thu cuối tuần, ngày lễ và suất đêm cho rạp #" + cinemaId, "SYSTEM"));
+
+        setting.setConfigValue(jsonVal);
+        setting.setDescription("Cấu hình phụ thu cuối tuần, ngày lễ và suất đêm cho rạp #" + cinemaId);
+        SystemSetting saved = systemSettingRepository.save(setting);
+
+        auditLogService.record(
+                AuditActionType.UPDATE,
+                "CINEMA_DAY_SURCHARGES",
+                cinemaId,
+                "Weekend: " + request.weekendSurcharge() + ", Holiday: " + request.holidaySurcharge() + ", Night: " + night
+        );
+
+        // Đồng bộ các rules vé tương ứng
+        syncWeekendHolidayRules(cinemaId, request.weekendSurcharge(), request.holidaySurcharge());
+
+        return new DaySurchargeResponse(cinemaId, request.weekendSurcharge(), request.holidaySurcharge(), night, saved.getUpdatedAt());
+    }
+
+    private void syncWeekendHolidayRules(Long cinemaId, BigDecimal weekendSurcharge, BigDecimal holidaySurcharge) {
+        try {
+            var audPrices = getAudiencePriceMap(cinemaId);
+            for (var entry : audPrices.entrySet()) {
+                TicketType ticketType = TicketType.valueOf(entry.getKey().name());
+                BigDecimal addPrice = entry.getValue() != null ? entry.getValue() : BigDecimal.ZERO;
+
+                BigDecimal baseStandard = BigDecimal.valueOf(70000);
+                BigDecimal baseVip = BigDecimal.valueOf(90000);
+                BigDecimal baseCouple = BigDecimal.valueOf(150000);
+
+                List<Room> cinemaRooms = roomRepository.findByCinemaId(cinemaId);
+                for (Room r : cinemaRooms) {
+                    if (r.getStandardPrice() != null && r.getStandardPrice().signum() > 0) {
+                        baseStandard = r.getStandardPrice();
+                        if (r.getVipPrice() != null) baseVip = r.getVipPrice();
+                        if (r.getCouplePrice() != null) baseCouple = r.getCouplePrice();
+                        break;
+                    }
+                }
+
+                // Weekend prices (Ghế đôi không nhân 2)
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.STANDARD, baseStandard.add(addPrice).add(weekendSurcharge), true, false);
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.VIP, baseVip.add(addPrice).add(weekendSurcharge), true, false);
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.COUPLE, baseCouple.add(addPrice).add(weekendSurcharge), true, false);
+
+                // Holiday prices (Ghế đôi không nhân 2)
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.STANDARD, baseStandard.add(addPrice).add(holidaySurcharge), false, true);
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.VIP, baseVip.add(addPrice).add(holidaySurcharge), false, true);
+                syncCustomRule(cinemaId, ticketType, RoomType.STANDARD, SeatType.COUPLE, baseCouple.add(addPrice).add(holidaySurcharge), false, true);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to sync weekend/holiday pricing rules for cinema {}: {}", cinemaId, e.getMessage());
+        }
+    }
+
+    private void syncCustomRule(Long cinemaId, TicketType ticketType, RoomType roomType, SeatType seatType, BigDecimal price, boolean weekend, boolean holiday) {
+        if (price == null || price.signum() <= 0) return;
+        var existing = ticketPricingRuleRepository
+                .findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                        cinemaId, ticketType, roomType, seatType, weekend, holiday);
+        if (existing.isPresent()) {
+            TicketPricingRule rule = existing.get();
+            rule.setPrice(price);
+            ticketPricingRuleRepository.save(rule);
+        } else {
+            TicketPricingRule rule = new TicketPricingRule(cinemaId, ticketType, roomType, seatType, weekend, holiday, price);
+            ticketPricingRuleRepository.save(rule);
+        }
+    }
+
     public Map<AudienceType, BigDecimal> getAudiencePriceMap(Long cinemaId) {
         return audiencePriceRepository.findByCinemaId(cinemaId)
                 .stream()
@@ -240,7 +353,7 @@ public class CinemaServiceImpl implements CinemaService {
         BigDecimal additional = entity.getAdditionalPrice() != null ? entity.getAdditionalPrice() : BigDecimal.ZERO;
         BigDecimal calcStandard = baseStandard.add(additional);
         BigDecimal calcVip = baseVip.add(additional);
-        BigDecimal calcCouple = baseCouple.add(additional.multiply(BigDecimal.valueOf(2)));
+        BigDecimal calcCouple = baseCouple.add(additional); // Ghế đôi không nhân đôi phụ thu
 
         return new AudiencePriceResponse(
                 entity.getId(),

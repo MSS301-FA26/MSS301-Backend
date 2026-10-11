@@ -25,7 +25,8 @@ public class BookingClient {
             Long userId,
             BigDecimal totalAmount,
             String status,
-            Integer loyaltyPointsRedeemed
+            Integer loyaltyPointsRedeemed,
+            Long cinemaId
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)

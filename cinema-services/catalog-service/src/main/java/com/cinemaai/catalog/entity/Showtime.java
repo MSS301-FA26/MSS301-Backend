@@ -109,9 +109,17 @@ public class Showtime extends BaseEntity {
     @Setter
     private boolean weekendSurcharge;
 
+    @Column(name = "weekend_surcharge_amount", precision = 12, scale = 2)
+    @Setter
+    private BigDecimal weekendSurchargeAmount = BigDecimal.valueOf(10_000);
+
     @Column(name = "holiday_surcharge", nullable = false)
     @Setter
     private boolean holidaySurcharge;
+
+    @Column(name = "holiday_surcharge_amount", precision = 12, scale = 2)
+    @Setter
+    private BigDecimal holidaySurchargeAmount = BigDecimal.valueOf(20_000);
 
     @Column(name = "late_night_surcharge_amount", nullable = false, precision = 12, scale = 2)
     @Setter
@@ -170,12 +178,12 @@ public class Showtime extends BaseEntity {
 
     public BigDecimal getSurchargeAmount() {
         BigDecimal surcharge = BigDecimal.ZERO;
-        if (weekendSurcharge || startTime.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
-                || startTime.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
-            surcharge = surcharge.add(BigDecimal.valueOf(10_000));
+        if (weekendSurcharge || (startTime != null && (startTime.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || startTime.getDayOfWeek() == java.time.DayOfWeek.SUNDAY))) {
+            surcharge = surcharge.add(defaultMoney(weekendSurchargeAmount, BigDecimal.valueOf(10_000)));
         }
         if (holidaySurcharge) {
-            surcharge = surcharge.add(BigDecimal.valueOf(10_000));
+            surcharge = surcharge.add(defaultMoney(holidaySurchargeAmount, BigDecimal.valueOf(20_000)));
         }
         if (isLateNight()) {
             surcharge = surcharge.add(defaultMoney(lateNightSurchargeAmount, BigDecimal.valueOf(20_000)));
@@ -185,7 +193,7 @@ public class Showtime extends BaseEntity {
 
     private boolean isLateNight() {
         int hour = startTime.getHour();
-        return hour >= 23 || hour < 5;
+        return hour >= 22 || hour < 3;
     }
 
     private SeatType normalizeSeatType(SeatType seatType) {

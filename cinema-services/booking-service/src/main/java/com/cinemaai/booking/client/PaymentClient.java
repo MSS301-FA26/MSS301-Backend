@@ -82,18 +82,52 @@ public class PaymentClient {
         return null;
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record InternalLoyaltyConfigDto(
+            Long id,
+            Long cinemaId,
+            String cinemaName,
+            BigDecimal earningRatePercent,
+            BigDecimal redemptionRatePercent,
+            Integer redemptionPoints,
+            BigDecimal redemptionValueVnd,
+            BigDecimal maxRedemptionPercent
+    ) {}
+
+    public InternalLoyaltyConfigDto getLoyaltyConfiguration(Long cinemaId) {
+        try {
+            ApiResponse<InternalLoyaltyConfigDto> res = restClient.get()
+                    .uri("/internal/v1/loyalty/config" + (cinemaId != null ? "?cinemaId=" + cinemaId : ""))
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<InternalLoyaltyConfigDto>>() {});
+            if (res != null && res.data() != null) {
+                return res.data();
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to get internal loyalty config for cinemaId {}: {}", cinemaId, ex.getMessage());
+        }
+        return null;
+    }
+
     public void awardLoyaltyPoints(Long userId, Long bookingId, String bookingCode, BigDecimal amount, Integer redeemedPoints) {
+        awardLoyaltyPoints(userId, bookingId, bookingCode, amount, redeemedPoints, null);
+    }
+
+    public void awardLoyaltyPoints(Long userId, Long bookingId, String bookingCode, BigDecimal amount, Integer redeemedPoints, Long cinemaId) {
         if (userId == null) {
             return;
         }
         try {
-            Map<String, Object> body = Map.of(
-                    "userId", userId,
-                    "bookingId", bookingId != null ? bookingId : 0L,
-                    "bookingCode", bookingCode != null ? bookingCode : "",
-                    "amount", amount != null ? amount : BigDecimal.ZERO,
-                    "redeemedPoints", redeemedPoints != null ? redeemedPoints : 0
-            );
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("userId", userId);
+            body.put("bookingId", bookingId != null ? bookingId : 0L);
+            body.put("bookingCode", bookingCode != null ? bookingCode : "");
+            body.put("amount", amount != null ? amount : BigDecimal.ZERO);
+            body.put("redeemedPoints", redeemedPoints != null ? redeemedPoints : 0);
+            if (cinemaId != null && cinemaId > 0) {
+                body.put("cinemaId", cinemaId);
+            }
 
             restClient.post()
                     .uri("/internal/v1/loyalty/award")
@@ -102,7 +136,7 @@ public class PaymentClient {
                     .body(body)
                     .retrieve()
                     .toBodilessEntity();
-            log.info("Successfully requested loyalty points award for userId {} booking {}", userId, bookingCode);
+            log.info("Successfully requested loyalty points award for userId {} booking {} cinemaId {}", userId, bookingCode, cinemaId);
         } catch (Exception ex) {
             log.warn("Failed to award loyalty points for userId {} booking {}: {}", userId, bookingCode, ex.getMessage());
         }

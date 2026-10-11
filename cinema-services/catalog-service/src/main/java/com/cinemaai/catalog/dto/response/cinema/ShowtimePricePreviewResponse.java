@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Price preview response for a single draft showtime slot.
- * Contains the full ticket price matrix (seat type × audience type).
+ * Contains the full ticket price matrix (seat type x audience type) and day surcharges (weekend/holiday).
  */
 public record ShowtimePricePreviewResponse(
 
@@ -45,8 +45,8 @@ public record ShowtimePricePreviewResponse(
         BigDecimal adultVipPrice,
 
         /**
-         * Computed final prices: couple seat (price for a PAIR of seats).
-         * Formula: roomCouplePrice + additional(guest1) + additional(guest2)
+         * Computed final prices: couple seat.
+         * Formula: roomCouplePrice + additional(audience) + daySurcharge (Ghế đôi KHÔNG nhân 2)
          */
         BigDecimal childChildCouplePrice,
         BigDecimal childStudentCouplePrice,
@@ -59,6 +59,78 @@ public record ShowtimePricePreviewResponse(
         boolean audiencePriceMissing,
 
         /** List of validation warnings (does not block preview, but blocks save). */
-        List<String> warnings
+        List<String> warnings,
+
+        boolean isWeekend,
+        boolean isHoliday,
+        BigDecimal daySurchargeAmount,
+        String dayTypeLabel
 ) {
+    public ShowtimePricePreviewResponse(
+            String tempId,
+            Long movieId,
+            String movieTitle,
+            Long roomId,
+            String roomName,
+            Long cinemaId,
+            String cinemaName,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            BigDecimal roomStandardPrice,
+            BigDecimal roomVipPrice,
+            BigDecimal roomCouplePrice,
+            BigDecimal childAdditional,
+            BigDecimal studentAdditional,
+            BigDecimal adultAdditional,
+            BigDecimal childStandardPrice,
+            BigDecimal studentStandardPrice,
+            BigDecimal adultStandardPrice,
+            BigDecimal childVipPrice,
+            BigDecimal studentVipPrice,
+            BigDecimal adultVipPrice,
+            BigDecimal childChildCouplePrice,
+            BigDecimal childStudentCouplePrice,
+            BigDecimal childAdultCouplePrice,
+            BigDecimal studentStudentCouplePrice,
+            BigDecimal studentAdultCouplePrice,
+            BigDecimal adultAdultCouplePrice,
+            boolean audiencePriceMissing,
+            List<String> warnings
+    ) {
+        this(
+                tempId,
+                movieId,
+                movieTitle,
+                roomId,
+                roomName,
+                cinemaId,
+                cinemaName,
+                startTime,
+                endTime,
+                roomStandardPrice,
+                roomVipPrice,
+                roomCouplePrice,
+                childAdditional,
+                studentAdditional,
+                adultAdditional,
+                childStandardPrice,
+                studentStandardPrice,
+                adultStandardPrice,
+                childVipPrice,
+                studentVipPrice,
+                adultVipPrice,
+                childChildCouplePrice,
+                childStudentCouplePrice,
+                childAdultCouplePrice,
+                studentStudentCouplePrice,
+                studentAdultCouplePrice,
+                adultAdultCouplePrice,
+                audiencePriceMissing,
+                warnings,
+                false,
+                false,
+                BigDecimal.ZERO,
+                "STANDARD"
+        );
+    }
 }
