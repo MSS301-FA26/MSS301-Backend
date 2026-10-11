@@ -42,6 +42,18 @@ public class PendingRegistration extends BaseEntity {
     private Integer birthYear;
 
     @Setter
+    @Column(length = 255)
+    private String username;
+
+    @Setter
+    @Column(name = "identity_number", length = 12)
+    private String identityNumber;
+
+    @Setter
+    @Column(name = "preferred_cinema_id")
+    private Long preferredCinemaId;
+
+    @Setter
     @Column(nullable = false, length = 6)
     private String otp;
 
@@ -55,6 +67,9 @@ public class PendingRegistration extends BaseEntity {
             String fullName,
             String phone,
             Integer birthYear,
+            String username,
+            String identityNumber,
+            Long preferredCinemaId,
             String otp,
             LocalDateTime expiresAt
     ) {
@@ -63,6 +78,9 @@ public class PendingRegistration extends BaseEntity {
         this.fullName = fullName;
         this.phone = phone;
         this.birthYear = birthYear;
+        this.username = username;
+        this.identityNumber = identityNumber;
+        this.preferredCinemaId = preferredCinemaId;
         this.otp = otp;
         this.expiresAt = expiresAt;
     }

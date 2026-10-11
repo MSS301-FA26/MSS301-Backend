@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install dependencies using uv sync
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    UV_HTTP_TIMEOUT=300 UV_CONCURRENT_DOWNLOADS=4 UV_RETRIES=10 uv sync --frozen --no-dev --no-install-project
 
 # Copy application code
 COPY . .
@@ -23,6 +24,9 @@ COPY . .
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV SERVER_PORT=8000
+
+# Pre-download SentenceTransformer model to local image cache
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 EXPOSE 8000
 

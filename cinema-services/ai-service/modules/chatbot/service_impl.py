@@ -18,15 +18,16 @@ logger = logging.getLogger(__name__)
 class ChatServiceImpl:
     """Implementation of IChatService using SingleHopTagExecutor."""
 
-    def __init__(self, search_service=None, rec_service=None, openai_client=None, executor=None):
+    def __init__(self, search_service=None, rec_service=None, openai_client=None, executor=None, catalog_client=None):
         self.search_service = search_service if search_service is not None else get_search_service()
         self.rec_service = rec_service if rec_service is not None else get_recommendation_service()
         self.openai_client = openai_client if openai_client is not None else get_openai_client()
+        self.catalog_client = catalog_client
 
         if executor is not None:
             self.executor = executor
         else:
-            registry = build_default_registry(self.search_service, self.rec_service)
+            registry = build_default_registry(self.search_service, self.rec_service, self.catalog_client)
             self.executor = SingleHopTagExecutor(registry, self.openai_client)
 
     def _get_or_create_session(
@@ -62,24 +63,46 @@ class ChatServiceImpl:
                 """, (json.dumps(history, ensure_ascii=False), last_movie_id, conv_id))
             conn.commit()
 
+    def _get_movie_context(self, movie_id: Optional[int]) -> Optional[Dict[str, Any]]:
+        if not movie_id:
+            return None
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT movie_id, title, genres, director, actors, description, status
+                        FROM movie_embeddings
+                        WHERE movie_id = %s
+                    """, (movie_id,))
+                    return cur.fetchone()
+        except Exception as e:
+            logger.warning(f"Failed to fetch movie context for movie_id={movie_id}: {e}")
+            return None
+
     def chat(self, request: ChatMessageRequest) -> ChatMessageResponse:
+        logger.info(f"[Chatbot] User Message (movieId={request.movieId}): '{request.message}'")
         conv_id, history, last_movie_id = self._get_or_create_session(request.conversationId, request.userId)
+
+        target_movie_id = request.movieId or last_movie_id
+        movie_context = self._get_movie_context(target_movie_id)
 
         # Execute Single-Hop Agent Runtime (Docstring-driven, Bounded Latency)
         agent_result = self.executor.execute(
             message=request.message,
             history=history,
-            user_id=request.userId
+            user_id=request.userId,
+            movie_context=movie_context
         )
+        logger.info(f"[Chatbot] AI Reply: '{agent_result.reply}'")
 
         # Update Session History
         history.append({"role": "user", "content": request.message})
         history.append({"role": "assistant", "content": agent_result.reply})
 
-        new_last_mid = last_movie_id
+        new_last_mid = target_movie_id
         serialized_data = None
         if agent_result.movies:
-            new_last_mid = agent_result.movies[0].get("movieId", last_movie_id)
+            new_last_mid = agent_result.movies[0].get("movieId", target_movie_id)
             serialized_data = {"movies": agent_result.movies}
 
         self._save_session(conv_id, history, new_last_mid)
