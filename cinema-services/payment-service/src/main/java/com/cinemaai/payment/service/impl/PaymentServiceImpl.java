@@ -380,8 +380,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     private void writeOutboxEvent(Payment payment, LocalDateTime paidAt) {
         try {
+            String eventId = UUID.randomUUID().toString();
             PaymentSucceededEvent event = new PaymentSucceededEvent(
-                    UUID.randomUUID().toString(),
+                    eventId,
                     payment.getId(),
                     payment.getBookingId(),
                     payment.getFoodOrderId(),
@@ -395,6 +396,7 @@ public class PaymentServiceImpl implements PaymentService {
                     .aggregateType("PAYMENT")
                     .aggregateId(String.valueOf(payment.getId()))
                     .eventType("PaymentSucceededEvent")
+                    .deduplicationKey(eventId)
                     .payload(objectMapper.writeValueAsString(event))
                     .status(OutboxStatus.PENDING)
                     .createdAt(LocalDateTime.now())
