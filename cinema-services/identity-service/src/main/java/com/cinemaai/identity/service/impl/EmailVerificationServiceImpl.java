@@ -9,6 +9,7 @@ import com.cinemaai.identity.exception.NotFoundException;
 import com.cinemaai.identity.repository.EmailVerificationTokenRepository;
 import com.cinemaai.identity.repository.UserRepository;
 import com.cinemaai.identity.service.EmailVerificationService;
+import com.cinemaai.identity.service.CustomerActivationOutboxService;
 import com.cinemaai.identity.service.MailService;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
@@ -26,6 +27,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final UserRepository userRepository;
     private final MailService mailService;
+    private final CustomerActivationOutboxService customerActivationOutboxService;
 
     @Override
     @Transactional
@@ -123,7 +125,11 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     }
 
     private void activateEmail(User user) {
+        boolean activationChanged = !user.isEmailVerified() || user.getStatus() != UserStatus.ACTIVE;
         user.setEmailVerified(true);
         user.setStatus(UserStatus.ACTIVE);
+        if (activationChanged) {
+            customerActivationOutboxService.recordActivation(user);
+        }
     }
 }

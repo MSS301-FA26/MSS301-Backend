@@ -48,6 +48,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "MANAGEMENT_ENDPOINTS=health,info",
         "HEALTH_SHOW_DETAILS=always",
         "management.health.mail.enabled=false",
+        "management.health.rabbit.enabled=false",
+        "customer-activation.outbox.enabled=false",
         "LOG_LEVEL_PATTERN=%5p"
 })
 @ActiveProfiles("test")

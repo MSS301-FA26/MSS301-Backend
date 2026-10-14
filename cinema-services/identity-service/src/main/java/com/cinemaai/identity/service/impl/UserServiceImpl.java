@@ -24,6 +24,7 @@ import com.cinemaai.identity.service.AuditLogService;
 import com.cinemaai.identity.service.UserCinemaAssignmentService;
 import com.cinemaai.identity.service.UserRoleService;
 import com.cinemaai.identity.service.UserService;
+import com.cinemaai.identity.service.CustomerActivationOutboxService;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
     private final CatalogClient catalogClient;
+    private final CustomerActivationOutboxService customerActivationOutboxService;
 
     @Override
     @Transactional(readOnly = true)
@@ -314,7 +316,11 @@ public class UserServiceImpl implements UserService {
         if (request.status() == UserStatus.DISABLED) {
             targetUser.setStatus(UserStatus.DISABLED);
         } else if (request.status() == UserStatus.ACTIVE) {
+            boolean activationChanged = !targetUser.isEmailVerified() || targetUser.getStatus() != UserStatus.ACTIVE;
             activateEmail(targetUser);
+            if (activationChanged) {
+                customerActivationOutboxService.recordActivation(targetUser);
+            }
         } else if (request.status() == UserStatus.PENDING_VERIFICATION) {
             throw new BadRequestException("Cannot move user back to pending verification");
         }

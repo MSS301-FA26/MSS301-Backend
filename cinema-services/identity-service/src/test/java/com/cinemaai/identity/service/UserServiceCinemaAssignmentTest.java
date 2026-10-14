@@ -48,6 +48,8 @@ class UserServiceCinemaAssignmentTest {
     private AuditLogService auditLogService;
     @Mock
     private CatalogClient catalogClient;
+    @Mock
+    private CustomerActivationOutboxService customerActivationOutboxService;
 
     private UserServiceImpl userService;
 
@@ -61,7 +63,8 @@ class UserServiceCinemaAssignmentTest {
                 userMapper,
                 passwordEncoder,
                 auditLogService,
-                catalogClient
+                catalogClient,
+                customerActivationOutboxService
         );
     }
 
@@ -90,6 +93,7 @@ class UserServiceCinemaAssignmentTest {
 
         verify(userRoleService).assignRole(any(User.class), eq(RoleName.MANAGER));
         verify(userCinemaAssignmentService).assignCinema(any(User.class), eq(cinemaAId), eq(adminUser));
+        verifyNoInteractions(customerActivationOutboxService);
     }
 
     @Test
@@ -123,6 +127,7 @@ class UserServiceCinemaAssignmentTest {
         // Verify that backend strictly assigned staff to Cinema A (101L), NOT Cinema B (999L)
         verify(userCinemaAssignmentService).assignCinema(any(User.class), eq(cinemaAId), eq(managerUser));
         verify(userCinemaAssignmentService, never()).assignCinema(any(User.class), eq(maliciousCinemaBId), any());
+        verifyNoInteractions(customerActivationOutboxService);
     }
 
     @Test

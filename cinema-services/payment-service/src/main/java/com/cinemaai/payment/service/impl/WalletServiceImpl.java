@@ -42,7 +42,8 @@ public class WalletServiceImpl implements WalletService {
     @Override
     @Transactional(readOnly = true)
     public WalletResponse getWallet(Long userId) {
-        CineWallet wallet = getOrCreateWallet(userId);
+        CineWallet wallet = cineWalletRepository.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("Wallet is not provisioned yet"));
         return new WalletResponse(wallet.getId(), wallet.getBalance(), wallet.getCreatedAt());
     }
 
@@ -274,11 +275,4 @@ public class WalletServiceImpl implements WalletService {
         return new WalletResponse(wallet.getId(), wallet.getBalance(), wallet.getCreatedAt());
     }
 
-    private CineWallet getOrCreateWallet(Long userId) {
-        return cineWalletRepository.findByUserId(userId)
-                .orElseGet(() -> cineWalletRepository.save(CineWallet.builder()
-                        .userId(userId)
-                        .balance(BigDecimal.ZERO)
-                        .build()));
-    }
 }

@@ -22,6 +22,7 @@ import com.cinemaai.identity.repository.UserProfileRepository;
 import com.cinemaai.identity.repository.UserRepository;
 import com.cinemaai.identity.security.JwtService;
 import com.cinemaai.identity.service.AuthService;
+import com.cinemaai.identity.service.CustomerActivationOutboxService;
 import com.cinemaai.identity.service.EmailVerificationService;
 import com.cinemaai.identity.service.GoogleTokenVerifier;
 import com.cinemaai.identity.service.MailService;
@@ -63,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final CatalogClient catalogClient;
     private final MailService mailService;
+    private final CustomerActivationOutboxService customerActivationOutboxService;
 
     @Override
     @Transactional
@@ -183,6 +185,7 @@ public class AuthServiceImpl implements AuthService {
         ));
         activateEmail(user);
         userRoleService.assignRole(user, RoleName.CUSTOMER);
+        customerActivationOutboxService.recordActivation(user);
         pendingRegistrationRepository.delete(pendingRegistration);
     }
 
@@ -216,6 +219,7 @@ public class AuthServiceImpl implements AuthService {
         }
         if (!user.isEmailVerified()) {
             activateEmail(user);
+            customerActivationOutboxService.recordActivation(user);
         }
 
         return createAuthResponse(user);
@@ -258,6 +262,7 @@ public class AuthServiceImpl implements AuthService {
         ));
         activateEmail(user);
         userRoleService.assignRole(user, RoleName.CUSTOMER);
+        customerActivationOutboxService.recordActivation(user);
         return user;
     }
 

@@ -21,12 +21,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +49,7 @@ class AuthServiceRegistrationMappingTest {
     @Mock private GoogleTokenVerifier googleTokenVerifier;
     @Mock private CatalogClient catalogClient;
     @Mock private MailService mailService;
+    @Mock private CustomerActivationOutboxService customerActivationOutboxService;
 
     private AuthServiceImpl authService;
 
@@ -56,7 +59,7 @@ class AuthServiceRegistrationMappingTest {
                 userRepository, userProfileRepository, pendingRegistrationRepository, passwordEncoder,
                 authenticationManager, jwtService, jwtProperties, refreshTokenService,
                 emailVerificationService, userRoleService, userService, userCinemaAssignmentService,
-                googleTokenVerifier, catalogClient, mailService
+                googleTokenVerifier, catalogClient, mailService, customerActivationOutboxService
         );
     }
 
@@ -85,6 +88,7 @@ class AuthServiceRegistrationMappingTest {
         assertEquals("012345678901", pending.getIdentityNumber());
         assertEquals(12L, pending.getPreferredCinemaId());
         verify(catalogClient).validateActiveCinema(12L);
+        verifyNoInteractions(customerActivationOutboxService);
     }
 
     @Test
@@ -100,7 +104,11 @@ class AuthServiceRegistrationMappingTest {
         when(userProfileRepository.existsByPhone("0901234567")).thenReturn(false);
         when(userRepository.existsByUsername(anyString())).thenReturn(false);
         when(userRepository.existsByIdentityNumber(anyString())).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 71L);
+            return saved;
+        });
 
         authService.verifyEmail("customer@example.com", "123456");
 
@@ -112,5 +120,7 @@ class AuthServiceRegistrationMappingTest {
         assertEquals(12L, user.getPreferredCinemaId());
         verify(userRoleService).assignRole(eq(user), eq(RoleName.CUSTOMER));
         verify(pendingRegistrationRepository).delete(pending);
+        verify(customerActivationOutboxService).recordActivation(user);
+        assertEquals(71L, user.getId());
     }
 }
