@@ -53,4 +53,41 @@ public class OutboxPublisherWorker {
 
         outboxEventRepository.saveAll(pendingEvents);
     }
+
+    /**
+     * Section XXVII: Outbox Recovery Scheduler
+     * Re-attempts publishing of failed outbox events periodically to prevent event loss.
+     */
+    @Scheduled(fixedDelay = 60000) // Every 1 minute
+    @Transactional
+    public void recoverFailedEvents() {
+        List<OutboxEvent> failedEvents = outboxEventRepository.findAll().stream()
+                .filter(e -> e.getStatus() == OutboxStatus.FAILED)
+                .limit(50)
+                .toList();
+
+        if (failedEvents.isEmpty()) {
+            return;
+        }
+
+        log.info("Outbox recovery worker found {} failed events. Resetting to PENDING with retry reset.", failedEvents.size());
+        for (OutboxEvent event : failedEvents) {
+            event.setStatus(OutboxStatus.PENDING);
+            event.setRetryCount(0); // reset count for renewed publication attempt
+        }
+        outboxEventRepository.saveAll(failedEvents);
+    }
+
+    @Transactional
+    public int replayFailedEvents() {
+        List<OutboxEvent> failedEvents = outboxEventRepository.findAll().stream()
+                .filter(e -> e.getStatus() == OutboxStatus.FAILED)
+                .toList();
+        for (OutboxEvent event : failedEvents) {
+            event.setStatus(OutboxStatus.PENDING);
+            event.setRetryCount(0);
+        }
+        outboxEventRepository.saveAll(failedEvents);
+        return failedEvents.size();
+    }
 }

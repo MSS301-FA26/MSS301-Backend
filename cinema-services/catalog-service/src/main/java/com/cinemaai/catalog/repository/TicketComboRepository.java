@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+@Deprecated(since = "Phase-2", forRemoval = true)
 public interface TicketComboRepository extends JpaRepository<TicketCombo, Long> {
 
     List<TicketCombo> findByActiveTrue();

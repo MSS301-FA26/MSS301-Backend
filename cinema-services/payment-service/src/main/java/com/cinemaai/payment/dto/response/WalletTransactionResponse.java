@@ -12,7 +12,10 @@ public record WalletTransactionResponse(
         Long bookingId,
         WalletTransactionType type,
         BigDecimal amount,
+        BigDecimal balanceBefore,
         BigDecimal balanceAfter,
+        String referenceType,
+        Long referenceId,
         String referenceCode,
         String description,
         LocalDateTime createdAt
@@ -26,7 +29,10 @@ public record WalletTransactionResponse(
                 tx.getBookingId(),
                 tx.getType(),
                 tx.getAmount(),
+                tx.getBalanceBefore(),
                 tx.getBalanceAfter(),
+                tx.getReferenceType(),
+                tx.getReferenceId(),
                 tx.getReferenceCode(),
                 tx.getDescription(),
                 tx.getCreatedAt()

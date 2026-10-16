@@ -63,9 +63,29 @@ public class Payment extends BaseEntity {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
     @Column(name = "refund_amount", precision = 12, scale = 2)
     private BigDecimal refundAmount;
 
+    @Column(name = "remaining_refundable_amount", precision = 12, scale = 2)
+    private BigDecimal remainingRefundableAmount;
+
     @Column(name = "refunded_at")
     private LocalDateTime refundedAt;
+
+    public boolean isExpired() {
+        return expiresAt != null && LocalDateTime.now().isAfter(expiresAt);
+    }
+
+    public BigDecimal resolveRemainingRefundable() {
+        if (remainingRefundableAmount != null) {
+            return remainingRefundableAmount;
+        }
+        if (refundAmount != null && amount != null) {
+            return amount.subtract(refundAmount).max(BigDecimal.ZERO);
+        }
+        return amount != null ? amount : BigDecimal.ZERO;
+    }
 }

@@ -15,6 +15,8 @@ import com.cinemaai.payment.enums.WalletTransactionType;
 import com.cinemaai.payment.enums.WithdrawalStatus;
 import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.exception.NotFoundException;
+import com.cinemaai.payment.provider.PayoutProvider;
+import com.cinemaai.payment.provider.PayoutResult;
 import com.cinemaai.payment.repository.CineWalletRepository;
 import com.cinemaai.payment.repository.WalletTransactionRepository;
 import com.cinemaai.payment.repository.WithdrawalRequestRepository;
@@ -38,6 +40,7 @@ public class WalletServiceImpl implements WalletService {
     private final CineWalletRepository cineWalletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final PayoutProvider payoutProvider;
 
     @Override
     @Transactional(readOnly = true)
@@ -70,20 +73,12 @@ public class WalletServiceImpl implements WalletService {
             throw new BadRequestException("Số dư CineWallet không đủ. Số dư hiện tại: " + wallet.getBalance() + " VND");
         }
 
-        // Deduct balance (hold for withdrawal)
-        wallet.setBalance(wallet.getBalance().subtract(amount));
-        cineWalletRepository.save(wallet);
+        BigDecimal balanceBefore = wallet.getBalance();
+        BigDecimal balanceAfter = balanceBefore.subtract(amount);
 
-        // Record holding transaction
-        WalletTransaction tx = WalletTransaction.builder()
-                .wallet(wallet)
-                .userId(userId)
-                .type(WalletTransactionType.WITHDRAWAL_HOLD)
-                .amount(amount.negate())
-                .balanceAfter(wallet.getBalance())
-                .description("Yêu cầu rút tiền về ngân hàng " + request.bankName())
-                .build();
-        walletTransactionRepository.save(tx);
+        // Deduct balance (hold for withdrawal)
+        wallet.setBalance(balanceAfter);
+        cineWalletRepository.save(wallet);
 
         WithdrawalRequest wr = WithdrawalRequest.builder()
                 .wallet(wallet)
@@ -93,10 +88,66 @@ public class WalletServiceImpl implements WalletService {
                 .accountNumber(request.accountNumber())
                 .accountHolder(request.accountHolder())
                 .walletPhone(request.walletPhone())
-                .status(WithdrawalStatus.PENDING)
+                .status(WithdrawalStatus.PROCESSING)
                 .build();
         WithdrawalRequest saved = withdrawalRequestRepository.save(wr);
-        log.info("Created withdrawal request #{} for userId: {}, amount: {}", saved.getId(), userId, amount);
+
+        // Record holding / debit transaction
+        WalletTransaction tx = WalletTransaction.builder()
+                .wallet(wallet)
+                .userId(userId)
+                .type(WalletTransactionType.WITHDRAWAL_DEBIT)
+                .amount(amount.negate())
+                .balanceBefore(balanceBefore)
+                .balanceAfter(balanceAfter)
+                .referenceType("WITHDRAWAL")
+                .referenceId(saved.getId())
+                .referenceCode("WD-" + saved.getId())
+                .description("Yêu cầu rút tiền về ngân hàng " + request.bankName())
+                .build();
+        walletTransactionRepository.save(tx);
+
+        log.info("Created withdrawal request #{} for userId: {}, amount: {}. Processing via PayoutProvider...",
+                saved.getId(), userId, amount);
+
+        // Execute via MockPayoutProvider
+        PayoutResult payoutResult = payoutProvider.processPayout(saved);
+        if (payoutResult.success()) {
+            saved.setStatus(WithdrawalStatus.COMPLETED);
+            saved.setProcessedMethod("MOCK_PAYOUT");
+            saved.setProcessedNote("Chuyển khoản thành công qua cổng thanh toán (Mã: " + payoutResult.providerTransactionId() + ")");
+            saved.setProcessedAt(LocalDateTime.now());
+            withdrawalRequestRepository.save(saved);
+            log.info("Withdrawal #{} completed successfully via payout provider.", saved.getId());
+        } else {
+            // Reversal on failure per payment.md Section XVIII
+            saved.setStatus(WithdrawalStatus.FAILED);
+            saved.setProcessedNote("Giao dịch rút tiền thất bại: " + payoutResult.failureReason());
+            saved.setProcessedAt(LocalDateTime.now());
+            withdrawalRequestRepository.save(saved);
+
+            // Restore wallet balance
+            BigDecimal restoredBalance = wallet.getBalance().add(amount);
+            wallet.setBalance(restoredBalance);
+            cineWalletRepository.save(wallet);
+
+            WalletTransaction reversalTx = WalletTransaction.builder()
+                    .wallet(wallet)
+                    .userId(userId)
+                    .type(WalletTransactionType.WITHDRAWAL_REVERSAL)
+                    .amount(amount)
+                    .balanceBefore(balanceAfter)
+                    .balanceAfter(restoredBalance)
+                    .referenceType("WITHDRAWAL_REVERSAL")
+                    .referenceId(saved.getId())
+                    .referenceCode("WD-REV-" + saved.getId())
+                    .description("Hoàn lại số dư ví do rút tiền thất bại: " + payoutResult.failureReason())
+                    .build();
+            walletTransactionRepository.save(reversalTx);
+
+            log.warn("Withdrawal #{} failed and reversed back to wallet. Reason: {}", saved.getId(), payoutResult.failureReason());
+        }
+
         return WithdrawalResponse.from(saved);
     }
 
@@ -136,11 +187,11 @@ public class WalletServiceImpl implements WalletService {
         WithdrawalRequest wr = withdrawalRequestRepository.findById(withdrawalId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy yêu cầu rút tiền: " + withdrawalId));
 
-        if (wr.getStatus() != WithdrawalStatus.PENDING) {
-            throw new BadRequestException("Chỉ có thể duyệt yêu cầu rút tiền ở trạng thái PENDING. Trạng thái hiện tại: " + wr.getStatus());
+        if (wr.getStatus().isTerminal()) {
+            throw new BadRequestException("Không thể duyệt yêu cầu rút tiền đã ở trạng thái kết thúc: " + wr.getStatus());
         }
 
-        wr.setStatus(WithdrawalStatus.PAID);
+        wr.setStatus(WithdrawalStatus.COMPLETED);
         wr.setProcessedMethod(request != null && request.method() != null ? request.method() : "BANK_TRANSFER");
         wr.setProcessedNote(request != null ? request.note() : null);
         wr.setProcessedAt(LocalDateTime.now());
@@ -151,7 +202,10 @@ public class WalletServiceImpl implements WalletService {
                 .userId(wr.getUserId())
                 .type(WalletTransactionType.WITHDRAWAL_PAID)
                 .amount(BigDecimal.ZERO)
+                .balanceBefore(wr.getWallet().getBalance())
                 .balanceAfter(wr.getWallet().getBalance())
+                .referenceType("WITHDRAWAL")
+                .referenceId(wr.getId())
                 .referenceCode("WD-" + wr.getId())
                 .description("Đã duyệt chuyển khoản yêu cầu rút #" + wr.getId())
                 .build();
@@ -167,26 +221,31 @@ public class WalletServiceImpl implements WalletService {
         WithdrawalRequest wr = withdrawalRequestRepository.findById(withdrawalId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy yêu cầu rút tiền: " + withdrawalId));
 
-        if (wr.getStatus() != WithdrawalStatus.PENDING) {
-            throw new BadRequestException("Chỉ có thể từ chối yêu cầu rút tiền ở trạng thái PENDING. Trạng thái hiện tại: " + wr.getStatus());
+        if (wr.getStatus().isTerminal()) {
+            throw new BadRequestException("Không thể từ chối yêu cầu rút tiền đã ở trạng thái kết thúc: " + wr.getStatus());
         }
 
-        wr.setStatus(WithdrawalStatus.REJECTED);
+        wr.setStatus(WithdrawalStatus.FAILED);
         wr.setProcessedNote(request != null ? request.note() : "Bị từ chối bởi staff/admin");
         wr.setProcessedAt(LocalDateTime.now());
         withdrawalRequestRepository.save(wr);
 
         // Refund held money back to user's wallet
         CineWallet wallet = wr.getWallet();
-        wallet.setBalance(wallet.getBalance().add(wr.getAmount()));
+        BigDecimal balanceBefore = wallet.getBalance();
+        BigDecimal balanceAfter = balanceBefore.add(wr.getAmount());
+        wallet.setBalance(balanceAfter);
         cineWalletRepository.save(wallet);
 
         WalletTransaction tx = WalletTransaction.builder()
                 .wallet(wallet)
                 .userId(wr.getUserId())
-                .type(WalletTransactionType.WITHDRAWAL_REFUND)
+                .type(WalletTransactionType.WITHDRAWAL_REVERSAL)
                 .amount(wr.getAmount())
-                .balanceAfter(wallet.getBalance())
+                .balanceBefore(balanceBefore)
+                .balanceAfter(balanceAfter)
+                .referenceType("WITHDRAWAL_REVERSAL")
+                .referenceId(wr.getId())
                 .referenceCode("WD-REJECT-" + wr.getId())
                 .description("Hoàn lại số dư do yêu cầu rút #" + wr.getId() + " bị từ chối")
                 .build();
@@ -201,9 +260,15 @@ public class WalletServiceImpl implements WalletService {
     public WalletDashboardResponse getDashboard() {
         BigDecimal totalBalance = cineWalletRepository.sumBalances();
         BigDecimal totalRefunded = walletTransactionRepository.sumAmountByType(WalletTransactionType.REFUND_CREDIT);
-        BigDecimal totalWithdrawn = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.PAID);
-        BigDecimal pendingAmount = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.PENDING);
-        long pendingCount = withdrawalRequestRepository.countByStatus(WithdrawalStatus.PENDING);
+        BigDecimal totalWithdrawn = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.COMPLETED);
+        if (totalWithdrawn == null || totalWithdrawn.compareTo(BigDecimal.ZERO) == 0) {
+            totalWithdrawn = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.PAID);
+        }
+        BigDecimal pendingAmount = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.PROCESSING);
+        if (pendingAmount == null || pendingAmount.compareTo(BigDecimal.ZERO) == 0) {
+            pendingAmount = withdrawalRequestRepository.sumAmountByStatus(WithdrawalStatus.PENDING);
+        }
+        long pendingCount = withdrawalRequestRepository.countByStatus(WithdrawalStatus.PROCESSING);
         long totalWallets = cineWalletRepository.count();
 
         Pageable top10 = PageRequest.of(0, 10);
@@ -222,7 +287,6 @@ public class WalletServiceImpl implements WalletService {
                 recentTx
         );
     }
-
 
     @Override
     @Transactional
@@ -251,7 +315,8 @@ public class WalletServiceImpl implements WalletService {
                         .balance(BigDecimal.ZERO)
                         .build()));
 
-        BigDecimal newBalance = wallet.getBalance().add(request.amount());
+        BigDecimal balanceBefore = wallet.getBalance();
+        BigDecimal newBalance = balanceBefore.add(request.amount());
         wallet.setBalance(newBalance);
         cineWalletRepository.save(wallet);
 
@@ -264,7 +329,10 @@ public class WalletServiceImpl implements WalletService {
                 .bookingId(request.bookingId())
                 .type(WalletTransactionType.REFUND_CREDIT)
                 .amount(request.amount())
+                .balanceBefore(balanceBefore)
                 .balanceAfter(newBalance)
+                .referenceType("REFUND")
+                .referenceId(request.bookingId())
                 .referenceCode(refCode)
                 .description(desc)
                 .build();

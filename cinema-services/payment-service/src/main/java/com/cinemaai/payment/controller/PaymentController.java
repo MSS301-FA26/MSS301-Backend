@@ -3,11 +3,13 @@ package com.cinemaai.payment.controller;
 import com.cinemaai.payment.dto.response.ApiResponse;
 import com.cinemaai.payment.dto.response.PaymentResponse;
 import com.cinemaai.payment.dto.response.VNPayPaymentResponse;
+import com.cinemaai.payment.entity.PaymentTransaction;
 import com.cinemaai.payment.security.AuthenticatedUser;
 import com.cinemaai.payment.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/payments")
 @RequiredArgsConstructor
-@Tag(name = "Payment Core", description = "Quản lý giao dịch thanh toán và VNPay Gateway")
+@Tag(name = "Payment Core", description = "Quản lý giao dịch thanh toán, VNPay Gateway và CineWallet Payment")
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -40,6 +42,22 @@ public class PaymentController {
         }
         VNPayPaymentResponse response = paymentService.createVnpayPayment(userId, targetBookingId, targetFoodOrderId, clientIp);
         return ApiResponse.success(response, "Khởi tạo thanh toán VNPay thành công");
+    }
+
+    @Operation(summary = "Thanh toán bằng số dư ví CineWallet (Atomic Debit & Outbox Event)")
+    @PostMapping({"/wallet", "/wallet/pay"})
+    public ApiResponse<PaymentResponse> payWithCineWallet(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody(required = false) com.cinemaai.payment.dto.request.CreatePaymentRequest body,
+            @RequestParam(required = false) Long bookingId,
+            @RequestParam(required = false) Long foodOrderId
+    ) {
+        Long userId = user != null ? user.id() : 1L;
+        Long targetBookingId = body != null && body.bookingId() != null ? body.bookingId() : bookingId;
+        Long targetFoodOrderId = body != null && body.foodOrderId() != null ? body.foodOrderId() : foodOrderId;
+
+        PaymentResponse response = paymentService.processWalletPayment(userId, targetBookingId, targetFoodOrderId);
+        return ApiResponse.success(response, "Thanh toán bằng CineWallet thành công");
     }
 
     @Operation(summary = "Thanh toán giả lập phục vụ Test/Demo (Mock Payment)")
@@ -101,6 +119,18 @@ public class PaymentController {
     @GetMapping("/{paymentId}")
     public ApiResponse<PaymentResponse> getPaymentById(@PathVariable Long paymentId) {
         return ApiResponse.success(paymentService.getPaymentById(paymentId));
+    }
+
+    @Operation(summary = "Lấy danh sách các lượt thử giao dịch (Payment Transactions)")
+    @GetMapping("/{paymentId}/transactions")
+    public ApiResponse<List<PaymentTransaction>> getTransactions(@PathVariable Long paymentId) {
+        return ApiResponse.success(paymentService.getPaymentTransactions(paymentId), "Lấy danh sách transaction thành công");
+    }
+
+    @Operation(summary = "Đối soát trạng thái thanh toán nội bộ với cổng thanh toán (Reconciliation)")
+    @PostMapping("/{paymentId}/reconcile")
+    public ApiResponse<Map<String, Object>> reconcilePayment(@PathVariable Long paymentId) {
+        return ApiResponse.success(paymentService.reconcilePayment(paymentId), "Đối soát thanh toán hoàn tất");
     }
 
     @Operation(summary = "Tạo URL thanh toán VNPay cho đơn bắp nước")

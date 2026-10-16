@@ -3,10 +3,12 @@ package com.cinemaai.payment.controller;
 import com.cinemaai.payment.dto.request.WithdrawalCreateRequest;
 import com.cinemaai.payment.dto.response.ApiResponse;
 import com.cinemaai.payment.dto.response.PageResponse;
+import com.cinemaai.payment.dto.response.RefundResponse;
 import com.cinemaai.payment.dto.response.WalletResponse;
 import com.cinemaai.payment.dto.response.WalletTransactionResponse;
 import com.cinemaai.payment.dto.response.WithdrawalResponse;
 import com.cinemaai.payment.security.AuthenticatedUser;
+import com.cinemaai.payment.service.RefundService;
 import com.cinemaai.payment.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,10 +20,11 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping({"/api/v1/wallet", "/api/v1/wallets"})
 @RequiredArgsConstructor
-@Tag(name = "User - CineWallet", description = "Số dư ví, lịch sử giao dịch và yêu cầu rút tiền của khách hàng")
+@Tag(name = "User - CineWallet", description = "Số dư ví, lịch sử giao dịch, hoàn tiền và yêu cầu rút tiền của khách hàng")
 public class WalletController {
 
     private final WalletService walletService;
+    private final RefundService refundService;
 
     @GetMapping
     @Operation(summary = "Lấy thông tin và số dư ví của người dùng")
@@ -39,6 +42,17 @@ public class WalletController {
     ) {
         Long userId = user != null ? user.id() : 1L;
         return ApiResponse.success(walletService.getTransactions(userId, page, size), "Lấy lịch sử giao dịch ví thành công");
+    }
+
+    @GetMapping("/refunds")
+    @Operation(summary = "Xem lịch sử các khoản hoàn tiền vào ví của người dùng")
+    public ApiResponse<PageResponse<RefundResponse>> getMyRefunds(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Long userId = user != null ? user.id() : 1L;
+        return ApiResponse.success(refundService.getMyRefunds(userId, page, size), "Lấy lịch sử hoàn tiền thành công");
     }
 
     @PostMapping("/withdrawals")

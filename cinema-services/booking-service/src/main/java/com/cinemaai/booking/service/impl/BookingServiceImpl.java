@@ -333,6 +333,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (isCheckoutFinal) {
             booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            booking.setHoldExpiresAt(now.plusMinutes(15));
         }
 
         populateTicketsAndFoods(booking, quote);

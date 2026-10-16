@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+@Deprecated(since = "Phase-2", forRemoval = true)
 @Getter
 @Entity
 @Table(name = "ticket_combos")

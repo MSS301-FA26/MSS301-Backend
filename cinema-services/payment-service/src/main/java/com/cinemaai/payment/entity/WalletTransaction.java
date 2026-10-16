@@ -35,8 +35,17 @@ public class WalletTransaction extends BaseEntity {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
+    @Column(name = "balance_before", precision = 12, scale = 2)
+    private BigDecimal balanceBefore;
+
     @Column(name = "balance_after", nullable = false, precision = 12, scale = 2)
     private BigDecimal balanceAfter;
+
+    @Column(name = "reference_type", length = 50)
+    private String referenceType;
+
+    @Column(name = "reference_id")
+    private Long referenceId;
 
     @Column(name = "reference_code", length = 100)
     private String referenceCode;

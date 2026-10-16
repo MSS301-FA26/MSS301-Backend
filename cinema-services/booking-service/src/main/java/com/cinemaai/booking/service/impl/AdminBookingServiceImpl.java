@@ -16,6 +16,7 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.ConflictException;
+import com.cinemaai.booking.exception.ForbiddenException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
 import com.cinemaai.booking.repository.BookingRepository;
@@ -223,6 +224,23 @@ public class AdminBookingServiceImpl implements AdminBookingService {
         BigDecimal totalRefundAmount = BigDecimal.ZERO;
         String finalReason = reason != null && !reason.isBlank() ? reason : "Huy suat chieu do su co ky thuat";
         String role = actorRole != null ? actorRole : "ADMIN";
+
+        // Section VIII: Cinema Manager Authorization - verify manager owns the cinema
+        if ("MANAGER".equalsIgnoreCase(role) && actorUserId != null && !bookings.isEmpty()) {
+            Long cinemaId = bookings.get(0).getCinemaId();
+            if (cinemaId != null) {
+                try {
+                    UserAccessScopeDto userScope = identityClient.getUserAccessScope(actorUserId);
+                    if (userScope != null && userScope.cinemaId() != null && !userScope.cinemaId().equals(cinemaId)) {
+                        throw new ForbiddenException("Cinema Manager không có quyền hủy suất chiếu hoặc hoàn tiền của rạp khác (Rạp của suất: #" + cinemaId + ", Rạp của Manager: #" + userScope.cinemaId() + ")");
+                    }
+                } catch (ForbiddenException fe) {
+                    throw fe;
+                } catch (Exception ex) {
+                    log.warn("Could not verify manager scope with Identity Service: {}", ex.getMessage());
+                }
+            }
+        }
 
         for (Booking booking : bookings) {
             if (booking.getStatus() == BookingStatus.PAID || booking.getStatus() == BookingStatus.USED) {

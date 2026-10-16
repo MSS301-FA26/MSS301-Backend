@@ -8,9 +8,11 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.event.PaymentSucceededEvent;
 import com.cinemaai.booking.repository.BookingRepository;
+import com.cinemaai.booking.repository.BookingSeatRepository;
 import com.cinemaai.booking.repository.FoodOrderRepository;
 import com.cinemaai.booking.repository.ProcessedEventRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentEventListener {
 
     private final BookingRepository bookingRepository;
+    private final BookingSeatRepository bookingSeatRepository;
     private final FoodOrderRepository foodOrderRepository;
     private final ProcessedEventRepository processedEventRepository;
     private final com.cinemaai.booking.client.PaymentClient paymentClient;
@@ -55,7 +58,47 @@ public class PaymentEventListener {
                 return;
             }
 
-            // 2. Transition Booking status to PAID
+            // 2. Safely handle edge case: Payment arrived after seat hold expired
+            if (booking.getStatus() == BookingStatus.EXPIRED || booking.getStatus() == BookingStatus.CANCELLED) {
+                if (booking.getSeats() != null && !booking.getSeats().isEmpty()) {
+                    List<Long> seatIds = booking.getSeats().stream().map(BookingSeat::getSeatId).toList();
+                    List<Long> conflicted = bookingSeatRepository.findConflictedSeatIds(
+                            booking.getShowtimeId(),
+                            seatIds,
+                            LocalDateTime.now()
+                    );
+                    if (conflicted != null && !conflicted.isEmpty()) {
+                        log.error("CRITICAL: Booking {} payment succeeded but seats {} were already taken by another active booking! Triggering automatic refund.",
+                                booking.getBookingCode(), conflicted);
+                        booking.setStatus(BookingStatus.REFUNDED);
+                        booking.setRefundReason("Ghế đã bị đặt bởi khách hàng khác do thanh toán sau khi hết hạn giữ chỗ. Hoàn tiền tự động vào ví CineWallet.");
+                        bookingRepository.save(booking);
+
+                        if (booking.getUserId() != null && booking.getTotalAmount() != null) {
+                            try {
+                                paymentClient.creditWalletForRefund(
+                                        booking.getUserId(),
+                                        booking.getTotalAmount(),
+                                        booking.getId(),
+                                        booking.getBookingCode(),
+                                        "Hoàn tiền tự động do quá hạn giữ chỗ và bị trùng ghế"
+                                );
+                            } catch (Exception ex) {
+                                log.error("Failed to auto-refund for expired booking {}: {}", booking.getBookingCode(), ex.getMessage());
+                            }
+                        }
+
+                        processedEventRepository.save(new ProcessedEvent(
+                                event.eventId(),
+                                "PaymentSucceededEvent",
+                                LocalDateTime.now()
+                        ));
+                        return;
+                    }
+                }
+            }
+
+            // 3. Transition Booking status to PAID
             booking.setStatus(BookingStatus.PAID);
             booking.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());
 

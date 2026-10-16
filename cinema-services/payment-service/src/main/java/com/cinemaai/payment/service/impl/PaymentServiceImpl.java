@@ -3,20 +3,28 @@ package com.cinemaai.payment.service.impl;
 import com.cinemaai.payment.client.BookingClient;
 import com.cinemaai.payment.dto.response.PaymentResponse;
 import com.cinemaai.payment.dto.response.VNPayPaymentResponse;
+import com.cinemaai.payment.entity.CineWallet;
 import com.cinemaai.payment.entity.OutboxEvent;
 import com.cinemaai.payment.entity.Payment;
+import com.cinemaai.payment.entity.PaymentTransaction;
+import com.cinemaai.payment.entity.WalletTransaction;
 import com.cinemaai.payment.enums.OutboxStatus;
 import com.cinemaai.payment.enums.PaymentProvider;
 import com.cinemaai.payment.enums.PaymentStatus;
+import com.cinemaai.payment.enums.PaymentTransactionStatus;
+import com.cinemaai.payment.enums.WalletTransactionType;
 import com.cinemaai.payment.event.PaymentSucceededEvent;
 import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.exception.NotFoundException;
 import com.cinemaai.payment.mapper.PaymentMapper;
+import com.cinemaai.payment.repository.CineWalletRepository;
 import com.cinemaai.payment.repository.OutboxEventRepository;
 import com.cinemaai.payment.repository.PaymentRepository;
+import com.cinemaai.payment.repository.PaymentTransactionRepository;
+import com.cinemaai.payment.repository.WalletTransactionRepository;
+import com.cinemaai.payment.service.LoyaltyService;
 import com.cinemaai.payment.service.OutboxPublisherWorker;
 import com.cinemaai.payment.service.PaymentService;
-import com.cinemaai.payment.service.LoyaltyService;
 import com.cinemaai.payment.util.VNPayUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -39,6 +47,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
+    private final CineWalletRepository cineWalletRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxPublisherWorker outboxPublisherWorker;
     private final BookingClient bookingClient;
@@ -79,6 +90,9 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusMinutes(15);
+
         // Create or reuse pending payment
         Payment payment = (bookingId != null)
                 ? paymentRepository.findByBookingId(bookingId).filter(p -> p.getStatus() == PaymentStatus.PENDING).orElse(null)
@@ -91,11 +105,15 @@ public class PaymentServiceImpl implements PaymentService {
                     .userId(targetUserId != null ? targetUserId : 1L)
                     .provider(PaymentProvider.VNPAY)
                     .amount(amount)
+                    .remainingRefundableAmount(amount)
                     .status(PaymentStatus.PENDING)
+                    .expiresAt(expiresAt)
                     .build();
             payment = paymentRepository.save(payment);
         } else {
             payment.setAmount(amount);
+            payment.setRemainingRefundableAmount(amount);
+            payment.setExpiresAt(expiresAt);
             payment = paymentRepository.save(payment);
         }
 
@@ -162,6 +180,18 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPaymentUrl(paymentUrl);
         paymentRepository.save(payment);
 
+        // Record PaymentTransaction attempt per Section III & VI
+        PaymentTransaction tx = PaymentTransaction.builder()
+                .paymentId(payment.getId())
+                .provider(PaymentProvider.VNPAY)
+                .providerReference(txnRef)
+                .amount(amount)
+                .currency("VND")
+                .status(PaymentTransactionStatus.PENDING)
+                .expiresAt(expiresAt)
+                .build();
+        paymentTransactionRepository.save(tx);
+
         return new VNPayPaymentResponse(payment.getId(), paymentUrl, txnRef, amount, "VNPAY");
     }
 
@@ -197,6 +227,7 @@ public class PaymentServiceImpl implements PaymentService {
                     .userId(targetUserId != null ? targetUserId : 1L)
                     .provider(PaymentProvider.MOCK)
                     .amount(amount)
+                    .remainingRefundableAmount(amount)
                     .build();
         }
 
@@ -205,7 +236,20 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPaidAt(now);
         payment.setTransactionId("MOCK-" + System.currentTimeMillis());
         payment.setPaymentAccountLabel("MOCK WALLET");
+        payment.setRemainingRefundableAmount(amount);
         payment = paymentRepository.save(payment);
+
+        // Record PaymentTransaction attempt
+        PaymentTransaction tx = PaymentTransaction.builder()
+                .paymentId(payment.getId())
+                .provider(PaymentProvider.MOCK)
+                .providerTransactionId(payment.getTransactionId())
+                .amount(amount)
+                .currency("VND")
+                .status(PaymentTransactionStatus.SUCCESS)
+                .completedAt(now)
+                .build();
+        paymentTransactionRepository.save(tx);
 
         // Transactional Outbox: Write PaymentSucceededEvent in the same DB transaction
         writeOutboxEvent(payment, now);
@@ -251,6 +295,146 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
+    public PaymentResponse processWalletPayment(Long userId, Long bookingId, Long foodOrderId) {
+        BigDecimal amount = BigDecimal.ZERO;
+        Long targetUserId = userId;
+        String orderCode = null;
+
+        if (bookingId != null) {
+            BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
+            amount = booking.totalAmount();
+            orderCode = booking.bookingCode();
+            if (targetUserId == null) {
+                targetUserId = booking.userId();
+            }
+        } else if (foodOrderId != null) {
+            BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            amount = foodOrder.totalAmount();
+            orderCode = foodOrder.foodOrderCode();
+            if (targetUserId == null) {
+                targetUserId = foodOrder.userId();
+            }
+        } else {
+            throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
+        }
+
+        // Concurrency Control: Lock CineWallet row for update to prevent double spending
+        CineWallet wallet = cineWalletRepository.findByUserIdForUpdate(targetUserId)
+                .orElseThrow(() -> new BadRequestException("INSUFFICIENT_WALLET_BALANCE: Người dùng chưa có ví CineWallet."));
+
+        if (wallet.getBalance().compareTo(amount) < 0) {
+            throw new BadRequestException("INSUFFICIENT_WALLET_BALANCE: Số dư CineWallet (" + wallet.getBalance()
+                    + " VND) không đủ để thanh toán số tiền " + amount + " VND.");
+        }
+
+        BigDecimal balanceBefore = wallet.getBalance();
+        BigDecimal balanceAfter = balanceBefore.subtract(amount);
+        wallet.setBalance(balanceAfter);
+        cineWalletRepository.save(wallet);
+
+        LocalDateTime now = LocalDateTime.now();
+        String refCode = "WALLET-PAY-" + (orderCode != null ? orderCode : System.currentTimeMillis());
+
+        // 1. Record WalletTransaction (PAYMENT_DEBIT)
+        WalletTransaction walletTx = WalletTransaction.builder()
+                .wallet(wallet)
+                .userId(targetUserId)
+                .bookingId(bookingId)
+                .type(WalletTransactionType.PAYMENT_DEBIT)
+                .amount(amount.negate())
+                .balanceBefore(balanceBefore)
+                .balanceAfter(balanceAfter)
+                .referenceType(bookingId != null ? "BOOKING" : "FOOD_ORDER")
+                .referenceId(bookingId != null ? bookingId : foodOrderId)
+                .referenceCode(refCode)
+                .description("Thanh toán " + (bookingId != null ? "đặt vé xem phim #" : "đơn bắp nước #") + orderCode)
+                .build();
+        walletTransactionRepository.save(walletTx);
+
+        // 2. Create / Update Payment entity
+        Payment payment = (bookingId != null)
+                ? paymentRepository.findByBookingId(bookingId).orElse(null)
+                : paymentRepository.findByFoodOrderId(foodOrderId).orElse(null);
+
+        if (payment == null) {
+            payment = Payment.builder()
+                    .bookingId(bookingId)
+                    .foodOrderId(foodOrderId)
+                    .userId(targetUserId)
+                    .provider(PaymentProvider.CINEWALLET)
+                    .amount(amount)
+                    .remainingRefundableAmount(amount)
+                    .build();
+        }
+
+        payment.setProvider(PaymentProvider.CINEWALLET);
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setPaidAt(now);
+        payment.setTransactionId("CW-" + System.currentTimeMillis());
+        payment.setPaymentAccountLabel("CineWallet (Số dư còn lại: " + balanceAfter + " VND)");
+        payment.setRemainingRefundableAmount(amount);
+        payment = paymentRepository.save(payment);
+
+        // 3. Record PaymentTransaction attempt
+        PaymentTransaction pt = PaymentTransaction.builder()
+                .paymentId(payment.getId())
+                .provider(PaymentProvider.CINEWALLET)
+                .providerTransactionId(payment.getTransactionId())
+                .providerReference(refCode)
+                .amount(amount)
+                .currency("VND")
+                .status(PaymentTransactionStatus.SUCCESS)
+                .completedAt(now)
+                .build();
+        paymentTransactionRepository.save(pt);
+
+        // 4. Transactional Outbox pattern: Write PaymentSucceededEvent into outbox_events in same DB tx
+        writeOutboxEvent(payment, now);
+        triggerOutboxPublishImmediately();
+
+        // 5. Inter-service direct notification fallback + loyalty
+        if (payment.getBookingId() != null) {
+            bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), now);
+            try {
+                var bInfo = bookingClient.getBooking(payment.getBookingId());
+                if (bInfo != null && bInfo.userId() != null) {
+                    loyaltyService.awardPointsForBooking(new com.cinemaai.payment.dto.request.AwardBookingPointsRequest(
+                            bInfo.userId(),
+                            bInfo.id(),
+                            bInfo.bookingCode(),
+                            payment.getAmount(),
+                            bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0,
+                            bInfo.cinemaId()
+                    ));
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to award loyalty points for booking {} in wallet payment: {}", payment.getBookingId(), ex.getMessage());
+            }
+        }
+        if (payment.getFoodOrderId() != null) {
+            bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), now);
+            try {
+                var foInfo = bookingClient.getFoodOrder(payment.getFoodOrderId());
+                if (foInfo != null && foInfo.userId() != null) {
+                    loyaltyService.awardPointsForFoodOrder(
+                            foInfo.userId(),
+                            foInfo.id(),
+                            foInfo.foodOrderCode(),
+                            payment.getAmount()
+                    );
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to award loyalty points for food order {} in wallet payment: {}", payment.getFoodOrderId(), ex.getMessage());
+            }
+        }
+
+        log.info("CineWallet payment successful for Payment id={}, Booking id={}, FoodOrder id={}, newBalance={}",
+                payment.getId(), bookingId, foodOrderId, balanceAfter);
+        return PaymentMapper.toResponse(payment);
+    }
+
+    @Override
+    @Transactional
     public Map<String, String> processVnpayIpn(Map<String, String> params) {
         Map<String, String> fields = new HashMap<>(params);
         String secureHash = fields.remove("vnp_SecureHash");
@@ -286,6 +470,16 @@ public class PaymentServiceImpl implements PaymentService {
             return Map.of("RspCode", "04", "Message", "Invalid Amount");
         }
 
+        // Find or create transaction attempt record
+        PaymentTransaction tx = paymentTransactionRepository.findByProviderReference(txnRef)
+                .orElseGet(() -> PaymentTransaction.builder()
+                        .paymentId(payment.getId())
+                        .provider(PaymentProvider.VNPAY)
+                        .providerReference(txnRef)
+                        .amount(payment.getAmount())
+                        .currency("VND")
+                        .build());
+
         // Idempotency check: Already processed
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
             if (payment.getBookingId() != null) {
@@ -306,7 +500,14 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setTransactionId(params.get("vnp_TransactionNo"));
             payment.setPaymentAccountLabel("VNPAY " + params.getOrDefault("vnp_BankCode", ""));
             payment.setCallbackPayload(params.toString());
+            payment.setRemainingRefundableAmount(payment.getAmount());
             paymentRepository.save(payment);
+
+            // Update PaymentTransaction
+            tx.setStatus(PaymentTransactionStatus.SUCCESS);
+            tx.setProviderTransactionId(params.get("vnp_TransactionNo"));
+            tx.setCompletedAt(now);
+            paymentTransactionRepository.save(tx);
 
             // Transactional Outbox pattern: Record event in the same DB transaction
             writeOutboxEvent(payment, now);
@@ -322,7 +523,8 @@ public class PaymentServiceImpl implements PaymentService {
                                 bInfo.id(),
                                 bInfo.bookingCode(),
                                 payment.getAmount(),
-                                bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0
+                                bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0,
+                                bInfo.cinemaId()
                         ));
                     }
                 } catch (Exception ex) {
@@ -352,6 +554,13 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setStatus(PaymentStatus.FAILED);
             payment.setCallbackPayload(params.toString());
             paymentRepository.save(payment);
+
+            tx.setStatus(PaymentTransactionStatus.FAILED);
+            tx.setFailureCode(responseCode);
+            tx.setFailureMessage("Giao dịch VNPay thất bại với mã phản hồi: " + responseCode);
+            tx.setCompletedAt(now);
+            paymentTransactionRepository.save(tx);
+
             log.warn("VNPay IPN Failed for Payment id={}, code={}", payment.getId(), responseCode);
             return Map.of("RspCode", "00", "Message", "Confirm Success");
         }
@@ -430,5 +639,35 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán id: " + paymentId));
         return PaymentMapper.toResponse(payment);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentTransaction> getPaymentTransactions(Long paymentId) {
+        return paymentTransactionRepository.findByPaymentIdOrderByCreatedAtDesc(paymentId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> reconcilePayment(Long paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch: " + paymentId));
+        List<PaymentTransaction> txs = paymentTransactionRepository.findByPaymentIdOrderByCreatedAtDesc(paymentId);
+
+        boolean hasSuccessTx = txs.stream().anyMatch(t -> t.getStatus() == PaymentTransactionStatus.SUCCESS);
+        boolean mismatch = (payment.getStatus() == PaymentStatus.SUCCESS && !hasSuccessTx)
+                || (payment.getStatus() != PaymentStatus.SUCCESS && hasSuccessTx);
+
+        Map<String, Object> report = new HashMap<>();
+        report.put("paymentId", payment.getId());
+        report.put("paymentStatus", payment.getStatus());
+        report.put("provider", payment.getProvider());
+        report.put("amount", payment.getAmount());
+        report.put("remainingRefundable", payment.resolveRemainingRefundable());
+        report.put("transactionsCount", txs.size());
+        report.put("hasSuccessfulTransaction", hasSuccessTx);
+        report.put("mismatchDetected", mismatch);
+        report.put("transactions", txs);
+        return report;
     }
 }

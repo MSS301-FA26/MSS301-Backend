@@ -61,7 +61,8 @@ class BookingSeatConcurrencyIntegrationTest {
         CountDownLatch transactionsReady = new CountDownLatch(2);
         CountDownLatch startInserts = new CountDownLatch(1);
 
-        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
             List<Future<Boolean>> attempts = List.of(
                     executor.submit(createConcurrentHold(transactionsReady, startInserts)),
                     executor.submit(createConcurrentHold(transactionsReady, startInserts))
@@ -78,6 +79,8 @@ class BookingSeatConcurrencyIntegrationTest {
             }
 
             assertEquals(1, successfulHolds);
+        } finally {
+            executor.shutdown();
         }
 
         try (Connection connection = openConnection();
