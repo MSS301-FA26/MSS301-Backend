@@ -67,7 +67,12 @@ public class SecurityConfig {
                     String path = request.getRequestURI();
 
                     // Whitelisted endpoints
-                    if ("OPTIONS".equalsIgnoreCase(request.getMethod()) || path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/error")) {
+                    if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                            || path.startsWith("/actuator/health")
+                            || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/swagger-ui")
+                            || path.equals("/swagger-ui.html")
+                            || path.startsWith("/error")) {
                         chain.doFilter(request, response);
                         return;
                     }

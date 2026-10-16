@@ -77,8 +77,11 @@ public class SecurityConfig {
                 try {
                     String path = request.getRequestURI();
 
-                    // Whitelisted endpoints: Docker/K8s healthcheck
-                    if (path.equals("/actuator/health") || path.startsWith("/actuator/health/")) {
+                    // Whitelisted endpoints: Docker/K8s healthcheck, Swagger / OpenAPI
+                    if (path.equals("/actuator/health") || path.startsWith("/actuator/health/")
+                            || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/swagger-ui")
+                            || path.equals("/swagger-ui.html")) {
                         filterChain.doFilter(request, response);
                         return;
                     }
