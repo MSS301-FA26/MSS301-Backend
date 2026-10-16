@@ -6,42 +6,28 @@ import com.cinemaai.catalog.entity.FoodCategory;
 import com.cinemaai.catalog.entity.FoodCombo;
 import com.cinemaai.catalog.entity.FoodItem;
 import com.cinemaai.catalog.repository.FoodCategoryRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.springframework.beans.factory.annotation.Autowired;
 
-@Component
-@RequiredArgsConstructor
-public class FoodMapper {
+@Mapper(componentModel = "spring")
+public abstract class FoodMapper {
 
-    private final FoodCategoryRepository foodCategoryRepository;
+    @Autowired
+    protected FoodCategoryRepository foodCategoryRepository;
 
-    public FoodItemResponse toFoodItemResponse(FoodItem foodItem) {
-        String categoryName = null;
-        if (foodItem.getCategoryId() != null) {
-            categoryName = foodCategoryRepository.findById(foodItem.getCategoryId())
-                    .map(FoodCategory::getName)
-                    .orElse(null);
+    @Mapping(target = "categoryName", source = "categoryId", qualifiedByName = "lookupCategoryName")
+    public abstract FoodItemResponse toFoodItemResponse(FoodItem foodItem);
+
+    public abstract FoodComboResponse toFoodComboResponse(FoodCombo foodCombo);
+
+    @org.mapstruct.Named("lookupCategoryName")
+    protected String lookupCategoryName(Long categoryId) {
+        if (categoryId == null) {
+            return null;
         }
-        return new FoodItemResponse(
-                foodItem.getId(),
-                foodItem.getName(),
-                foodItem.getDescription(),
-                foodItem.getPrice(),
-                foodItem.getImageUrl(),
-                foodItem.getStatus(),
-                foodItem.getCategoryId(),
-                categoryName
-        );
-    }
-
-    public FoodComboResponse toFoodComboResponse(FoodCombo foodCombo) {
-        return new FoodComboResponse(
-                foodCombo.getId(),
-                foodCombo.getName(),
-                foodCombo.getDescription(),
-                foodCombo.getPrice(),
-                foodCombo.getImageUrl(),
-                foodCombo.getStatus()
-        );
+        return foodCategoryRepository.findById(categoryId)
+                .map(FoodCategory::getName)
+                .orElse(null);
     }
 }

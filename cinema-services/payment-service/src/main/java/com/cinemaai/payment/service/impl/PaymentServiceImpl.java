@@ -44,6 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final BookingClient bookingClient;
     private final LoyaltyService loyaltyService;
     private final ObjectMapper objectMapper;
+    private final PaymentMapper paymentMapper;
 
     @Value("${vnpay.tmn-code}")
     private String vnpTmnCode;
@@ -246,7 +247,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
 
-        return PaymentMapper.toResponse(payment);
+        return paymentMapper.toResponse(payment);
     }
 
     @Override
@@ -413,7 +414,7 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse getPaymentByBooking(Long bookingId) {
         Payment payment = paymentRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán cho booking: " + bookingId));
-        return PaymentMapper.toResponse(payment);
+        return paymentMapper.toResponse(payment);
     }
 
     @Override
@@ -421,7 +422,7 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse getPaymentByFoodOrder(Long foodOrderId) {
         Payment payment = paymentRepository.findByFoodOrderId(foodOrderId)
                 .orElseThrow(() -> new NotFoundException("Khong tim thay giao dich thanh toan cho don bap nuoc: " + foodOrderId));
-        return PaymentMapper.toResponse(payment);
+        return paymentMapper.toResponse(payment);
     }
 
     @Override
@@ -429,6 +430,6 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponse getPaymentById(Long paymentId) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán id: " + paymentId));
-        return PaymentMapper.toResponse(payment);
+        return paymentMapper.toResponse(payment);
     }
 }

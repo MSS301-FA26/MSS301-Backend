@@ -16,6 +16,7 @@ import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.FoodOrderRepository;
 import com.cinemaai.booking.service.FoodOrderService;
+import com.cinemaai.booking.mapper.FoodOrderMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -35,6 +36,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     private final BookingRepository bookingRepository;
     private final CatalogClient catalogClient;
     private final PaymentClient paymentClient;
+    private final FoodOrderMapper foodOrderMapper;
 
     private static final Map<Long, String> FALLBACK_ITEM_NAMES = Map.ofEntries(
             Map.entry(1L, "Bắp Rang Bơ Truyền Thống 64oz"),
@@ -328,25 +330,9 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                     .orElse(null);
         }
 
-        List<FoodOrderItemResponse> items = new ArrayList<>();
-        if (order.getItems() != null) {
-            for (FoodOrderItem item : order.getItems()) {
-                Long foodItemId = item.isCombo() ? null : item.getProductId();
-                Long foodComboId = item.isCombo() ? item.getProductId() : null;
-                items.add(new FoodOrderItemResponse(
-                        item.getId(),
-                        item.getProductId(),
-                        foodItemId,
-                        foodComboId,
-                        item.isCombo(),
-                        item.getProductNameSnapshot(),
-                        item.getProductNameSnapshot(),
-                        item.getQuantity(),
-                        item.getUnitPrice(),
-                        item.getLineTotal()
-                ));
-            }
-        }
+        List<FoodOrderItemResponse> items = order.getItems() != null
+                ? foodOrderMapper.toItemResponseList(order.getItems())
+                : Collections.emptyList();
 
         LocalDateTime expiresAt = getExpiresAt(order);
 
@@ -354,24 +340,6 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 ? ("FOOD:" + order.getFoodOrderCode() + ":" + order.getId())
                 : null;
 
-        return new FoodOrderResponse(
-                order.getId(),
-                order.getFoodOrderCode(),
-                order.getFoodOrderCode(),
-                order.getBookingId(),
-                bookingCode,
-                order.getStatus(),
-                order.getSubtotal(),
-                order.getTotalAmount(),
-                order.getPaidAt(),
-                expiresAt,
-                order.getCancelledAt(),
-                order.getCreatedAt(),
-                qrCode,
-                order.getCinemaId(),
-                order.getCinemaName() != null ? order.getCinemaName() : "CinemaAI Dragon City",
-                order.getCinemaAddress() != null ? order.getCinemaAddress() : "Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà, Đà Nẵng",
-                items
-        );
+        return foodOrderMapper.toResponse(order, bookingCode, expiresAt, qrCode, items);
     }
 }

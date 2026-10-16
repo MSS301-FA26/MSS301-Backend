@@ -21,6 +21,7 @@ import com.cinemaai.payment.service.LoyaltyService;
 import com.cinemaai.payment.entity.LoyaltyConfiguration;
 import com.cinemaai.payment.repository.LoyaltyConfigurationRepository;
 import com.cinemaai.payment.client.IdentityClient;
+import com.cinemaai.payment.mapper.LoyaltyMapper;
 
 import com.cinemaai.payment.exception.ForbiddenException;
 import com.cinemaai.payment.security.AuthenticatedUser;
@@ -53,6 +54,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     private final LoyaltyPointTransactionRepository loyaltyPointTransactionRepository;
     private final LoyaltyConfigurationRepository loyaltyConfigurationRepository;
     private final IdentityClient identityClient;
+    private final LoyaltyMapper loyaltyMapper;
 
     private final AtomicReference<BigDecimal> earningRatePercent = new AtomicReference<>(BigDecimal.valueOf(1.0));
     private final AtomicReference<Integer> redemptionPoints = new AtomicReference<>(1000);
@@ -82,50 +84,11 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                         .status(LoyaltyStatus.ACTIVE)
                         .build()));
 
-        return LoyaltyResponse.builder()
-                .userId(point.getUserId())
-                .userEmail(point.getUserEmail())
-                .points(point.getPoints())
-                .totalPoints(point.getTotalPoints())
-                .status(point.getStatus())
-                .build();
+        return loyaltyMapper.toResponse(point, point.getUserEmail());
     }
 
     private LoyaltyConfigurationResponse mapToResponse(LoyaltyConfiguration cfg, Long requestedCinemaId) {
-        if (cfg == null) {
-            return new LoyaltyConfigurationResponse(
-                    null,
-                    requestedCinemaId,
-                    null,
-                    BigDecimal.valueOf(1.00),
-                    BigDecimal.valueOf(100.00),
-                    1000,
-                    BigDecimal.valueOf(1000.00),
-                    BigDecimal.valueOf(100.00),
-                    12,
-                    31,
-                    "23:59:59",
-                    lastResetAt.get() != null ? lastResetAt.get().toLocalDate() : null,
-                    lastResetAt.get(),
-                    lastResetSource.get()
-            );
-        }
-        return new LoyaltyConfigurationResponse(
-                cfg.getId(),
-                cfg.getCinemaId() != null ? cfg.getCinemaId() : requestedCinemaId,
-                cfg.getCinemaName(),
-                cfg.getEarningRatePercent(),
-                cfg.getRedemptionRatePercent(),
-                cfg.getRedemptionPoints(),
-                cfg.getRedemptionValueVnd(),
-                cfg.getMaxRedemptionPercent(),
-                cfg.getExpiryMonth(),
-                cfg.getExpiryDay(),
-                cfg.getExpiryTime(),
-                cfg.getLastExpiredAt() != null ? cfg.getLastExpiredAt().toLocalDate() : null,
-                cfg.getLastResetAt() != null ? cfg.getLastResetAt() : lastResetAt.get(),
-                cfg.getLastResetSource() != null ? cfg.getLastResetSource() : lastResetSource.get()
-        );
+        return loyaltyMapper.toConfigurationResponse(cfg, requestedCinemaId, lastResetAt.get(), lastResetSource.get());
     }
 
     @Override
@@ -331,22 +294,14 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                     String custPhone = user != null ? user.phone() : null;
                     String custEmail = user != null ? user.email() : null;
 
-                    return new LoyaltyTransactionResponse(
-                            tx.getId(),
-                            tx.getUserId(),
+                    return loyaltyMapper.toTransactionResponse(
+                            tx,
                             custName,
                             custPhone,
                             custEmail,
-                            tx.getBookingId(),
-                            tx.getBookingCode(),
                             null,
                             null,
-                            null,
-                            tx.getType().name(),
-                            tx.getPointsDelta(),
-                            tx.getBalanceAfter(),
-                            tx.getOccurredAt(),
-                            tx.getNote()
+                            null
                     );
                 })
                 .toList();
@@ -375,7 +330,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         long burned = Math.max(0, totalPointsIssued - currentPoints);
         double flowRatio = totalPointsIssued > 0 ? (double) burned / totalPointsIssued : 0.0;
 
-        return new LoyaltyReportResponse(
+        return loyaltyMapper.toReportResponse(
                 from != null ? from : LocalDateTime.now().minusMonths(1),
                 to != null ? to : LocalDateTime.now(),
                 activeMembers,

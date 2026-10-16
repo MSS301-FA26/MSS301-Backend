@@ -36,6 +36,7 @@ public class StaffCheckInController {
     private final BookingSeatRepository bookingSeatRepository;
     private final FoodOrderRepository foodOrderRepository;
     private final com.cinemaai.booking.security.CinemaSecurityService cinemaSecurityService;
+    private final BookingMapper bookingMapper;
 
     @Operation(summary = "Tra cứu thông tin vé để soát vé qua GET")
     @GetMapping("/lookup")
@@ -97,7 +98,7 @@ public class StaffCheckInController {
             log.warn("Non-fatal: Failed to ensure seat ticket codes for booking {}: {}", booking.getBookingCode(), ex.getMessage());
         }
 
-        return ApiResponse.success(BookingMapper.toResponse(booking), "Tìm thấy thông tin đặt vé");
+        return ApiResponse.success(bookingMapper.toResponse(booking), "Tìm thấy thông tin đặt vé");
     }
 
     @Operation(summary = "Xác nhận Check-in toàn bộ vé của booking vào rạp (Chống check-in lặp)")
@@ -151,7 +152,7 @@ public class StaffCheckInController {
         }
 
         bookingRepository.save(booking);
-        return ApiResponse.success(BookingMapper.toResponse(booking), "Xác nhận Check-in thành công");
+        return ApiResponse.success(bookingMapper.toResponse(booking), "Xác nhận Check-in thành công");
     }
 
     @Operation(summary = "Check-in theo từng ghế được chọn (Partial check-in)")
@@ -223,7 +224,7 @@ public class StaffCheckInController {
         }
 
         bookingRepository.save(booking);
-        return ApiResponse.success(BookingMapper.toResponse(booking), "Check-in ghế thành công");
+        return ApiResponse.success(bookingMapper.toResponse(booking), "Check-in ghế thành công");
     }
 
     @Operation(summary = "Lấy danh sách vé đã thanh toán / check-in gần đây")
@@ -237,7 +238,7 @@ public class StaffCheckInController {
         Pageable pageable = PageRequest.of(0, Math.min(Math.max(limit, 1), 50));
         List<Booking> list = bookingRepository.findRecentForCheckInByCinema(
                 List.of(BookingStatus.PAID, BookingStatus.USED), enforcedCinemaId, pageable);
-        List<BookingResponse> responses = list.stream().map(BookingMapper::toResponse).toList();
+        List<BookingResponse> responses = list.stream().map(bookingMapper::toResponse).toList();
         return ApiResponse.success(responses, "Lấy danh sách vé gần đây thành công");
     }
 
@@ -253,7 +254,7 @@ public class StaffCheckInController {
         if (enforcedCinemaId != null) {
             list = list.stream().filter(b -> enforcedCinemaId.equals(b.getCinemaId())).toList();
         }
-        List<BookingResponse> responses = list.stream().map(BookingMapper::toResponse).toList();
+        List<BookingResponse> responses = list.stream().map(bookingMapper::toResponse).toList();
         return ApiResponse.success(responses, "Lấy danh sách vé theo suất chiếu thành công");
     }
 

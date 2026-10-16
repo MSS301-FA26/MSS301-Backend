@@ -6,109 +6,49 @@ import com.cinemaai.catalog.dto.response.cinema.SeatResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeResponse;
 import com.cinemaai.catalog.dto.response.cinema.ShowtimeSeatResponse;
 import com.cinemaai.catalog.entity.Cinema;
-import com.cinemaai.catalog.entity.Seat;
+import com.cinemaai.catalog.entity.Movie;
 import com.cinemaai.catalog.entity.Room;
+import com.cinemaai.catalog.entity.Seat;
 import com.cinemaai.catalog.entity.Showtime;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
-@Component
-public class CinemaMapper {
+@Mapper(componentModel = "spring")
+public abstract class CinemaMapper {
 
-    public CinemaResponse toCinemaResponse(Cinema cinema) {
-        return new CinemaResponse(
-                cinema.getId(),
-                cinema.getName(),
-                cinema.getAddress(),
-                cinema.getCity(),
-                cinema.getPhone(),
-                cinema.getStatus(),
-                cinema.getCreatedAt(),
-                cinema.getUpdatedAt()
-        );
-    }
+    public abstract CinemaResponse toCinemaResponse(Cinema cinema);
 
-    public RoomResponse toRoomResponse(Room room) {
-        return new RoomResponse(
-                room.getId(),
-                room.getCinema().getId(),
-                room.getCinema().getName(),
-                room.getName(),
-                room.getRoomType(),
-                room.getRowCount(),
-                room.getColumnCount(),
-                room.getStatus(),
-                room.getStandardPrice(),
-                room.getVipPrice(),
-                room.getCouplePrice(),
-                room.getAislePosition(),
-                room.getCreatedAt(),
-                room.getUpdatedAt()
-        );
-    }
+    @Mapping(target = "cinemaId", source = "cinema.id")
+    @Mapping(target = "cinemaName", source = "cinema.name")
+    public abstract RoomResponse toRoomResponse(Room room);
 
-    public SeatResponse toSeatResponse(Seat seat) {
-        return new SeatResponse(
-                seat.getId(),
-                seat.getRoom().getId(),
-                seat.getSeatRow().getId(),
-                seat.getRowLabel(),
-                seat.getSeatRow().getDisplayOrder(),
-                seat.getSeatNumber(),
-                seat.getDisplayColumn(),
-                seat.getSeatRow().getStartColumn(),
-                seat.getSeatType(),
-                seat.getStatus()
-        );
-    }
+    @Mapping(target = "roomId", source = "room.id")
+    @Mapping(target = "seatRowId", source = "seatRow.id")
+    @Mapping(target = "displayOrder", source = "seatRow.displayOrder")
+    @Mapping(target = "startColumn", source = "seatRow.startColumn")
+    public abstract SeatResponse toSeatResponse(Seat seat);
 
     /** Maps a Showtime to ShowtimeResponse without genre info (backward compat). */
     public ShowtimeResponse toShowtimeResponse(Showtime showtime) {
         return toShowtimeResponse(showtime, Collections.emptyList());
     }
 
-    /** Maps a Showtime to ShowtimeResponse with pre-fetched genre names. */
-    public ShowtimeResponse toShowtimeResponse(Showtime showtime, List<String> genreNames) {
-        com.cinemaai.catalog.entity.Movie movie = showtime.getMovie();
-        String ageRating = movie.getAgeRating() != null ? movie.getAgeRating().name() : null;
-
-        return new ShowtimeResponse(
-                showtime.getId(),
-                movie.getId(),
-                movie.getTitle(),
-                ageRating,
-                genreNames != null ? genreNames : Collections.emptyList(),
-                showtime.getRoom().getCinema().getId(),
-                showtime.getRoom().getCinema().getName(),
-                showtime.getRoom().getId(),
-                showtime.getRoom().getName(),
-                showtime.getStartTime(),
-                showtime.getEndTime(),
-                showtime.getBasePrice(),
-                showtime.getVipPrice(),
-                showtime.getCouplePrice(),
-                showtime.getAdultStandardPrice(),
-                showtime.getChildStandardPrice(),
-                showtime.getStudentStandardPrice(),
-                showtime.getAdultVipPrice(),
-                showtime.getChildVipPrice(),
-                showtime.getStudentVipPrice(),
-                showtime.getAdultCouplePrice(),
-                showtime.getChildCouplePrice(),
-                showtime.getStudentCouplePrice(),
-                showtime.isWeekendSurcharge(),
-                showtime.isHolidaySurcharge(),
-                showtime.getLateNightSurchargeAmount(),
-                showtime.getSurchargeAmount(),
-                showtime.getStatus(),
-                showtime.getCancellationReason(),
-                showtime.getCancelledAt(),
-                showtime.getCreatedAt(),
-                showtime.getUpdatedAt()
-        );
-    }
+    @Mapping(target = "id", source = "showtime.id")
+    @Mapping(target = "movieId", source = "showtime.movie.id")
+    @Mapping(target = "movieTitle", source = "showtime.movie.title")
+    @Mapping(target = "movieAgeRating", expression = "java(showtime.getMovie() != null && showtime.getMovie().getAgeRating() != null ? showtime.getMovie().getAgeRating().name() : null)")
+    @Mapping(target = "movieGenreNames", expression = "java(genreNames != null ? genreNames : java.util.Collections.emptyList())")
+    @Mapping(target = "cinemaId", source = "showtime.room.cinema.id")
+    @Mapping(target = "cinemaName", source = "showtime.room.cinema.name")
+    @Mapping(target = "roomId", source = "showtime.room.id")
+    @Mapping(target = "roomName", source = "showtime.room.name")
+    @Mapping(target = "status", source = "showtime.status")
+    @Mapping(target = "createdAt", source = "showtime.createdAt")
+    @Mapping(target = "updatedAt", source = "showtime.updatedAt")
+    public abstract ShowtimeResponse toShowtimeResponse(Showtime showtime, List<String> genreNames);
 
     public ShowtimeSeatResponse toShowtimeSeatResponse(Seat seat, String runtimeStatus, LocalDateTime holdExpiresAt, Showtime showtime) {
         return new ShowtimeSeatResponse(

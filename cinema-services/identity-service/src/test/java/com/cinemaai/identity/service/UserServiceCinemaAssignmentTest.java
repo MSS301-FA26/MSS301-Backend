@@ -48,6 +48,8 @@ class UserServiceCinemaAssignmentTest {
     private AuditLogService auditLogService;
     @Mock
     private CatalogClient catalogClient;
+    @Mock
+    private com.cinemaai.identity.service.MailService mailService;
 
     private UserServiceImpl userService;
 
@@ -61,7 +63,8 @@ class UserServiceCinemaAssignmentTest {
                 userMapper,
                 passwordEncoder,
                 auditLogService,
-                catalogClient
+                catalogClient,
+                mailService
         );
     }
 
@@ -75,7 +78,7 @@ class UserServiceCinemaAssignmentTest {
                 "Password@123",
                 "Manager Cinema A",
                 "0987654321",
-                null,
+                1995,
                 cinemaAId
         );
 
@@ -107,7 +110,7 @@ class UserServiceCinemaAssignmentTest {
                 "Password@123",
                 "Staff Cinema A",
                 "0123456789",
-                null,
+                1995,
                 maliciousCinemaBId // Attacker sends cinema B
         );
 
@@ -137,7 +140,7 @@ class UserServiceCinemaAssignmentTest {
                 "Password@123",
                 "Staff",
                 "0123456789",
-                null,
+                1995,
                 101L
         );
 
@@ -207,7 +210,7 @@ class UserServiceCinemaAssignmentTest {
                 "Password@123",
                 "Manager Nonexistent Cinema",
                 "0987654321",
-                null,
+                1995,
                 nonExistentCinemaId
         );
 
@@ -228,7 +231,7 @@ class UserServiceCinemaAssignmentTest {
                 "Password@123",
                 "Manager Inactive Cinema",
                 "0987654321",
-                null,
+                1995,
                 inactiveCinemaId
         );
 

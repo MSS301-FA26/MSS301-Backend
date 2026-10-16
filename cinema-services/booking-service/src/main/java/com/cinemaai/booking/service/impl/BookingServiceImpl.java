@@ -79,6 +79,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingFoodItemRepository bookingFoodItemRepository;
     private final CatalogClient catalogClient;
     private final com.cinemaai.booking.client.PaymentClient paymentClient;
+    private final BookingMapper bookingMapper;
 
     @Override
     @Transactional
@@ -213,7 +214,7 @@ public class BookingServiceImpl implements BookingService {
             throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
         }
 
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     private void expireStaleHolds(Long showtimeId, Collection<Long> seatIds, LocalDateTime now) {
@@ -338,7 +339,7 @@ public class BookingServiceImpl implements BookingService {
         populateTicketsAndFoods(booking, quote);
 
         bookingRepository.save(booking);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     
@@ -436,14 +437,14 @@ public class BookingServiceImpl implements BookingService {
             seat.setStatus(BookingSeatStatus.RELEASED);
         }
         bookingRepository.save(booking);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<BookingResponse> getMyBookings(Long userId, Pageable pageable) {
         return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                .map(BookingMapper::toResponse);
+                .map(bookingMapper::toResponse);
     }
 
     @Override
@@ -451,7 +452,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingById(Long userId, Long bookingId) {
         Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -459,7 +460,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingByIdInternal(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -467,7 +468,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingByCode(String bookingCode) {
         Booking booking = bookingRepository.findByBookingCode(bookingCode)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + bookingCode));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -508,7 +509,7 @@ public class BookingServiceImpl implements BookingService {
             bookingPage = bookingRepository.findAllByOrderByCreatedAtDesc(pageRequest);
         }
 
-        Page<BookingResponse> dtoPage = bookingPage.map(BookingMapper::toResponse);
+        Page<BookingResponse> dtoPage = bookingPage.map(bookingMapper::toResponse);
         return com.cinemaai.booking.dto.response.PageResponse.from(dtoPage);
     }
 
@@ -517,7 +518,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getAdminBooking(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -533,7 +534,7 @@ public class BookingServiceImpl implements BookingService {
         }
         Booking saved = bookingRepository.save(booking);
         log.info("Admin cancelled booking #{} reason: {}", bookingId, reason);
-        return BookingMapper.toResponse(saved);
+        return bookingMapper.toResponse(saved);
     }
 
     @Override
@@ -617,6 +618,6 @@ public class BookingServiceImpl implements BookingService {
             );
         }
 
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 }
