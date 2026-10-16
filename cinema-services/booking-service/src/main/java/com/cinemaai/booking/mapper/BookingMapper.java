@@ -11,7 +11,7 @@ import com.cinemaai.booking.entity.BookingTicket;
 import java.util.List;
 
 public class BookingMapper {
-
+  // dùng thư viện mapper
     public static BookingResponse toResponse(Booking booking) {
         if (booking == null) return null;
 

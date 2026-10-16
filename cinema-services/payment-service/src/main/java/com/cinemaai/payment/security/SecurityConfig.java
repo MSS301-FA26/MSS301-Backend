@@ -70,6 +70,8 @@ public class SecurityConfig {
                     if ("OPTIONS".equalsIgnoreCase(request.getMethod())
                             || path.startsWith("/actuator/health")
                             || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/swagger-ui")
+                            || path.equals("/swagger-ui.html")
                             || path.startsWith("/error")
                             || path.equals("/api/v1/payments/vnpay/return")
                             || path.equals("/api/v1/payments/vnpay/null")) {

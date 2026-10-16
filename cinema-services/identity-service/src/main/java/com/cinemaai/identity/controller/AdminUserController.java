@@ -1,6 +1,9 @@
 package com.cinemaai.identity.controller;
 
 import com.cinemaai.identity.dto.request.user.AdminManagerCreateRequest;
+import com.cinemaai.identity.dto.request.auth.EmailOtpRequest;
+import com.cinemaai.identity.dto.request.auth.EmailVerificationRequest;
+import java.util.Map;
 import com.cinemaai.identity.dto.request.user.AdminStaffCreateRequest;
 import com.cinemaai.identity.dto.request.user.AdminUserStatusUpdateRequest;
 import com.cinemaai.identity.dto.request.user.AssignCinemaRequest;
@@ -100,5 +103,20 @@ public class AdminUserController {
     ) {
         String actorEmail = actor != null ? actor.email() : null;
         return ApiResponse.success(userService.updateStatusForActor(userId, request, actorEmail), "User status updated successfully");
+    }
+    @PostMapping("/verify-email/request")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Gửi mã OTP xác thực email trước khi cấp tài khoản")
+    public ApiResponse<Map<String, Object>> requestProvisionOtp(@Valid @RequestBody EmailOtpRequest request) {
+        userService.sendProvisioningOtp(request.email());
+        return ApiResponse.success(Map.of("message", "Mã OTP xác thực đã được gửi tới " + request.email()), "OTP sent");
+    }
+
+    @PostMapping("/verify-email/confirm")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Xác nhận mã OTP email trước khi cấp tài khoản")
+    public ApiResponse<Map<String, Object>> confirmProvisionOtp(@Valid @RequestBody EmailVerificationRequest request) {
+        boolean verified = userService.verifyProvisioningOtp(request.email(), request.otp());
+        return ApiResponse.success(Map.of("verified", verified, "message", "Email đã được xác thực thành công"), "Email verified");
     }
 }

@@ -101,7 +101,7 @@ public final class MessageTranslator {
             entry("Invalid Google credential", "Thông tin đăng nhập Google không hợp lệ"),
             entry("Google email is not verified", "Email Google chưa được xác thực"),
             entry("Invalid refresh token", "Refresh token không hợp lệ"),
-            entry("Email is already verified", "Email đã được xác thực"),
+            entry("Email is already verified", "Email này đã tồn tại và đã được kích hoạt trong hệ thống. Vui lòng sử dụng email khác."),
             entry("Refresh token is expired or revoked", "Refresh token đã hết hạn hoặc đã bị thu hồi"),
 
             entry("Showtime is not open for booking", "Suất chiếu chưa mở đặt vé"),
