@@ -29,7 +29,8 @@ class SystemSettingServiceTest {
 
     @BeforeEach
     void setUp() {
-        systemSettingService = new SystemSettingServiceImpl(systemSettingRepository);
+        com.cinemaai.catalog.mapper.SystemSettingMapper mapper = org.mapstruct.factory.Mappers.getMapper(com.cinemaai.catalog.mapper.SystemSettingMapper.class);
+        systemSettingService = new SystemSettingServiceImpl(systemSettingRepository, mapper);
     }
 
     @Test

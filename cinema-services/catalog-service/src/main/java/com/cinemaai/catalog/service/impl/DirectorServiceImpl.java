@@ -6,6 +6,7 @@ import com.cinemaai.catalog.dto.response.movie.DirectorResponse;
 import com.cinemaai.catalog.entity.Director;
 import com.cinemaai.catalog.exception.ConflictException;
 import com.cinemaai.catalog.exception.NotFoundException;
+import com.cinemaai.catalog.mapper.MovieMapper;
 import com.cinemaai.catalog.repository.DirectorRepository;
 import com.cinemaai.catalog.repository.MovieDirectorRepository;
 import com.cinemaai.catalog.service.DirectorService;
@@ -25,6 +26,7 @@ public class DirectorServiceImpl implements DirectorService {
 
     private final DirectorRepository directorRepository;
     private final MovieDirectorRepository movieDirectorRepository;
+    private final MovieMapper movieMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -36,13 +38,13 @@ public class DirectorServiceImpl implements DirectorService {
         } else {
             p = directorRepository.findAll(pageable);
         }
-        return PageResponse.from(p.map(DirectorResponse::fromEntity));
+        return PageResponse.from(p.map(movieMapper::toDirectorResponse));
     }
 
     @Override
     @Transactional(readOnly = true)
     public DirectorResponse getDirector(Long id) {
-        return DirectorResponse.fromEntity(findById(id));
+        return movieMapper.toDirectorResponse(findById(id));
     }
 
     @Override
@@ -55,7 +57,7 @@ public class DirectorServiceImpl implements DirectorService {
         Director director = new Director(name, request.biography(), request.avatarUrl());
         Director saved = directorRepository.save(director);
         log.info("Created director id={} name='{}'", saved.getId(), saved.getName());
-        return DirectorResponse.fromEntity(saved);
+        return movieMapper.toDirectorResponse(saved);
     }
 
     @Override
@@ -71,7 +73,7 @@ public class DirectorServiceImpl implements DirectorService {
         director.setAvatarUrl(request.avatarUrl());
         Director updated = directorRepository.save(director);
         log.info("Updated director id={} name='{}'", updated.getId(), updated.getName());
-        return DirectorResponse.fromEntity(updated);
+        return movieMapper.toDirectorResponse(updated);
     }
 
     @Override

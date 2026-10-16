@@ -23,9 +23,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     CONSTRAINT chk_review_status CHECK (status IN ('PUBLISHED', 'FLAGGED', 'HIDDEN', 'REJECTED', 'VISIBLE', 'DELETED'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_reviews_user_movie
-ON reviews(user_id, movie_id)
-WHERE status NOT IN ('REJECTED', 'DELETED');
+CREATE INDEX IF NOT EXISTS idx_reviews_user_movie
+ON reviews(user_id, movie_id);
 
 CREATE INDEX IF NOT EXISTS idx_reviews_movie_status ON reviews(movie_id, status);
 CREATE INDEX IF NOT EXISTS idx_reviews_status_created ON reviews(status, created_at DESC);
