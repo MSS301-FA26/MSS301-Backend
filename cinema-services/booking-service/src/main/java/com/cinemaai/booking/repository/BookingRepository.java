@@ -48,7 +48,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByStatusInAndHoldExpiresAtBefore(
             Collection<BookingStatus> statuses, LocalDateTime time);
 
-    @org.springframework.data.jpa.repository.Query("""
+    @Query("""
             SELECT b FROM Booking b
             WHERE b.status IN :statuses
             ORDER BY

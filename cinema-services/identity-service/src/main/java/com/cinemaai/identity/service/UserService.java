@@ -50,4 +50,7 @@ public interface UserService {
     UserAccessScopeResponse getAccessScope(Long userId);
 
     UserProfileResponse toProfile(User user);
+    void sendProvisioningOtp(String email);
+
+    boolean verifyProvisioningOtp(String email, String otp);
 }

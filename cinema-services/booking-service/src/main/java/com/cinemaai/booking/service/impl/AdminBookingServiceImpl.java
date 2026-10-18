@@ -48,6 +48,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
     private final TicketAuditLogRepository ticketAuditLogRepository;
     private final CinemaSecurityService cinemaSecurityService;
     private final PaymentClient paymentClient;
+    private final BookingMapper bookingMapper;
     private final BookingSeatRepository bookingSeatRepository;
     private final IdentityClient identityClient;
 
@@ -57,10 +58,10 @@ public class AdminBookingServiceImpl implements AdminBookingService {
         Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(actor, requestedCinemaId, false);
         if (search == null || search.trim().isEmpty()) {
             return bookingRepository.findBookingsByCinemaAndStatus(enforcedCinemaId, status, pageable)
-                    .map(BookingMapper::toResponse);
+                    .map(bookingMapper::toResponse);
         }
         return bookingRepository.findBookingsForAdmin(enforcedCinemaId, status, search.trim(), pageable)
-                .map(BookingMapper::toResponse);
+                .map(bookingMapper::toResponse);
     }
 
     @Override
@@ -70,7 +71,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
 
         cinemaSecurityService.validateCinemaAccess(actor, booking.getCinemaId(), false);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -122,7 +123,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
         ticketAuditLogRepository.save(auditLog);
 
         log.info("Ticket #{} cancelled by user {} with role {}", booking.getBookingCode(), actor.id(), actorRole);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -192,7 +193,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
                 .findBookingsByCinemaAndStatus(enforcedCinemaId, BookingStatus.CANCELLED, PageRequest.of(0, 5))
                 .getContent()
                 .stream()
-                .map(BookingMapper::toResponse)
+                .map(bookingMapper::toResponse)
                 .toList();
 
         return new CinemaDashboardResponse(

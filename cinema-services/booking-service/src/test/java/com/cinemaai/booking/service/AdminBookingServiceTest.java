@@ -62,6 +62,7 @@ class AdminBookingServiceTest {
                 ticketAuditLogRepository,
                 cinemaSecurityService,
                 paymentClient,
+                org.mapstruct.factory.Mappers.getMapper(com.cinemaai.booking.mapper.BookingMapper.class),
                 bookingSeatRepository,
                 identityClient
         );

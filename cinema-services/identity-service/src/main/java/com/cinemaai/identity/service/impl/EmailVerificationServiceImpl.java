@@ -63,7 +63,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new NotFoundException("User not found: " + email));
         if (user.isEmailVerified()) {
-            throw new BadRequestException("Email is already verified");
+            throw new BadRequestException("Email này đã tồn tại và đã được kích hoạt trong hệ thống. Vui lòng sử dụng email khác hoặc đăng nhập.");
         }
         create(user);
     }
