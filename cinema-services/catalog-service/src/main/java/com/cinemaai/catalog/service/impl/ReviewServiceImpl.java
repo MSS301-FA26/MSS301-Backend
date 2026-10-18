@@ -18,6 +18,9 @@ import com.cinemaai.catalog.enums.ReviewReportStatus;
 import com.cinemaai.catalog.enums.ReviewStatus;
 import com.cinemaai.catalog.exception.BadRequestException;
 import com.cinemaai.catalog.exception.NotFoundException;
+import com.cinemaai.catalog.client.AuditClient;
+import com.cinemaai.catalog.client.BookingClient;
+import com.cinemaai.catalog.mapper.ReviewMapper;
 import com.cinemaai.catalog.repository.MovieRepository;
 import com.cinemaai.catalog.repository.ReviewReportRepository;
 import com.cinemaai.catalog.repository.ReviewRepository;
@@ -48,6 +51,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final MovieRepository movieRepository;
     private final BookingClient bookingClient;
     private final AuditClient auditClient;
+    private final ReviewMapper reviewMapper;
 
     private static final List<ReviewStatus> PUBLIC_STATUSES = List.of(ReviewStatus.PUBLISHED, ReviewStatus.VISIBLE);
     private static final int REPORT_FLAG_THRESHOLD = 3;
@@ -72,7 +76,7 @@ public class ReviewServiceImpl implements ReviewService {
                     null,
                     null,
                     null,
-                    ReviewResponse.from(rev)
+                    reviewMapper.toResponse(rev)
             );
         }
 
@@ -156,7 +160,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         Review saved = reviewRepository.save(review);
         log.info("User {} created verified review #{} for movie {}", email, saved.getId(), movieId);
-        return ReviewResponse.from(saved);
+        return reviewMapper.toResponse(saved);
     }
 
     @Override
@@ -184,7 +188,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         Review updated = reviewRepository.save(review);
         log.info("User {} updated review #{}", userId, reviewId);
-        return ReviewResponse.from(updated);
+        return reviewMapper.toResponse(updated);
     }
 
     @Override
@@ -196,7 +200,7 @@ public class ReviewServiceImpl implements ReviewService {
         Pageable pageable = PageRequest.of(boundedPage, boundedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<Review> reviewPage = reviewRepository.findByMovieIdAndStatusIn(movieId, PUBLIC_STATUSES, pageable);
-        return PageResponse.from(reviewPage.map(ReviewResponse::from));
+        return PageResponse.from(reviewPage.map(reviewMapper::toResponse));
     }
 
     @Override
@@ -264,7 +268,7 @@ public class ReviewServiceImpl implements ReviewService {
     public List<ReviewResponse> getMyReviews(Long userId) {
         return reviewRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .stream()
-                .map(ReviewResponse::from)
+                .map(reviewMapper::toResponse)
                 .toList();
     }
 
@@ -366,7 +370,7 @@ public class ReviewServiceImpl implements ReviewService {
         };
 
         Page<Review> result = reviewRepository.findAll(spec, pageable);
-        return PageResponse.from(result.map(ReviewResponse::from));
+        return PageResponse.from(result.map(reviewMapper::toResponse));
     }
 
     @Override
@@ -374,7 +378,7 @@ public class ReviewServiceImpl implements ReviewService {
     public ReviewResponse getAdminReviewById(Long reviewId) {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đánh giá #" + reviewId));
-        return ReviewResponse.from(review);
+        return reviewMapper.toResponse(review);
     }
 
     @Override
@@ -406,7 +410,7 @@ public class ReviewServiceImpl implements ReviewService {
         Review saved = reviewRepository.save(review);
         log.info("Admin {} hid review #{} - Reason: {}", adminEmail, reviewId, review.getModerationReason());
         auditClient.record("UPDATE", "REVIEW", reviewId, "Ẩn đánh giá #" + reviewId + " - Lý do: " + review.getModerationReason(), adminId);
-        return ReviewResponse.from(saved);
+        return reviewMapper.toResponse(saved);
     }
 
     @Override
@@ -422,7 +426,7 @@ public class ReviewServiceImpl implements ReviewService {
         Review saved = reviewRepository.save(review);
         log.info("Admin {} restored review #{}", adminEmail, reviewId);
         auditClient.record("UPDATE", "REVIEW", reviewId, "Khôi phục hiển thị đánh giá #" + reviewId, adminId);
-        return ReviewResponse.from(saved);
+        return reviewMapper.toResponse(saved);
     }
 
     @Override
@@ -439,7 +443,7 @@ public class ReviewServiceImpl implements ReviewService {
         Review saved = reviewRepository.save(review);
         log.info("Admin {} rejected review #{} - Reason: {}", adminEmail, reviewId, review.getModerationReason());
         auditClient.record("UPDATE", "REVIEW", reviewId, "Từ chối đánh giá #" + reviewId + " - Lý do: " + review.getModerationReason(), adminId);
-        return ReviewResponse.from(saved);
+        return reviewMapper.toResponse(saved);
     }
 
     @Override
@@ -447,7 +451,7 @@ public class ReviewServiceImpl implements ReviewService {
     public List<ReviewReportResponse> getReviewReports(Long reviewId) {
         return reviewReportRepository.findByReviewIdOrderByCreatedAtDesc(reviewId)
                 .stream()
-                .map(ReviewReportResponse::from)
+                .map(reviewMapper::toReportResponse)
                 .toList();
     }
 

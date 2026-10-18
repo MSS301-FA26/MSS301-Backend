@@ -9,6 +9,7 @@ import com.cinemaai.identity.repository.AuditLogRepository;
 import com.cinemaai.identity.repository.UserRepository;
 import com.cinemaai.identity.security.AuthenticatedUser;
 import com.cinemaai.identity.service.AuditLogService;
+import com.cinemaai.identity.mapper.AuditLogMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,7 @@ public class AuditLogServiceImpl implements AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
+    private final AuditLogMapper auditLogMapper;
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -72,6 +74,6 @@ public class AuditLogServiceImpl implements AuditLogService {
             logPage = auditLogRepository.findAllByOrderByCreatedAtDesc(pageRequest);
         }
 
-        return PageResponse.from(logPage.map(AuditLogResponse::from));
+        return PageResponse.from(logPage.map(auditLogMapper::toResponse));
     }
 }
