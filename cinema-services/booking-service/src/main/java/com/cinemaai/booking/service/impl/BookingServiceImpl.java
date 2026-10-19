@@ -456,10 +456,24 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public BookingResponse getBookingByIdInternal(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
+
+        LocalDateTime now = LocalDateTime.now();
+        if ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now)) {
+            booking.setStatus(BookingStatus.EXPIRED);
+            booking.setCancelledAt(now);
+            if (booking.getSeats() != null) {
+                for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
+                    seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.RELEASED);
+                }
+            }
+            bookingRepository.save(booking);
+        }
+
         return bookingMapper.toResponse(booking);
     }
 
@@ -586,6 +600,21 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse markPaidInternal(Long bookingId, String transactionId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Booking #" + bookingId + " not found"));
+
+        LocalDateTime now = LocalDateTime.now();
+        if (booking.getStatus() == BookingStatus.EXPIRED
+                || ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                    && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now))) {
+            booking.setStatus(BookingStatus.EXPIRED);
+            booking.setCancelledAt(now);
+            if (booking.getSeats() != null) {
+                for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
+                    seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.RELEASED);
+                }
+            }
+            bookingRepository.save(booking);
+            throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Đơn đặt vé đã bị hủy.");
+        }
 
         booking.setStatus(BookingStatus.PAID);
         if (booking.getPaidAt() == null) {

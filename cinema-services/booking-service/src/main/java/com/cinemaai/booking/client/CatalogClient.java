@@ -42,9 +42,24 @@ public class CatalogClient {
                 throw new BadRequestException("Catalog service returned empty quote");
             }
             return response.data();
+        } catch (org.springframework.web.client.RestClientResponseException ex) {
+            log.error("Failed to fetch quote from Catalog Service: status={}, body={}", ex.getStatusCode(), ex.getResponseBodyAsString());
+            String extractedMessage = null;
+            try {
+                com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(ex.getResponseBodyAsString());
+                if (root.hasNonNull("message")) {
+                    extractedMessage = root.get("message").asText();
+                }
+            } catch (Exception ignored) {}
+            if (extractedMessage != null && !extractedMessage.isBlank()) {
+                throw new BadRequestException(extractedMessage);
+            }
+            throw new BadRequestException("Suất chiếu không khả dụng hoặc chưa mở bán vé.");
+        } catch (BadRequestException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.error("Failed to fetch quote from Catalog Service: {}", ex.getMessage());
-            throw new BadRequestException("Không thể lấy giá có thẩm quyền từ Catalog Service: " + ex.getMessage());
+            throw new BadRequestException("Không thể kết nối đến hệ thống Catalog: " + ex.getMessage());
         }
     }
 

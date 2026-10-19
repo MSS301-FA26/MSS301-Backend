@@ -20,6 +20,8 @@ public interface ReviewService {
 
     ReviewResponse updateReview(Long userId, Long reviewId, UpdateReviewRequest request);
 
+    void deleteReview(Long userId, Long reviewId);
+
     PageResponse<ReviewResponse> getPublicReviewsByMovie(Long movieId, int page, int size);
 
     ReviewSummaryResponse getReviewSummaryByMovie(Long movieId);
@@ -45,11 +47,15 @@ public interface ReviewService {
 
     AdminReviewStatsResponse getAdminStats();
 
+
     ReviewResponse hideReview(Long reviewId, String reason, String adminEmail, Long adminId);
 
     ReviewResponse restoreReview(Long reviewId, String adminEmail, Long adminId);
 
     ReviewResponse rejectReview(Long reviewId, String reason, String adminEmail, Long adminId);
+
+    void deleteReviewByAdmin(Long reviewId, String adminEmail, Long adminId);
+
 
     List<ReviewReportResponse> getReviewReports(Long reviewId);
 }
