@@ -22,6 +22,7 @@ import com.cinemaai.catalog.client.AuditClient;
 import com.cinemaai.catalog.client.BookingClient;
 import com.cinemaai.catalog.mapper.ReviewMapper;
 import com.cinemaai.catalog.repository.MovieRepository;
+import com.cinemaai.catalog.repository.CinemaRepository;
 import com.cinemaai.catalog.repository.ReviewReportRepository;
 import com.cinemaai.catalog.repository.ReviewRepository;
 import com.cinemaai.catalog.service.ReviewService;
@@ -49,6 +50,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReviewReportRepository reviewReportRepository;
     private final MovieRepository movieRepository;
+    private final CinemaRepository cinemaRepository;
     private final BookingClient bookingClient;
     private final AuditClient auditClient;
     private final ReviewMapper reviewMapper;
@@ -63,7 +65,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         // Check if user already submitted a review that is not rejected or deleted
         Optional<Review> existing = reviewRepository.findActiveByUserAndMovie(
-                userId, movieId, List.of(ReviewStatus.REJECTED, ReviewStatus.DELETED));
+                userId, movieId, List.of(ReviewStatus.DELETED));
 
         if (existing.isPresent()) {
             Review rev = existing.get();
@@ -137,12 +139,30 @@ public class ReviewServiceImpl implements ReviewService {
         }
 
         // Rule 13: 1 Customer + 1 Movie = 1 Review
-        if (reviewRepository.findActiveByUserAndMovie(userId, movieId, List.of(ReviewStatus.REJECTED, ReviewStatus.DELETED)).isPresent()) {
+        if (reviewRepository.findActiveByUserAndMovie(userId, movieId, List.of(ReviewStatus.DELETED)).isPresent()) {
             throw new BadRequestException("Bạn đã đánh giá phim này rồi. Vui lòng chọn sửa đánh giá.");
         }
 
         String displayName = (fullName != null && !fullName.isBlank()) ? fullName.trim() :
                 (email != null && email.contains("@") ? email.substring(0, email.indexOf('@')) : "Khán giả");
+
+        String resolvedCinemaName = eligibility.cinemaName();
+        String resolvedCinemaAddress = null;
+        if (resolvedCinemaName != null && !resolvedCinemaName.isBlank()) {
+            java.util.Optional<com.cinemaai.catalog.entity.Cinema> cOpt = cinemaRepository.findByName(resolvedCinemaName.trim());
+            if (cOpt.isPresent()) {
+                com.cinemaai.catalog.entity.Cinema c = cOpt.get();
+                resolvedCinemaName = c.getName();
+                resolvedCinemaAddress = c.getAddress() + (c.getCity() != null && !c.getCity().isBlank() ? ", " + c.getCity() : "");
+            }
+        }
+        if (resolvedCinemaName == null || resolvedCinemaName.isBlank()) {
+            com.cinemaai.catalog.entity.Cinema firstCinema = cinemaRepository.findFirstByOrderByIdAsc().orElse(null);
+            if (firstCinema != null) {
+                resolvedCinemaName = firstCinema.getName();
+                resolvedCinemaAddress = firstCinema.getAddress() + (firstCinema.getCity() != null && !firstCinema.getCity().isBlank() ? ", " + firstCinema.getCity() : "");
+            }
+        }
 
         Review review = Review.builder()
                 .movie(movie)
@@ -161,6 +181,26 @@ public class ReviewServiceImpl implements ReviewService {
         Review saved = reviewRepository.save(review);
         log.info("User {} created verified review #{} for movie {}", email, saved.getId(), movieId);
         return reviewMapper.toResponse(saved);
+    }
+
+        @Override
+    @Transactional
+    public void deleteReview(Long userId, Long reviewId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đánh giá #" + reviewId));
+
+        if (!review.getUserId().equals(userId)) {
+            throw new BadRequestException("Bạn không có quyền xóa đánh giá này.");
+        }
+
+        // Rule 35: 24h delete window
+        if (review.getCreatedAt() != null && review.getCreatedAt().isBefore(LocalDateTime.now().minusHours(24))) {
+            throw new BadRequestException("Đánh giá chỉ có thể xóa trong vòng 24 giờ kể từ khi đăng.");
+        }
+
+        review.setStatus(ReviewStatus.DELETED);
+        reviewRepository.save(review);
+        log.info("User {} deleted review #{}", userId, reviewId);
     }
 
     @Override
@@ -386,13 +426,15 @@ public class ReviewServiceImpl implements ReviewService {
     public AdminReviewStatsResponse getAdminStats() {
         long totalReviews = reviewRepository.countByStatusIn(PUBLIC_STATUSES);
         double rawAvg = totalReviews > 0 ? reviewRepository.getOverallAverageRating(PUBLIC_STATUSES) : 0.0;
+        if (rawAvg > 5.0) {
+            rawAvg = rawAvg / 2.0;
+        }
         double avgRating = BigDecimal.valueOf(rawAvg).setScale(1, RoundingMode.HALF_UP).doubleValue();
         long flaggedCount = reviewRepository.countByStatus(ReviewStatus.FLAGGED);
-        long hiddenCount = reviewRepository.countByStatus(ReviewStatus.HIDDEN);
         long verifiedCount = reviewRepository.countByVerifiedBookingTrueAndStatusIn(PUBLIC_STATUSES);
         double verifiedRatio = totalReviews > 0 ?
                 BigDecimal.valueOf(((double) verifiedCount / totalReviews) * 100.0).setScale(1, RoundingMode.HALF_UP).doubleValue() : 0.0;
-
+        long hiddenCount = reviewRepository.countByStatus(ReviewStatus.HIDDEN);
         return new AdminReviewStatsResponse(totalReviews, avgRating, flaggedCount, hiddenCount, verifiedRatio);
     }
 
@@ -422,6 +464,8 @@ public class ReviewServiceImpl implements ReviewService {
         review.setStatus(ReviewStatus.PUBLISHED);
         review.setHiddenAt(null);
         review.setHiddenBy(null);
+        review.setModerationReason(null);
+        review.setReportCount(0);
 
         Review saved = reviewRepository.save(review);
         log.info("Admin {} restored review #{}", adminEmail, reviewId);
@@ -445,6 +489,20 @@ public class ReviewServiceImpl implements ReviewService {
         auditClient.record("UPDATE", "REVIEW", reviewId, "Từ chối đánh giá #" + reviewId + " - Lý do: " + review.getModerationReason(), adminId);
         return reviewMapper.toResponse(saved);
     }
+
+    @Override
+    @Transactional
+    public void deleteReviewByAdmin(Long reviewId, String adminEmail, Long adminId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đánh giá #" + reviewId));
+
+        review.setStatus(ReviewStatus.DELETED);
+        reviewRepository.save(review);
+        log.info("Admin/Manager {} deleted review #{}", adminEmail, reviewId);
+        auditClient.record("DELETE", "REVIEW", reviewId, "Xóa đánh giá #" + reviewId, adminId);
+    }
+
+
 
     @Override
     @Transactional(readOnly = true)

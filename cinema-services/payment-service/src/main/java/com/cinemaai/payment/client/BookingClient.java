@@ -25,6 +25,7 @@ public class BookingClient {
             Long userId,
             BigDecimal totalAmount,
             String status,
+            LocalDateTime holdExpiresAt,
             Integer loyaltyPointsRedeemed,
             Long cinemaId
     ) {}
