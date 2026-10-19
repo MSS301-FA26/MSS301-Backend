@@ -27,9 +27,9 @@ services:
       ai-db:
         condition: service_healthy
     ports:
-      - "8032:8000"
+      - "${SERVER_PORT:-8032}:${SERVER_PORT:-8032}"
     environment:
-      - SERVER_PORT=8000
+      - SERVER_PORT=${SERVER_PORT:-8032}
       - DB_HOST=ai-db
       - DB_PORT=5432
       - DB_NAME=recommendation_db

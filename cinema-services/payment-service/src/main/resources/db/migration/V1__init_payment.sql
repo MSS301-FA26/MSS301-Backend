@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- PAYMENT SERVICE SCHEMA (Flyway V1 Migration)
 -- Strict database isolation: Zero Foreign Keys across services.
--- Uses Logical IDs: booking_id, food_order_id, user_id.
+-- References across services: booking_id, food_order_id, user_id.
 -- Includes Transactional Outbox Pattern for resilient event-driven architecture.
 -- ==============================================================================
 
