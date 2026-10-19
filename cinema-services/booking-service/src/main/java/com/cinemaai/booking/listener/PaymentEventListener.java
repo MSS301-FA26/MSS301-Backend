@@ -55,6 +55,27 @@ public class PaymentEventListener {
                 return;
             }
 
+            LocalDateTime now = LocalDateTime.now();
+            if (booking.getStatus() == BookingStatus.EXPIRED
+                    || ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                        && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now))) {
+                log.warn("PaymentSucceededEvent received for expired booking #{}. Keeping EXPIRED status and releasing seats.", booking.getId());
+                booking.setStatus(BookingStatus.EXPIRED);
+                booking.setCancelledAt(now);
+                if (booking.getSeats() != null) {
+                    for (BookingSeat seat : booking.getSeats()) {
+                        seat.setStatus(BookingSeatStatus.RELEASED);
+                    }
+                }
+                bookingRepository.save(booking);
+                processedEventRepository.save(new ProcessedEvent(
+                        event.eventId(),
+                        "PaymentSucceededEvent",
+                        LocalDateTime.now()
+                ));
+                return;
+            }
+
             // 2. Transition Booking status to PAID
             booking.setStatus(BookingStatus.PAID);
             booking.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());

@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateReviewRequest(
         @Min(value = 1, message = "Điểm đánh giá tối thiểu là 1")
-        @Max(value = 10, message = "Điểm đánh giá tối đa là 10")
+        @Max(value = 5, message = "Điểm đánh giá tối đa là 5 sao")
         int rating,
 
         @NotBlank(message = "Nội dung nhận xét không được để trống")

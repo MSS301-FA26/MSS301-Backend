@@ -64,11 +64,16 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal amount = BigDecimal.ZERO;
         Long targetUserId = userId;
 
+        BookingClient.BookingInfo activeBooking = null;
         if (bookingId != null) {
-            BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
-            amount = booking.totalAmount();
+            activeBooking = bookingClient.getBooking(bookingId);
+            if ("EXPIRED".equalsIgnoreCase(activeBooking.status()) ||
+                (activeBooking.holdExpiresAt() != null && activeBooking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
+                throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Vui lòng chọn lại ghế.");
+            }
+            amount = activeBooking.totalAmount();
             if (targetUserId == null) {
-                targetUserId = booking.userId();
+                targetUserId = activeBooking.userId();
             }
         } else if (foodOrderId != null) {
             BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
@@ -132,9 +137,14 @@ public class PaymentServiceImpl implements PaymentService {
         String vnpCreateDate = formatter.format(cld.getTime());
         vnpParams.put("vnp_CreateDate", vnpCreateDate);
 
-        cld.add(Calendar.MINUTE, 15);
-        String vnpExpireDate = formatter.format(cld.getTime());
-        vnpParams.put("vnp_ExpireDate", vnpExpireDate);
+        if (activeBooking != null && activeBooking.holdExpiresAt() != null) {
+            java.time.format.DateTimeFormatter vnpFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+            vnpParams.put("vnp_ExpireDate", activeBooking.holdExpiresAt().format(vnpFmt));
+        } else {
+            cld.add(Calendar.MINUTE, 5);
+            String vnpExpireDate = formatter.format(cld.getTime());
+            vnpParams.put("vnp_ExpireDate", vnpExpireDate);
+        }
 
         List<String> fieldNames = new ArrayList<>(vnpParams.keySet());
         Collections.sort(fieldNames);
@@ -174,6 +184,10 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (bookingId != null) {
             BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
+            if ("EXPIRED".equalsIgnoreCase(booking.status()) ||
+                (booking.holdExpiresAt() != null && booking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
+                throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Đơn đặt vé đã bị hủy.");
+            }
             amount = booking.totalAmount();
             if (targetUserId == null) {
                 targetUserId = booking.userId();
@@ -302,6 +316,23 @@ public class PaymentServiceImpl implements PaymentService {
         LocalDateTime now = LocalDateTime.now();
 
         if ("00".equals(responseCode)) {
+            if (payment.getBookingId() != null) {
+                try {
+                    BookingClient.BookingInfo bInfo = bookingClient.getBooking(payment.getBookingId());
+                    if ("EXPIRED".equalsIgnoreCase(bInfo.status()) ||
+                        (bInfo.holdExpiresAt() != null && bInfo.holdExpiresAt().isBefore(now))) {
+                        log.error("VNPay IPN: Payment arrived after hold expired for booking #{}", payment.getBookingId());
+                        payment.setStatus(PaymentStatus.FAILED);
+                        payment.setTransactionId(params.get("vnp_TransactionNo"));
+                        payment.setPaymentAccountLabel("VNPAY EXPIRED REJECTED");
+                        payment.setCallbackPayload(params.toString());
+                        paymentRepository.save(payment);
+                        return Map.of("RspCode", "00", "Message", "Booking hold expired, payment rejected");
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to check booking expiration in IPN for booking {}: {}", payment.getBookingId(), ex.getMessage());
+                }
+            }
             payment.setStatus(PaymentStatus.SUCCESS);
             payment.setPaidAt(now);
             payment.setTransactionId(params.get("vnp_TransactionNo"));
