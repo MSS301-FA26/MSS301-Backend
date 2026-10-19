@@ -20,7 +20,7 @@ class ICatalogClient(abc.ABC):
 
     @abc.abstractmethod
     def fetch_movie_by_id(self, movie_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch a single movie detail by logical movie ID."""
+        """Fetch a single movie detail by movie ID."""
         pass
 
     @abc.abstractmethod

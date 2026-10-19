@@ -6,7 +6,7 @@ class RecommendationItem(BaseModel):
     """Recommended movie item DTO."""
     model_config = ConfigDict(frozen=True)
 
-    movieId: int = Field(..., description="Movie logical ID")
+    movieId: int = Field(..., description="Movie ID")
     title: str = Field(..., description="Movie title")
     posterUrl: Optional[str] = Field(default="", description="Movie poster URL")
     score: float = Field(..., description="Normalized recommendation score [0, 1]")
@@ -20,7 +20,7 @@ class RecommendationResponse(BaseModel):
     """Personalized user recommendation response DTO."""
     model_config = ConfigDict(frozen=True)
 
-    userId: int = Field(..., description="User logical ID")
+    userId: int = Field(..., description="User ID")
     strategy: str = Field(..., description="Applied algorithm strategy")
     branchId: Optional[int] = Field(default=None, description="Applied branch filter ID if specified")
     setId: Optional[int] = Field(default=None, description="Persisted recommendation set ID for CTR tracking")
@@ -40,8 +40,8 @@ class FeedbackRequest(BaseModel):
     """User interaction and feedback submission DTO."""
     model_config = ConfigDict(frozen=True)
 
-    userId: int = Field(..., description="User logical ID")
-    movieId: int = Field(..., description="Movie logical ID")
+    userId: int = Field(..., description="User ID")
+    movieId: int = Field(..., description="Movie ID")
     interactionType: str = Field(..., description="Interaction type (e.g. MOVIE_RATED, MOVIE_LIKED, MOVIE_DISLIKED)")
     rating: Optional[float] = Field(default=None, ge=1.0, le=5.0, description="Optional rating value [1.0, 5.0]")
     comment: Optional[str] = Field(default=None, description="Optional user review text")
@@ -52,8 +52,8 @@ class FeedbackResponseData(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     recorded: bool = Field(..., description="Whether feedback was successfully processed")
-    userId: int = Field(..., description="User logical ID")
-    movieId: int = Field(..., description="Movie logical ID")
+    userId: int = Field(..., description="User ID")
+    movieId: int = Field(..., description="Movie ID")
 
 
 class FeedbackClickRequest(BaseModel):
@@ -62,7 +62,7 @@ class FeedbackClickRequest(BaseModel):
 
     setId: int = Field(..., description="Recommendation set ID")
     movieId: int = Field(..., description="Clicked movie ID")
-    userId: int = Field(..., description="User logical ID")
+    userId: int = Field(..., description="User ID")
 
 
 class TrendingRecommendationResponse(BaseModel):
@@ -78,8 +78,8 @@ class MovieReviewRequest(BaseModel):
     """User review submission with comment and rating DTO."""
     model_config = ConfigDict(frozen=True)
 
-    userId: int = Field(..., description="User logical ID")
-    movieId: int = Field(..., description="Movie logical ID")
+    userId: int = Field(..., description="User ID")
+    movieId: int = Field(..., description="Movie ID")
     rating: float = Field(..., ge=1.0, le=5.0, description="Star rating [1.0, 5.0]")
     comment: str = Field(..., min_length=1, description="Review text comment")
 
@@ -88,8 +88,8 @@ class MovieReviewResponseData(BaseModel):
     """Processed review response with sentiment and consistency DTO."""
     model_config = ConfigDict(frozen=True)
 
-    userId: int = Field(..., description="User logical ID")
-    movieId: int = Field(..., description="Movie logical ID")
+    userId: int = Field(..., description="User ID")
+    movieId: int = Field(..., description="Movie ID")
     sentimentLabel: str = Field(..., description="Sentiment classification (POSITIVE, NEGATIVE, NEUTRAL)")
     sentimentScore: float = Field(..., description="Sentiment polar score [-1.0, 1.0]")
     feedbackConsistency: str = Field(..., description="Consistency status (CONSISTENT, INCONSISTENT)")

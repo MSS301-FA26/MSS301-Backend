@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/v1/recommendations", tags=["Recommendations"])
 @router.get("/users/{user_id}", response_model=ApiResponse[RecommendationResponse])
 @router.get("/user/{user_id}", response_model=ApiResponse[RecommendationResponse], include_in_schema=False)
 def get_user_recommendations(
-    user_id: int = Path(..., description="User ID (Logical ID)"),
+    user_id: int = Path(..., description="User ID"),
     branch_id: Optional[int] = Query(default=None, description="Optional Cinema Branch ID for availability filtering"),
     limit: int = Query(default=10, ge=1, le=50, description="Maximum number of recommendations")
 ):
@@ -40,7 +40,7 @@ def get_user_recommendations(
 @router.get("/movies/{movie_id}/similar", response_model=ApiResponse[ContentRecommendationResponse])
 @router.get("/content/{movie_id}", response_model=ApiResponse[ContentRecommendationResponse], include_in_schema=False)
 def get_content_recommendations(
-    movie_id: int = Path(..., description="Target movie ID (Logical ID)"),
+    movie_id: int = Path(..., description="Target movie ID"),
     limit: int = Query(default=6, ge=1, le=20, description="Maximum number of similar movies")
 ):
     """
@@ -152,7 +152,7 @@ def get_recommendation_metrics(
 
 @router.delete("/users/{user_id}/data", response_model=ApiResponse[dict])
 def purge_user_recommendation_data(
-    user_id: int = Path(..., description="Target user logical ID")
+    user_id: int = Path(..., description="Target user ID")
 ):
     """
     Purge all user preference records, reviews, recommendation history, and invalidate cache.

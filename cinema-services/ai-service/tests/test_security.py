@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 import os
 
 # Test environment settings
-os.environ["SERVER_PORT"] = "8000"
+os.environ["SERVER_PORT"] = "8032"
 os.environ["INTERNAL_GATEWAY_SECRET"] = "valid-test-gateway-secret-12345"
 os.environ["INTERNAL_SERVICE_SECRET"] = "valid-test-internal-secret-67890"
 os.environ["CATALOG_SERVICE_URL"] = "http://localhost:8082"
