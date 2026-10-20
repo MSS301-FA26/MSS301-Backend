@@ -30,7 +30,7 @@ public class PaymentController {
             @RequestParam(required = false) Long foodOrderId,
             HttpServletRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         Long targetBookingId = body != null && body.bookingId() != null ? body.bookingId() : bookingId;
         Long targetFoodOrderId = body != null && body.foodOrderId() != null ? body.foodOrderId() : foodOrderId;
 
@@ -50,7 +50,7 @@ public class PaymentController {
             @RequestParam(required = false) Long bookingId,
             @RequestParam(required = false) Long foodOrderId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         Long targetBookingId = body != null && body.bookingId() != null ? body.bookingId() : bookingId;
         Long targetFoodOrderId = body != null && body.foodOrderId() != null ? body.foodOrderId() : foodOrderId;
 
@@ -110,7 +110,7 @@ public class PaymentController {
             @PathVariable Long foodOrderId,
             HttpServletRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         String clientIp = request.getHeader("X-Forwarded-For");
         if (clientIp == null || clientIp.isBlank()) {
             clientIp = request.getRemoteAddr();
@@ -125,7 +125,7 @@ public class PaymentController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         PaymentResponse response = paymentService.mockPayment(userId, null, foodOrderId);
         return ApiResponse.success(response, "Thanh toán giả lập bắp nước thành công");
     }

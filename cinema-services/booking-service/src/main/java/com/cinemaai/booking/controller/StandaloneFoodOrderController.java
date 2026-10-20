@@ -29,7 +29,7 @@ public class StandaloneFoodOrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody FoodOrderRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         FoodOrderResponse response = foodOrderService.createStandalone(userId, request);
         return ApiResponse.success(response, "Khởi tạo đơn bắp nước thành công");
     }
@@ -39,7 +39,7 @@ public class StandaloneFoodOrderController {
     public ApiResponse<List<FoodOrderResponse>> getMyFoodOrders(
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(foodOrderService.listMine(userId));
     }
 
@@ -49,7 +49,7 @@ public class StandaloneFoodOrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(foodOrderService.cancel(userId, foodOrderId), "Hủy đơn bắp nước thành công");
     }
 
@@ -59,7 +59,7 @@ public class StandaloneFoodOrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(foodOrderService.getByIdAndUser(userId, foodOrderId));
     }
 
@@ -69,7 +69,7 @@ public class StandaloneFoodOrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(foodOrderService.syncPaymentStatus(userId, foodOrderId));
     }
 }

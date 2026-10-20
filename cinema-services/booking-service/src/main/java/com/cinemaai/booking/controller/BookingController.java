@@ -31,7 +31,7 @@ public class BookingController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody HoldSeatsRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(bookingService.holdSeats(userId, request), "Giữ ghế thành công (Hiệu lực 3 phút)");
     }
 
@@ -42,7 +42,7 @@ public class BookingController {
             @PathVariable Long bookingId,
             @Valid @RequestBody CheckoutBookingRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(bookingService.checkout(userId, bookingId, request), "Checkout thành công. Đơn chờ thanh toán.");
     }
 
@@ -53,7 +53,7 @@ public class BookingController {
             @PathVariable Long bookingId,
             @RequestBody UpdateHoldingBookingRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(bookingService.updateHoldingItems(userId, bookingId, request), "Cập nhật thông tin vé thành công");
     }
 
@@ -64,7 +64,7 @@ public class BookingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ApiResponse.success(bookingService.getMyBookings(userId, pageRequest));
     }
@@ -75,7 +75,7 @@ public class BookingController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(bookingService.getBookingById(userId, bookingId));
     }
 
@@ -85,7 +85,7 @@ public class BookingController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(bookingService.cancelBooking(userId, bookingId), "Hủy giữ chỗ thành công");
     }
 
