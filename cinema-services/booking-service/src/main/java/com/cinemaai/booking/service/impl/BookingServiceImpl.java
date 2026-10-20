@@ -479,8 +479,8 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional(readOnly = true)
-    public BookingResponse getBookingByCode(String bookingCode) {
-        Booking booking = bookingRepository.findByBookingCode(bookingCode)
+    public BookingResponse getBookingByCode(Long userId, String bookingCode) {
+        Booking booking = bookingRepository.findByBookingCodeAndUserId(bookingCode, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + bookingCode));
         return bookingMapper.toResponse(booking);
     }

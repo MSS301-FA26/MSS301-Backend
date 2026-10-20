@@ -1,6 +1,7 @@
 package com.cinemaai.booking.service.impl;
 
 import com.cinemaai.booking.client.IdentityClient;
+import com.cinemaai.booking.client.CatalogClient;
 import com.cinemaai.booking.client.PaymentClient;
 import com.cinemaai.booking.client.dto.UserAccessScopeDto;
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
@@ -16,6 +17,7 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.ConflictException;
+import com.cinemaai.booking.exception.ForbiddenException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
 import com.cinemaai.booking.repository.BookingRepository;
@@ -51,6 +53,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
     private final BookingMapper bookingMapper;
     private final BookingSeatRepository bookingSeatRepository;
     private final IdentityClient identityClient;
+    private final CatalogClient catalogClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -212,8 +215,23 @@ public class AdminBookingServiceImpl implements AdminBookingService {
 
     @Override
     @Transactional
-    public ShowtimeCancelRefundResultDto cancelAndRefundShowtime(Long showtimeId, String reason, String actorRole, Long actorUserId) {
+    public ShowtimeCancelRefundResultDto cancelAndRefundShowtime(AuthenticatedUser actor, Long showtimeId, String reason) {
+        authorizeShowtime(actor, showtimeId);
         List<Booking> bookings = bookingRepository.findByShowtimeId(showtimeId);
+        UserAccessScopeDto scope = cinemaSecurityService.getAuthoritativeScope(actor);
+        String actorRole = hasRole(scope, "ADMIN") ? "ADMIN" : "MANAGER";
+        return cancelAndRefundShowtimeInternal(bookings, showtimeId, reason, actorRole, actor.id(), actor.email());
+    }
+
+    @Override
+    @Transactional
+    public ShowtimeCancelRefundResultDto cancelAndRefundShowtimeInternal(Long showtimeId, String reason, String actorRole, Long actorUserId) {
+        return cancelAndRefundShowtimeInternal(
+                bookingRepository.findByShowtimeId(showtimeId), showtimeId, reason, actorRole, actorUserId, null);
+    }
+
+    private ShowtimeCancelRefundResultDto cancelAndRefundShowtimeInternal(
+            List<Booking> bookings, Long showtimeId, String reason, String actorRole, Long actorUserId, String actorEmail) {
         if (bookings == null || bookings.isEmpty()) {
             return new ShowtimeCancelRefundResultDto(showtimeId, 0, 0, 0, BigDecimal.ZERO, "Suat chieu khong co ve nao can huy");
         }
@@ -269,7 +287,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
                         .ticketCode(booking.getBookingCode())
                         .cinemaId(booking.getCinemaId())
                         .actorUserId(actorUserId != null ? actorUserId : 1L)
-                        .actorEmail(role.toLowerCase() + "@cinemaai.internal")
+                        .actorEmail(actorEmail != null ? actorEmail : role.toLowerCase() + "@cinemaai.internal")
                         .actorRole(role)
                         .action("REFUND")
                         .amount(amt)
@@ -337,7 +355,18 @@ public class AdminBookingServiceImpl implements AdminBookingService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<Long, Integer> getSoldTicketCounts(List<Long> showtimeIds) {
+    public Map<Long, Integer> getSoldTicketCounts(AuthenticatedUser actor, List<Long> showtimeIds) {
+        if (showtimeIds != null) {
+            for (Long showtimeId : showtimeIds) {
+                authorizeShowtime(actor, showtimeId);
+            }
+        }
+        return getSoldTicketCountsInternal(showtimeIds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> getSoldTicketCountsInternal(List<Long> showtimeIds) {
         if (showtimeIds == null || showtimeIds.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -356,8 +385,19 @@ public class AdminBookingServiceImpl implements AdminBookingService {
 
     @Override
     @Transactional(readOnly = true)
-    public ShowtimeBookingSummaryDto getShowtimeBookingSummary(Long showtimeId) {
+    public ShowtimeBookingSummaryDto getShowtimeBookingSummary(AuthenticatedUser actor, Long showtimeId) {
+        authorizeShowtime(actor, showtimeId);
         List<Booking> bookings = bookingRepository.findByShowtimeId(showtimeId);
+        return buildShowtimeBookingSummary(showtimeId, bookings);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShowtimeBookingSummaryDto getShowtimeBookingSummaryInternal(Long showtimeId) {
+        return buildShowtimeBookingSummary(showtimeId, bookingRepository.findByShowtimeId(showtimeId));
+    }
+
+    private ShowtimeBookingSummaryDto buildShowtimeBookingSummary(Long showtimeId, List<Booking> bookings) {
         int paidBookingsCount = 0;
         int soldTicketsCount = 0;
         int holdingTicketsCount = 0;
@@ -386,5 +426,20 @@ public class AdminBookingServiceImpl implements AdminBookingService {
                 holdingTicketsCount,
                 totalRefundAmount
         );
+    }
+
+    private void authorizeShowtime(AuthenticatedUser actor, Long showtimeId) {
+        UserAccessScopeDto scope = cinemaSecurityService.getAuthoritativeScope(actor);
+        if (hasRole(scope, "ADMIN")) return;
+        CatalogClient.ShowtimeScope showtime = catalogClient.getShowtimeScope(showtimeId);
+        if (showtime == null || showtime.cinemaId() == null || showtime.cinemaId() <= 0) {
+            throw new ForbiddenException("Unable to verify showtime cinema");
+        }
+        cinemaSecurityService.validateCinemaAccess(actor, showtime.cinemaId(), false);
+    }
+
+    private boolean hasRole(UserAccessScopeDto scope, String role) {
+        return scope.roles() != null && scope.roles().stream()
+                .anyMatch(value -> value.equalsIgnoreCase(role) || value.equalsIgnoreCase("ROLE_" + role));
     }
 }

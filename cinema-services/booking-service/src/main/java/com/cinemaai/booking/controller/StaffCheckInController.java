@@ -23,12 +23,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/staff/check-in")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
 @Tag(name = "Staff Check-In", description = "Quét mã QR và soát vé vào rạp")
 public class StaffCheckInController {
 
@@ -261,7 +263,9 @@ public class StaffCheckInController {
     @Operation(summary = "Tra cuu don bap nuoc cho Staff soat mon")
     @GetMapping("/food-orders/lookup")
     @Transactional(readOnly = true)
-    public ApiResponse<Map<String, Object>> lookupFoodOrder(@RequestParam String code) {
+    public ApiResponse<Map<String, Object>> lookupFoodOrder(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestParam String code) {
         String cleanCode = extractFoodOrderCode(code);
         if (cleanCode == null || cleanCode.isBlank()) {
             throw new BadRequestException("Ma tra cuu bap nuoc khong duoc de trong");
@@ -278,6 +282,7 @@ public class StaffCheckInController {
                 if (!linkedOrders.isEmpty()) {
                     orderOpt = java.util.Optional.of(linkedOrders.get(0));
                 } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
+                    cinemaSecurityService.validateCinemaAccess(user, booking.getCinemaId(), true);
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", booking.getId());
                     map.put("orderCode", booking.getBookingCode());
@@ -315,6 +320,7 @@ public class StaffCheckInController {
         }
 
         FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
+        cinemaSecurityService.validateCinemaAccess(user, resolveFoodOrderCinemaId(order), true);
 
         Map<String, Object> map = new HashMap<>();
         map.put("id", order.getId());
@@ -359,7 +365,9 @@ public class StaffCheckInController {
     @Operation(summary = "Xac nhan giao mon cho khach (Staff Pick-up)")
     @PostMapping("/food-orders/pickup")
     @Transactional
-    public ApiResponse<Map<String, Object>> pickUpFoodOrder(@RequestBody Map<String, String> body) {
+    public ApiResponse<Map<String, Object>> pickUpFoodOrder(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
+            @RequestBody Map<String, String> body) {
         String code = body.get("code");
         if (code == null || code.isBlank()) code = body.get("foodOrderCode");
         if (code == null || code.isBlank()) {
@@ -378,6 +386,7 @@ public class StaffCheckInController {
                 if (!linkedOrders.isEmpty()) {
                     orderOpt = java.util.Optional.of(linkedOrders.get(0));
                 } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
+                    cinemaSecurityService.validateCinemaAccess(user, booking.getCinemaId(), true);
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", booking.getId());
                     map.put("orderCode", booking.getBookingCode());
@@ -389,6 +398,7 @@ public class StaffCheckInController {
         }
 
         FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
+        cinemaSecurityService.validateCinemaAccess(user, resolveFoodOrderCinemaId(order), true);
 
         if ("PICKED_UP".equalsIgnoreCase(order.getStatus())) {
             throw new ConflictException("Don bap nuoc nay da duoc giao cho khach truoc do.");
@@ -405,6 +415,15 @@ public class StaffCheckInController {
         return ApiResponse.success(map, "Xac nhan giao mon thanh cong");
     }
 
+    private Long resolveFoodOrderCinemaId(FoodOrder order) {
+        if (order.getBookingId() != null) {
+            return bookingRepository.findById(order.getBookingId())
+                    .map(Booking::getCinemaId)
+                    .orElseThrow(() -> new NotFoundException("Khong tim thay booking cua don bap nuoc"));
+        }
+        return order.getCinemaId();
+    }
+
     @Operation(summary = "Lay danh sach don bap nuoc gan day tai rap cho Staff F&B")
     @GetMapping("/food-orders/recent")
     @Transactional(readOnly = true)
@@ -418,7 +437,7 @@ public class StaffCheckInController {
         );
         if (enforcedCinemaId != null) {
             orders = orders.stream()
-                    .filter(o -> o.getCinemaId() == null || enforcedCinemaId.equals(o.getCinemaId()))
+                    .filter(o -> enforcedCinemaId.equals(resolveFoodOrderCinemaId(o)))
                     .toList();
         }
         if (orders.size() > limit) {

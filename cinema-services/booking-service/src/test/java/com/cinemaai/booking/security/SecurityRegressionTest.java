@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,8 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SecurityRegressionTest {
     @Autowired MockMvc mvc;
     static final String KEY = "01234567890123456789012345678901";
-    String token(String key, long expiration) {
-        return Jwts.builder().subject("a@example.com").claim("userId", 7L).claim("roles", List.of("USER"))
+    String token(String key, long expiration) { return token(key, expiration, "USER"); }
+    String token(String key, long expiration, String role) {
+        return Jwts.builder().subject("a@example.com").claim("userId", 7L).claim("roles", List.of(role))
             .expiration(new Date(expiration)).signWith(Keys.hmacShaKeyFor(key.getBytes(StandardCharsets.UTF_8))).compact();
     }
     String valid() { return token(KEY, System.currentTimeMillis() + 60000); }
@@ -51,8 +53,26 @@ class SecurityRegressionTest {
         mvc.perform(get("/internal/probe").header("X-Internal-Service-Secret", "wrong")).andExpect(status().isForbidden());
         mvc.perform(get("/internal/probe").header("X-Internal-Service-Secret", "internal-test")).andExpect(status().isOk());
     }
+    @Test void userCannotInvokePrivilegedApiButAdminCan() throws Exception {
+        mvc.perform(get("/admin-probe").header("X-Gateway-Secret", "gateway-test")
+                .header("Authorization", "Bearer " + valid())).andExpect(status().isForbidden());
+        String admin = token(KEY, System.currentTimeMillis() + 60000, "ADMIN");
+        mvc.perform(get("/admin-probe").header("X-Gateway-Secret", "gateway-test")
+                .header("Authorization", "Bearer " + admin)).andExpect(status().isOk());
+    }
+    @Test void userCannotInvokeStaffApiButStaffCan() throws Exception {
+        mvc.perform(get("/staff-probe").header("X-Gateway-Secret", "gateway-test")
+                .header("Authorization", "Bearer " + valid())).andExpect(status().isForbidden());
+        String staff = token(KEY, System.currentTimeMillis() + 60000, "STAFF");
+        mvc.perform(get("/staff-probe").header("X-Gateway-Secret", "gateway-test")
+                .header("Authorization", "Bearer " + staff)).andExpect(status().isOk());
+    }
     @RestController static class Probe {
         @GetMapping("/probe") String probe(@AuthenticationPrincipal AuthenticatedUser user) { return user.id() + ":" + user.authorities(); }
         @GetMapping("/internal/probe") String internal() { return "ok"; }
+        @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+        @GetMapping("/admin-probe") String admin() { return "ok"; }
+        @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+        @GetMapping("/staff-probe") String staff() { return "ok"; }
     }
 }
