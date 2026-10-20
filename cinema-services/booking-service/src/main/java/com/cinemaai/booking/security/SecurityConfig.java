@@ -89,36 +89,9 @@ public class SecurityConfig {
                         return;
                     }
 
-                    // Authenticate from Header (Gateway Forwarding) or Bearer JWT Token
-                    String userIdHeader = request.getHeader("X-User-Id");
-                    String userRolesHeader = request.getHeader("X-User-Roles");
-                    String userCinemaHeader = request.getHeader("X-User-Cinema-Id");
+                    // Identity and authorities come only from a verified bearer token.
                     String authHeader = request.getHeader("Authorization");
-
-                    if (userIdHeader != null && !userIdHeader.isBlank()) {
-                        try {
-                            Long uid = Long.parseLong(userIdHeader);
-                            Long cinemaId = null;
-                            if (userCinemaHeader != null && !userCinemaHeader.isBlank()) {
-                                try {
-                                    cinemaId = Long.parseLong(userCinemaHeader.trim());
-                                } catch (Exception ignored) {}
-                            }
-                            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                            if (userRolesHeader != null && !userRolesHeader.isBlank()) {
-                                for (String role : userRolesHeader.split(",")) {
-                                    String r = role.trim();
-                                    if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
-                                    authorities.add(new SimpleGrantedAuthority(r));
-                                }
-                            }
-                            AuthenticatedUser user = new AuthenticatedUser(uid, request.getHeader("X-User-Email"), authorities, cinemaId);
-                            SecurityContextHolder.getContext().setAuthentication(
-                                    new UsernamePasswordAuthenticationToken(user, null, authorities));
-                        } catch (Exception ex) {
-                            log.warn("Invalid X-User-Id header: {}", userIdHeader);
-                        }
-                    } else if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                    if (authHeader != null && authHeader.startsWith("Bearer ")) {
                         String token = authHeader.substring(7);
                         try {
                             Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
@@ -130,6 +103,10 @@ public class SecurityConfig {
                                 try {
                                     uid = Long.parseLong(claims.getSubject());
                                 } catch (Exception ignored) {}
+                            }
+
+                            if (uid == null || uid <= 0 || claims.getExpiration() == null) {
+                                throw new IllegalArgumentException("JWT requires userId and expiration");
                             }
 
                             Long cinemaId = null;

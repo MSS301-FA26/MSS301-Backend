@@ -45,6 +45,10 @@ public class TrustedGatewayFilter implements GlobalFilter, Ordered {
         var request = exchange.getRequest().mutate().headers(headers -> {
             headers.set("X-Gateway-Secret", effectiveSecret);
             headers.remove("X-Internal-Service-Secret");
+            headers.remove("X-User-Id");
+            headers.remove("X-User-Roles");
+            headers.remove("X-User-Email");
+            headers.remove("X-User-Cinema-Id");
             headers.set("X-Correlation-Id", correlation);
         }).build();
 

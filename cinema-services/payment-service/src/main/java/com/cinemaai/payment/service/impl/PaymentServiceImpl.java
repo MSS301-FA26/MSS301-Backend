@@ -11,6 +11,7 @@ import com.cinemaai.payment.enums.PaymentStatus;
 import com.cinemaai.payment.event.PaymentSucceededEvent;
 import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.exception.NotFoundException;
+import com.cinemaai.payment.exception.UnauthorizedException;
 import com.cinemaai.payment.mapper.PaymentMapper;
 import com.cinemaai.payment.repository.OutboxEventRepository;
 import com.cinemaai.payment.repository.PaymentRepository;
@@ -39,6 +40,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
+    private static void requireAuthenticatedUser(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new UnauthorizedException("Authenticated user is required");
+        }
+    }
+
     private final PaymentRepository paymentRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxPublisherWorker outboxPublisherWorker;
@@ -62,8 +69,8 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public VNPayPaymentResponse createVnpayPayment(Long userId, Long bookingId, Long foodOrderId, String clientIp) {
+        requireAuthenticatedUser(userId);
         BigDecimal amount = BigDecimal.ZERO;
-        Long targetUserId = userId;
 
         BookingClient.BookingInfo activeBooking = null;
         if (bookingId != null) {
@@ -76,15 +83,9 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Vui lòng chọn lại ghế.");
             }
             amount = activeBooking.totalAmount();
-            if (targetUserId == null) {
-                targetUserId = activeBooking.userId();
-            }
         } else if (foodOrderId != null) {
             BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
             amount = foodOrder.totalAmount();
-            if (targetUserId == null) {
-                targetUserId = foodOrder.userId();
-            }
         } else {
             throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
@@ -105,7 +106,7 @@ public class PaymentServiceImpl implements PaymentService {
             payment = Payment.builder()
                     .bookingId(bookingId)
                     .foodOrderId(foodOrderId)
-                    .userId(targetUserId != null ? targetUserId : 1L)
+                    .userId(userId)
                     .provider(PaymentProvider.VNPAY)
                     .amount(amount)
                     .status(PaymentStatus.PENDING)
@@ -194,8 +195,8 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentResponse mockPayment(Long userId, Long bookingId, Long foodOrderId) {
+        requireAuthenticatedUser(userId);
         BigDecimal amount = BigDecimal.ZERO;
-        Long targetUserId = userId;
 
         if (bookingId != null) {
             BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
@@ -204,15 +205,9 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Đơn đặt vé đã bị hủy.");
             }
             amount = booking.totalAmount();
-            if (targetUserId == null) {
-                targetUserId = booking.userId();
-            }
         } else if (foodOrderId != null) {
             BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
             amount = foodOrder.totalAmount();
-            if (targetUserId == null) {
-                targetUserId = foodOrder.userId();
-            }
         } else {
             throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
@@ -224,7 +219,7 @@ public class PaymentServiceImpl implements PaymentService {
             payment = Payment.builder()
                     .bookingId(bookingId)
                     .foodOrderId(foodOrderId)
-                    .userId(targetUserId != null ? targetUserId : 1L)
+                    .userId(userId)
                     .provider(PaymentProvider.MOCK)
                     .amount(amount)
                     .build();
