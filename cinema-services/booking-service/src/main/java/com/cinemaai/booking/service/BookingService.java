@@ -23,7 +23,7 @@ public interface BookingService {
 
     BookingResponse getBookingByIdInternal(Long bookingId);
 
-    BookingResponse getBookingByCode(String bookingCode);
+    BookingResponse getBookingByCode(Long userId, String bookingCode);
 
     java.util.List<com.cinemaai.booking.dto.response.OccupiedSeatDto> getOccupiedSeats(Long showtimeId);
 

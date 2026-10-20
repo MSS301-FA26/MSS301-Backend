@@ -4,12 +4,15 @@ import com.cinemaai.booking.client.dto.CatalogFoodQuoteDto;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.exception.BadRequestException;
+import com.cinemaai.booking.exception.ForbiddenException;
+import com.cinemaai.booking.exception.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 @Slf4j
 @Component
@@ -21,11 +24,42 @@ public class CatalogClient {
 
     public CatalogClient(
             @Value("${catalog.service.url}") String catalogServiceUrl,
-            @Value("${app.internal.secret}") String internalSecret
+            @Value("${app.internal.secret}") String internalSecret,
+            @Value("${catalog.service.connect-timeout-ms:2000}") int connectTimeoutMs,
+            @Value("${catalog.service.read-timeout-ms:3000}") int readTimeoutMs
     ) {
         this.catalogServiceUrl = catalogServiceUrl;
         this.internalSecret = internalSecret;
-        this.restClient = RestClient.builder().baseUrl(catalogServiceUrl).build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeoutMs);
+        requestFactory.setReadTimeout(readTimeoutMs);
+        this.restClient = RestClient.builder().baseUrl(catalogServiceUrl)
+                .requestFactory(requestFactory).build();
+    }
+
+    public record ShowtimeScope(Long showtimeId, Long cinemaId) {}
+
+    public ShowtimeScope getShowtimeScope(Long showtimeId) {
+        try {
+            ApiResponse<ShowtimeScope> response = restClient.get()
+                    .uri("/internal/v1/catalog/showtimes/{showtimeId}/scope", showtimeId)
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<ShowtimeScope>>() {});
+            if (response == null || response.data() == null
+                    || !showtimeId.equals(response.data().showtimeId())
+                    || response.data().cinemaId() == null || response.data().cinemaId() <= 0) {
+                throw new ForbiddenException("Unable to verify showtime cinema");
+            }
+            return response.data();
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+            throw new NotFoundException("Showtime not found");
+        } catch (NotFoundException | ForbiddenException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Failed to resolve cinema for showtime {}: {}", showtimeId, ex.getMessage());
+            throw new ForbiddenException("Unable to verify showtime cinema");
+        }
     }
 
     public CatalogQuoteDto.Response getQuote(CatalogQuoteDto.Request request) {

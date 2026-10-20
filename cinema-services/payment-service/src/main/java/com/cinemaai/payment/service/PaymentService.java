@@ -12,9 +12,9 @@ public interface PaymentService {
 
     Map<String, String> processVnpayIpn(Map<String, String> params);
 
-    PaymentResponse getPaymentByBooking(Long bookingId);
+    PaymentResponse getPaymentByBooking(Long userId, Long bookingId);
 
-    PaymentResponse getPaymentByFoodOrder(Long foodOrderId);
+    PaymentResponse getPaymentByFoodOrder(Long userId, Long foodOrderId);
 
-    PaymentResponse getPaymentById(Long paymentId);
+    PaymentResponse getPaymentById(Long userId, Long paymentId);
 }
