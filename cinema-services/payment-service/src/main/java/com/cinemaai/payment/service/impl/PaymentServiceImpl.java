@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,7 +68,10 @@ public class PaymentServiceImpl implements PaymentService {
         BookingClient.BookingInfo activeBooking = null;
         if (bookingId != null) {
             activeBooking = bookingClient.getBooking(bookingId);
-            if ("EXPIRED".equalsIgnoreCase(activeBooking.status()) ||
+            if (userId == null || !userId.equals(activeBooking.userId())
+                || !"PENDING_PAYMENT".equalsIgnoreCase(activeBooking.status())
+                || activeBooking.totalAmount() == null || activeBooking.totalAmount().signum() <= 0
+                || "EXPIRED".equalsIgnoreCase(activeBooking.status()) ||
                 (activeBooking.holdExpiresAt() != null && activeBooking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Vui lòng chọn lại ghế.");
             }
@@ -87,9 +91,16 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Create or reuse pending payment
         Payment payment = (bookingId != null)
-                ? paymentRepository.findByBookingId(bookingId).filter(p -> p.getStatus() == PaymentStatus.PENDING).orElse(null)
-                : paymentRepository.findByFoodOrderId(foodOrderId).filter(p -> p.getStatus() == PaymentStatus.PENDING).orElse(null);
+                ? paymentRepository.findByBookingIdAndStatus(bookingId, PaymentStatus.PENDING).orElse(null)
+                : paymentRepository.findByFoodOrderIdAndStatus(foodOrderId, PaymentStatus.PENDING).orElse(null);
 
+        if (bookingId != null &&
+        paymentRepository.existsByBookingIdAndStatus(
+                bookingId,
+                PaymentStatus.SUCCESS
+        )) {
+    throw new BadRequestException("Booking đã được thanh toán.");
+}
         if (payment == null) {
             payment = Payment.builder()
                     .bookingId(bookingId)
@@ -99,7 +110,11 @@ public class PaymentServiceImpl implements PaymentService {
                     .amount(amount)
                     .status(PaymentStatus.PENDING)
                     .build();
-            payment = paymentRepository.save(payment);
+            try {
+                payment = paymentRepository.saveAndFlush(payment);
+            } catch (DataIntegrityViolationException ex) {
+                throw new BadRequestException("Booking đang có một giao dịch thanh toán khác đang xử lý.");
+            }
         } else {
             payment.setAmount(amount);
             payment = paymentRepository.save(payment);
