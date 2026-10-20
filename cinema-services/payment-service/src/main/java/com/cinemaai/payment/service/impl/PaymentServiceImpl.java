@@ -46,6 +46,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+    private static void requireOwner(Long userId, Long ownerId) {
+        if (!userId.equals(ownerId)) throw new NotFoundException("Payment resource not found");
+    }
+
     private final PaymentRepository paymentRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxPublisherWorker outboxPublisherWorker;
@@ -70,13 +74,16 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public VNPayPaymentResponse createVnpayPayment(Long userId, Long bookingId, Long foodOrderId, String clientIp) {
         requireAuthenticatedUser(userId);
+        if (bookingId != null && foodOrderId != null) {
+            throw new BadRequestException("Specify only one order");
+        }
         BigDecimal amount = BigDecimal.ZERO;
 
         BookingClient.BookingInfo activeBooking = null;
         if (bookingId != null) {
             activeBooking = bookingClient.getBooking(bookingId);
-            if (userId == null || !userId.equals(activeBooking.userId())
-                || !"PENDING_PAYMENT".equalsIgnoreCase(activeBooking.status())
+            requireOwner(userId, activeBooking.userId());
+            if (!"PENDING_PAYMENT".equalsIgnoreCase(activeBooking.status())
                 || activeBooking.totalAmount() == null || activeBooking.totalAmount().signum() <= 0
                 || "EXPIRED".equalsIgnoreCase(activeBooking.status()) ||
                 (activeBooking.holdExpiresAt() != null && activeBooking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
@@ -85,6 +92,7 @@ public class PaymentServiceImpl implements PaymentService {
             amount = activeBooking.totalAmount();
         } else if (foodOrderId != null) {
             BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            requireOwner(userId, foodOrder.userId());
             amount = foodOrder.totalAmount();
         } else {
             throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
@@ -94,6 +102,8 @@ public class PaymentServiceImpl implements PaymentService {
         Payment payment = (bookingId != null)
                 ? paymentRepository.findByBookingIdAndStatus(bookingId, PaymentStatus.PENDING).orElse(null)
                 : paymentRepository.findByFoodOrderIdAndStatus(foodOrderId, PaymentStatus.PENDING).orElse(null);
+
+        if (payment != null) requireOwner(userId, payment.getUserId());
 
         if (bookingId != null &&
         paymentRepository.existsByBookingIdAndStatus(
@@ -196,10 +206,33 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public PaymentResponse mockPayment(Long userId, Long bookingId, Long foodOrderId) {
         requireAuthenticatedUser(userId);
+        if (bookingId != null && foodOrderId != null) {
+            throw new BadRequestException("Specify only one order");
+        }
+        if (bookingId == null && foodOrderId == null) {
+            throw new BadRequestException("An order identifier is required");
+        }
+
+        Payment payment = (bookingId != null)
+                ? paymentRepository.findByBookingId(bookingId).orElse(null)
+                : paymentRepository.findByFoodOrderId(foodOrderId).orElse(null);
+        if (payment != null) {
+            requireOwner(userId, payment.getUserId());
+            boolean linkedToRequestedResource = bookingId != null
+                    ? bookingId.equals(payment.getBookingId()) && payment.getFoodOrderId() == null
+                    : foodOrderId.equals(payment.getFoodOrderId()) && payment.getBookingId() == null;
+            if (!linkedToRequestedResource) {
+                throw new NotFoundException("Payment does not belong to the requested order");
+            }
+            if (payment.getStatus() == PaymentStatus.SUCCESS) {
+                return paymentMapper.toResponse(payment);
+            }
+        }
         BigDecimal amount = BigDecimal.ZERO;
 
         if (bookingId != null) {
             BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
+            requireOwner(userId, booking.userId());
             if ("EXPIRED".equalsIgnoreCase(booking.status()) ||
                 (booking.holdExpiresAt() != null && booking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Đơn đặt vé đã bị hủy.");
@@ -207,14 +240,12 @@ public class PaymentServiceImpl implements PaymentService {
             amount = booking.totalAmount();
         } else if (foodOrderId != null) {
             BookingClient.FoodOrderInfo foodOrder = bookingClient.getFoodOrder(foodOrderId);
+            requireOwner(userId, foodOrder.userId());
             amount = foodOrder.totalAmount();
         } else {
             throw new BadRequestException("Phải chỉ định bookingId hoặc foodOrderId để thanh toán.");
         }
 
-        Payment payment = (bookingId != null)
-                ? paymentRepository.findByBookingId(bookingId).orElse(null)
-                : paymentRepository.findByFoodOrderId(foodOrderId).orElse(null);
         if (payment == null) {
             payment = Payment.builder()
                     .bookingId(bookingId)
@@ -452,25 +483,31 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaymentResponse getPaymentByBooking(Long bookingId) {
+    public PaymentResponse getPaymentByBooking(Long userId, Long bookingId) {
+        requireAuthenticatedUser(userId);
         Payment payment = paymentRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán cho booking: " + bookingId));
+        requireOwner(userId, payment.getUserId());
         return paymentMapper.toResponse(payment);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PaymentResponse getPaymentByFoodOrder(Long foodOrderId) {
+    public PaymentResponse getPaymentByFoodOrder(Long userId, Long foodOrderId) {
+        requireAuthenticatedUser(userId);
         Payment payment = paymentRepository.findByFoodOrderId(foodOrderId)
                 .orElseThrow(() -> new NotFoundException("Khong tim thay giao dich thanh toan cho don bap nuoc: " + foodOrderId));
+        requireOwner(userId, payment.getUserId());
         return paymentMapper.toResponse(payment);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PaymentResponse getPaymentById(Long paymentId) {
+    public PaymentResponse getPaymentById(Long userId, Long paymentId) {
+        requireAuthenticatedUser(userId);
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy giao dịch thanh toán id: " + paymentId));
+        requireOwner(userId, payment.getUserId());
         return paymentMapper.toResponse(payment);
     }
 }

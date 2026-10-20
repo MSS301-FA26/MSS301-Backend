@@ -18,11 +18,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/bookings")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 @Tag(name = "Admin Booking Management", description = "Quản lý vé, hủy vé và hoàn tiền cho Admin & Manager")
 public class AdminBookingController {
 
@@ -81,10 +83,8 @@ public class AdminBookingController {
             @RequestBody(required = false) AdminCancelTicketRequest request
     ) {
         String reason = request != null && request.reason() != null ? request.reason() : "Huy suat chieu do su co";
-        String role = (user != null && user.authorities() != null && user.authorities().stream().anyMatch(a -> a.getAuthority().contains("ADMIN"))) ? "ADMIN" : "MANAGER";
-        Long userId = user != null ? user.id() : null;
         return ApiResponse.success(
-                adminBookingService.cancelAndRefundShowtime(showtimeId, reason, role, userId),
+                adminBookingService.cancelAndRefundShowtime(user, showtimeId, reason),
                 "Da huy va hoan tien toan bo ve cua suat chieu thanh cong"
         );
     }
@@ -92,16 +92,18 @@ public class AdminBookingController {
     @Operation(summary = "L?y s? l??ng v? ?? b?n cho danh s?ch su?t chi?u")
     @GetMapping("/showtimes/counts")
     public ApiResponse<Map<Long, Integer>> getSoldTicketCounts(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @RequestParam List<Long> showtimeIds
     ) {
-        return ApiResponse.success(adminBookingService.getSoldTicketCounts(showtimeIds));
+        return ApiResponse.success(adminBookingService.getSoldTicketCounts(user, showtimeIds));
     }
 
     @Operation(summary = "L?y th?ng k? v? v? ti?n c?n ho?n cho su?t chi?u")
     @GetMapping("/showtimes/{showtimeId}/summary")
     public ApiResponse<ShowtimeBookingSummaryDto> getShowtimeBookingSummary(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long showtimeId
     ) {
-        return ApiResponse.success(adminBookingService.getShowtimeBookingSummary(showtimeId));
+        return ApiResponse.success(adminBookingService.getShowtimeBookingSummary(user, showtimeId));
     }
 }
