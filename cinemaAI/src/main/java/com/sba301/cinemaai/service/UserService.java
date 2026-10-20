@@ -28,7 +28,11 @@ public interface UserService {
 
         public void changePassword(String email, ChangePasswordRequest request);
 
-        public List<UserProfileResponse> getAllUsers();
+        public List<UserProfileResponse> getAllUsers(RoleName role);
+
+        default List<UserProfileResponse> getAllUsers() {
+                return getAllUsers(null);
+        }
 
         public UserProfileResponse getById(Long id);
 

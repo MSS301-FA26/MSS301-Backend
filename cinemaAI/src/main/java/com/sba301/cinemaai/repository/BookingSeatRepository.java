@@ -20,6 +20,9 @@ public interface BookingSeatRepository extends JpaRepository<BookingSeat, Long> 
 
     List<BookingSeat> findByShowtime(Showtime showtime);
 
+    @EntityGraph(attributePaths = {"booking", "seat"})
+    List<BookingSeat> findByShowtimeIn(Collection<Showtime> showtimes);
+
     Optional<BookingSeat> findByShowtimeAndSeat(Showtime showtime, Seat seat);
 
     List<BookingSeat> findByShowtimeAndSeatAndStatusIn(
@@ -29,4 +32,6 @@ public interface BookingSeatRepository extends JpaRepository<BookingSeat, Long> 
     );
 
     Optional<BookingSeat> findByTicketCode(String ticketCode);
+ 
+    boolean existsBySeat(Seat seat);
 }

@@ -19,11 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class FoodController {
 
     private final FoodService foodService;
+    private final com.sba301.cinemaai.service.FoodCategoryService foodCategoryService;
+
+    @GetMapping("/categories")
+    public ApiResponse<java.util.List<com.sba301.cinemaai.dto.response.food.FoodCategoryResponse>> getCategories() {
+        return ApiResponse.success(foodCategoryService.getAllCategories());
+    }
 
     @GetMapping("/items")
     public ApiResponse<PageResponse<FoodItemResponse>> getItems(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "50") int size
     ) {
         return ApiResponse.success(foodService.getActiveItems(page, size));
     }
@@ -31,7 +37,7 @@ public class FoodController {
     @GetMapping("/combos")
     public ApiResponse<PageResponse<FoodComboResponse>> getCombos(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "50") int size
     ) {
         return ApiResponse.success(foodService.getActiveCombos(page, size));
     }

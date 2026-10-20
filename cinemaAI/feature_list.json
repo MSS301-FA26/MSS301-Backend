@@ -1,6 +1,6 @@
 {
   "project": "CinemaAI",
-  "updatedAt": "2026-07-23T02:16:00+07:00",
+  "updatedAt": "2026-09-19T04:23:00+07:00",
   "source": "phase_mapping_srs_vs_docx_refund_role_updated.md",
   "statusValues": ["done", "pending", "blocked"],
   "features": [
@@ -28,7 +28,7 @@
       "id": "PHASE-2",
       "name": "Auth, Customer and Security",
       "status": "done",
-      "scope": ["Auth flows", "CUSTOMER profile", "STAFF account provisioning", "ADMIN user management", "JWT RBAC"],
+      "scope": ["Auth flows", "CUSTOMER profile", "STAFF account provisioning", "MANAGER account provisioning and cinema assignment", "ADMIN user management", "JWT RBAC"],
       "outOfScope": ["MFA", "First-login staff password policy"],
       "verification": ["AuthEndpointInventoryTests", "AuthIntegrationTests"],
       "evidence": ["Both suites passed on 2026-06-25"],
@@ -38,10 +38,10 @@
       "id": "PHASE-3",
       "name": "Movie, Genre and Actor Management",
       "status": "done",
-      "scope": ["Public catalog", "Admin CRUD", "Movie-genre-actor relationships"],
+      "scope": ["Public catalog", "Admin CRUD with direct approval/publication", "Movie-genre-actor relationships"],
       "outOfScope": ["External metadata ingestion"],
       "verification": ["MovieCatalogEndpointInventoryTests", "MovieIntegrationTests", "ActorIntegrationTests"],
-      "evidence": ["All listed suites passed on 2026-06-25"],
+      "evidence": ["All listed suites passed on 2026-06-25", "Admin direct-publication frontend build and backend main-source compile passed on 2026-09-22; focused test was blocked by unrelated stale ticket-pricing test constructors"],
       "nextAction": "Maintain contract tests when catalog APIs change"
     },
     {
@@ -171,7 +171,7 @@
       "scope": ["Application properties placeholders", "Provider credentials/settings", "CORS/frontend URLs", "Schedulers", "Seed account values", "Upload provider folders", "Test config placeholders"],
       "outOfScope": ["Domain/business constants", "State machines", "Enums", "Database schema changes", "Authentication or authorization policy changes"],
       "verification": [".\\mvnw.cmd -DskipTests package", ".\\mvnw.cmd -Dtest=PaymentIntegrationTests test", ".\\mvnw.cmd -Dtest=StorageUploadServiceTest test", ".\\mvnw.cmd test"],
-      "evidence": ["Package build passed on 2026-06-27", "PaymentIntegrationTests passed: 3 tests", "StorageUploadServiceTest passed: 2 tests", "Full test run still fails only in cinema baseline tests unrelated to config externalization"],
+      "evidence": ["Package build passed on 2026-06-27", "PaymentIntegrationTests passed: 3 tests", "StorageUploadServiceTest passed: 2 tests", "Credentialed admin image-upload CORS preflight covered by ActorIntegrationTests on 2026-09-18", "Full test run still fails only in cinema baseline tests unrelated to config externalization"],
       "nextAction": "Keep new deployment/provider settings in application.properties placeholders and placeholder-only .env.example entries"
     },
     {

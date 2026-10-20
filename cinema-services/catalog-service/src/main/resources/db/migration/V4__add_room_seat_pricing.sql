@@ -1,0 +1,7 @@
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS standard_price NUMERIC(12,2) DEFAULT 60000;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS vip_price NUMERIC(12,2) DEFAULT 90000;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS couple_price NUMERIC(12,2) DEFAULT 150000;
+
+UPDATE rooms SET standard_price = 60000 WHERE standard_price IS NULL;
+UPDATE rooms SET vip_price = 90000 WHERE vip_price IS NULL;
+UPDATE rooms SET couple_price = 150000 WHERE couple_price IS NULL;

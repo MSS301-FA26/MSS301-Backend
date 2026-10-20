@@ -32,12 +32,32 @@ Thumbs.db
 # ===============================
 .env
 .env.*
+**/.env
+**/.env.*
+/env
 !.env.example
+!**/.env.example
+
+# ===============================
+# Frontend & Node
+# ===============================
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
 
 # ===============================
 # Logs
 # ===============================
 *.log
+*.log.*
+logs/
+**/logs/
+models/
+**/models/
 
 # ===============================
 # Java / Maven

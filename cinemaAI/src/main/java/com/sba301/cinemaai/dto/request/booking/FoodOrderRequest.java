@@ -7,6 +7,11 @@ import java.util.List;
 public record FoodOrderRequest(
         @NotEmpty(message = "At least one food item is required")
         @Valid
-        List<BookingFoodRequest> foods
+        List<BookingFoodRequest> foods,
+        String promotionCode
 ) {
+    public FoodOrderRequest(List<BookingFoodRequest> foods) {
+        this(foods, null);
+    }
 }
+

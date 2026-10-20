@@ -53,15 +53,36 @@ public class MovieMapper {
                 movie.getLanguage(),
                 movie.getSubtitleLanguage(),
                 movie.getStatus(),
+                movie.getApprovalStatus(),
+                movie.getPublicationStatus(),
                 movie.getAgeRating() == null ? null : movie.getAgeRating().getLabel(),
                 movie.getDirector(),
                 movie.getMainActors(),
-                movie.getCastList(),
+                actors != null ? actors.stream().map(ActorResponse::name).collect(java.util.stream.Collectors.joining(", ")) : null,
                 genres.stream().map(this::toGenreResponse).toList(),
                 actors,
                 mainActorIds,
+                movie.getSubmittedAt(),
+                movie.getSubmittedBy() == null ? null : movie.getSubmittedBy().getId(),
+                resolveUserName(movie.getSubmittedBy()),
+                movie.getApprovedAt(),
+                movie.getApprovedBy() == null ? null : movie.getApprovedBy().getId(),
+                resolveUserName(movie.getApprovedBy()),
+                movie.getRejectedAt(),
+                movie.getRejectedBy() == null ? null : movie.getRejectedBy().getId(),
+                resolveUserName(movie.getRejectedBy()),
+                movie.getRejectionReason(),
+                movie.getPublishedAt(),
                 movie.getCreatedAt(),
                 movie.getUpdatedAt()
         );
+    }
+
+    private String resolveUserName(com.sba301.cinemaai.entity.User user) {
+        if (user == null) return null;
+        if (user.getProfile() != null && user.getProfile().getFullName() != null && !user.getProfile().getFullName().isBlank()) {
+            return user.getProfile().getFullName();
+        }
+        return user.getEmail();
     }
 }
