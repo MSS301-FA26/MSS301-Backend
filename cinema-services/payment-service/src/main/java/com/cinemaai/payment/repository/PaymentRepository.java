@@ -18,6 +18,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             PaymentStatus status
     );
 
+boolean existsByBookingIdAndStatus(
+        Long bookingId,
+        PaymentStatus status
+);
+
     Optional<Payment> findByFoodOrderId(Long foodOrderId);
 
     // Phase 1: Find active pending payment for Food Order

@@ -94,11 +94,13 @@ public class PaymentServiceImpl implements PaymentService {
                 ? paymentRepository.findByBookingIdAndStatus(bookingId, PaymentStatus.PENDING).orElse(null)
                 : paymentRepository.findByFoodOrderIdAndStatus(foodOrderId, PaymentStatus.PENDING).orElse(null);
 
-        if (bookingId != null && paymentRepository.findByBookingId(bookingId)
-                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS).isPresent()) {
-            throw new BadRequestException("Booking đã được thanh toán.");
-        }
-
+        if (bookingId != null &&
+        paymentRepository.existsByBookingIdAndStatus(
+                bookingId,
+                PaymentStatus.SUCCESS
+        )) {
+    throw new BadRequestException("Booking đã được thanh toán.");
+}
         if (payment == null) {
             payment = Payment.builder()
                     .bookingId(bookingId)

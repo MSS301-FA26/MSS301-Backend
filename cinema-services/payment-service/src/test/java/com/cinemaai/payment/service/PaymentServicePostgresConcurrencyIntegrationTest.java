@@ -1,5 +1,5 @@
 package com.cinemaai.payment.service;
-
+import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.client.BookingClient;
 import com.cinemaai.payment.entity.Payment;
 import com.cinemaai.payment.enums.PaymentProvider;
@@ -61,6 +61,41 @@ class PaymentServicePostgresConcurrencyIntegrationTest {
         Payment p = payments.findByBookingId(10L).orElseThrow();
         assertAll(() -> assertEquals(PaymentStatus.PENDING, p.getStatus()), () -> assertEquals(0, p.getAmount().compareTo(BigDecimal.valueOf(100000))), () -> assertNotNull(p.getId()));
     }
+
+@Test
+void t11FailedThenSuccessRejectsAnotherPayment() {
+    stubBooking(40L, 1L, "PENDING_PAYMENT", 100000, "BK40");
+
+    payments.saveAndFlush(Payment.builder()
+            .bookingId(40L)
+            .userId(1L)
+            .provider(PaymentProvider.VNPAY)
+            .amount(BigDecimal.valueOf(100000))
+            .status(PaymentStatus.FAILED)
+            .build());
+
+    payments.saveAndFlush(Payment.builder()
+            .bookingId(40L)
+            .userId(1L)
+            .provider(PaymentProvider.VNPAY)
+            .amount(BigDecimal.valueOf(100000))
+            .status(PaymentStatus.SUCCESS)
+            .build());
+
+    assertThrows(
+            BadRequestException.class,
+            () -> service.createVnpayPayment(1L, 40L, null, "127.0.0.1")
+    );
+
+    assertEquals(2, payments.findAll().size());
+
+    assertTrue(
+            payments.findByBookingIdAndStatus(
+                    40L,
+                    PaymentStatus.PENDING
+            ).isEmpty()
+    );
+}
 
     @Test void t02TwoConcurrentCreates() throws Exception { stubBooking(10L,1L,"PENDING_PAYMENT",100000,"BK10"); assertEquals(1, concurrentBooking(10L, 2)); }
     @Test void t03TenConcurrentCreates() throws Exception { stubBooking(11L,1L,"PENDING_PAYMENT",100000,"BK11"); assertEquals(1, concurrentBooking(11L, 10)); }
