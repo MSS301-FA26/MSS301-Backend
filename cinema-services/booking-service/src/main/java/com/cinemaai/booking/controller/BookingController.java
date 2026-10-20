@@ -91,7 +91,7 @@ public class BookingController {
 
     @Operation(summary = "Tra cứu vé theo mã đặt vé (Nội bộ / Nhân viên)")
     @GetMapping("/code/{bookingCode}")
-    public ApiResponse<BookingResponse> getByCode(@PathVariable String bookingCode) {
-        return ApiResponse.success(bookingService.getBookingByCode(bookingCode));
+    public ApiResponse<BookingResponse> getByCode(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String bookingCode) {
+        return ApiResponse.success(bookingService.getBookingByCode(user.id(), bookingCode));
     }
 }

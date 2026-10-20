@@ -87,20 +87,20 @@ public class PaymentController {
 
     @Operation(summary = "Lấy thông tin thanh toán theo mã đặt vé")
     @GetMapping("/booking/{bookingId}")
-    public ApiResponse<PaymentResponse> getPaymentByBooking(@PathVariable Long bookingId) {
-        return ApiResponse.success(paymentService.getPaymentByBooking(bookingId));
+    public ApiResponse<PaymentResponse> getPaymentByBooking(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable Long bookingId) {
+        return ApiResponse.success(paymentService.getPaymentByBooking(user.id(), bookingId));
     }
 
     @Operation(summary = "Lay thong tin thanh toan theo ma don bap nuoc")
     @GetMapping({"/food-order/{foodOrderId}", "/food-orders/{foodOrderId}/info"})
-    public ApiResponse<PaymentResponse> getPaymentByFoodOrder(@PathVariable Long foodOrderId) {
-        return ApiResponse.success(paymentService.getPaymentByFoodOrder(foodOrderId));
+    public ApiResponse<PaymentResponse> getPaymentByFoodOrder(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable Long foodOrderId) {
+        return ApiResponse.success(paymentService.getPaymentByFoodOrder(user.id(), foodOrderId));
     }
 
     @Operation(summary = "Lấy thông tin thanh toán theo paymentId")
     @GetMapping("/{paymentId}")
-    public ApiResponse<PaymentResponse> getPaymentById(@PathVariable Long paymentId) {
-        return ApiResponse.success(paymentService.getPaymentById(paymentId));
+    public ApiResponse<PaymentResponse> getPaymentById(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable Long paymentId) {
+        return ApiResponse.success(paymentService.getPaymentById(user.id(), paymentId));
     }
 
     @Operation(summary = "Tạo URL thanh toán VNPay cho đơn bắp nước")
