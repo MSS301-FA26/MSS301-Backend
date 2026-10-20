@@ -30,7 +30,7 @@ public class BookingFoodOrderController {
             @PathVariable Long bookingId,
             @Valid @RequestBody FoodOrderRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         FoodOrderResponse response = foodOrderService.createForBooking(userId, bookingId, request);
         return ApiResponse.success(response, "Thêm đơn bắp nước vào vé thành công");
     }
@@ -41,7 +41,7 @@ public class BookingFoodOrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(foodOrderService.listByBooking(userId, bookingId));
     }
 }
