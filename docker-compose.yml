@@ -205,31 +205,6 @@ services:
       retries: 12
     networks: [cinema-network]
 
-  recommendation-service:
-    build: ./cinema-services/recommendation-service
-    restart: unless-stopped
-    env_file:
-      - path: ./cinema-services/recommendation-service/.env.example
-        required: true
-      - path: ./cinema-services/recommendation-service/.env
-        required: false
-    environment:
-      DB_HOST: recommendation-db
-      DB_PORT: 5432
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: guest
-      RABBITMQ_PASSWORD: guest
-    depends_on:
-      recommendation-db: { condition: service_healthy }
-      rabbitmq: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    networks: [cinema-network]
-
   api-gateway:
     build:
       context: ./cinema-services
@@ -245,14 +220,14 @@ services:
       CATALOG_SERVICE_URI: http://catalog-service:8082
       BOOKING_SERVICE_URI: http://booking-service:8083
       PAYMENT_SERVICE_URI: http://payment-service:8084
-      RECOMMENDATION_SERVICE_URI: http://recommendation-service:8000
+
     ports: ["${GATEWAY_PORT:-8080}:8080"]
     depends_on:
       identity-service: { condition: service_healthy }
       catalog-service: { condition: service_healthy }
       booking-service: { condition: service_healthy }
       payment-service: { condition: service_healthy }
-      recommendation-service: { condition: service_healthy }
+
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health"]
       interval: 10s
