@@ -30,8 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
     private final ShowtimeRepository showtimes;
     private final SeatRepository seats;
-    private final FoodItemRepository items;
-    private final FoodComboRepository combos;
+    private final ProductRepository items;
+    private final ProductBundleRepository combos;
     private final TicketPricingRuleRepository pricingRules;
     private final CinemaAudiencePriceRepository audiencePrices;
     @Value("${app.quote.ttl-seconds}") private long ttlSeconds;
@@ -113,7 +113,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 if (!foodKeys.add(isCombo + ":" + productId)) throw new BadRequestException("Duplicate food selection");
                 String name;
                 BigDecimal price;
-                FoodItemStatus status;
+                ProductStatus status;
                 if (isCombo) {
                     var combo = combos.findById(productId)
                             .orElseThrow(() -> new BadRequestException("Food combo does not exist: " + productId));
@@ -127,7 +127,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                     price = item.getPrice();
                     status = item.getStatus();
                 }
-                if (status != FoodItemStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
+                if (status != ProductStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
                 BigDecimal total = price.multiply(BigDecimal.valueOf(qty));
                 foodLines.add(new FoodSnapshot(productId, isCombo, name, price, qty, total));
                 foodTotal = foodTotal.add(total);

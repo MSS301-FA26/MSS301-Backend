@@ -26,8 +26,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 class CheckoutQuoteServiceTest {
     @Mock ShowtimeRepository showtimes;
     @Mock SeatRepository seats;
-    @Mock FoodItemRepository items;
-    @Mock FoodComboRepository combos;
+    @Mock ProductRepository items;
+    @Mock ProductBundleRepository combos;
     @Mock TicketPricingRuleRepository pricingRules;
     @Mock com.cinemaai.catalog.repository.CinemaAudiencePriceRepository audiencePrices;
     private CheckoutQuoteServiceImpl service;
@@ -55,7 +55,7 @@ class CheckoutQuoteServiceTest {
 
     @Test
     void returnsAuthoritativeTicketAndFoodTotals() {
-        FoodItem popcorn = withId(new FoodItem("Popcorn", "Large", new BigDecimal("45000")), 50L);
+        Product popcorn = withId(new Product("Popcorn", "Large", new BigDecimal("45000")), 50L);
         when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
         when(items.findById(50L)).thenReturn(Optional.of(popcorn));
 
@@ -105,7 +105,7 @@ class CheckoutQuoteServiceTest {
 
     @Test
     void handlesFrontendPayloadWithoutTicketsAndWithFoodItemId() {
-        FoodItem popcorn = withId(new FoodItem("Popcorn", "Large", new BigDecimal("45000")), 50L);
+        Product popcorn = withId(new Product("Popcorn", "Large", new BigDecimal("45000")), 50L);
         when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
         when(items.findById(50L)).thenReturn(Optional.of(popcorn));
 

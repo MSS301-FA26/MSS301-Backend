@@ -1,13 +1,13 @@
-package com.cinemaai.catalog.dto.request.food;
+package com.cinemaai.catalog.dto.request.product;
 
-import com.cinemaai.catalog.enums.FoodItemStatus;
+import com.cinemaai.catalog.enums.ProductStatus;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
-public record FoodItemRequest(
+public record ProductRequest(
         @NotBlank(message = "Food item name is required")
         String name,
 
@@ -21,11 +21,11 @@ public record FoodItemRequest(
         @Size(max = 500, message = "Image URL must be at most 500 characters")
         String imageUrl,
 
-        FoodItemStatus status,
+        ProductStatus status,
 
         Long categoryId
 ) {
-    public FoodItemRequest(String name, String description, BigDecimal price, String imageUrl, FoodItemStatus status) {
+    public ProductRequest(String name, String description, BigDecimal price, String imageUrl, ProductStatus status) {
         this(name, description, price, imageUrl, status, null);
     }
 }
