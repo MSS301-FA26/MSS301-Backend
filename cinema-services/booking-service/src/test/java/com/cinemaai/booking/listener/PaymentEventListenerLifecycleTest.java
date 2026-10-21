@@ -23,6 +23,7 @@ import static org.mockito.Mockito.*;
 class PaymentEventListenerLifecycleTest {
     private BookingRepository bookings;
     private ProcessedEventRepository processed;
+    private OrderRepository orders;
     private PaymentClient payment;
     private ObjectMapper json;
     private PaymentEventListener listener;
@@ -33,7 +34,8 @@ class PaymentEventListenerLifecycleTest {
         processed = mock(ProcessedEventRepository.class);
         payment = mock(PaymentClient.class);
         json = new ObjectMapper().findAndRegisterModules();
-        listener = new PaymentEventListener(bookings, mock(OrderRepository.class), processed, payment, json);
+        orders = mock(OrderRepository.class);
+        listener = new PaymentEventListener(bookings, orders, processed, payment, json);
     }
 
     @Test
@@ -119,6 +121,42 @@ class PaymentEventListenerLifecycleTest {
         assertThrows(IllegalStateException.class, () -> listener.onPaymentSucceeded(payload("evt-retry")));
 
         verify(processed, never()).save(any());
+    }
+
+    @Test
+    void legacyAndCanonicalOrderEventsUseTheSameFulfillmentPath() throws Exception {
+        com.cinemaai.booking.entity.Order legacyOrder = com.cinemaai.booking.entity.Order.builder()
+                .id(8L).foodOrderCode("FO-8").status("PENDING_PAYMENT").build();
+        com.cinemaai.booking.entity.Order canonicalOrder = com.cinemaai.booking.entity.Order.builder()
+                .id(8L).foodOrderCode("FO-8").status("PENDING_PAYMENT").build();
+        when(orders.findById(8L)).thenReturn(Optional.of(legacyOrder), Optional.of(canonicalOrder));
+
+        listener.onPaymentSucceeded("""
+                {"eventId":"legacy","paymentId":3,"foodOrderId":8,"userId":1,
+                 "amount":10,"provider":"VNPAY","paidAt":"2026-01-01T00:00:00"}
+                """);
+        listener.onPaymentSucceeded("""
+                {"eventId":"canonical","paymentId":3,"orderId":8,"userId":1,
+                 "amount":10,"provider":"VNPAY","paidAt":"2026-01-01T00:00:00"}
+                """);
+
+        assertEquals("PAID", legacyOrder.getStatus());
+        assertEquals("PAID", canonicalOrder.getStatus());
+        verify(orders, times(2)).save(any());
+        verify(processed, times(2)).save(any());
+    }
+
+    @Test
+    void conflictingOrMalformedEventIsNotAcknowledgedAsProcessed() {
+        String conflict = """
+                {"eventId":"bad","paymentId":3,"foodOrderId":8,"orderId":9,"userId":1,
+                 "amount":10,"provider":"VNPAY","paidAt":"2026-01-01T00:00:00"}
+                """;
+
+        assertThrows(IllegalArgumentException.class, () -> listener.onPaymentSucceeded(conflict));
+        assertThrows(IllegalArgumentException.class, () -> listener.onPaymentSucceeded("not-json"));
+        verify(processed, never()).save(any());
+        verifyNoInteractions(orders);
     }
 
     private String payload(String eventId) throws Exception {
