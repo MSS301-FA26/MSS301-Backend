@@ -1,15 +1,15 @@
 package com.cinemaai.catalog.controller;
 
-import com.cinemaai.catalog.dto.request.food.FoodCategoryRequest;
-import com.cinemaai.catalog.dto.request.food.FoodComboRequest;
-import com.cinemaai.catalog.dto.request.food.FoodItemRequest;
-import com.cinemaai.catalog.dto.response.food.FoodCategoryResponse;
-import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
-import com.cinemaai.catalog.dto.response.food.FoodItemResponse;
+import com.cinemaai.catalog.dto.request.product.ProductCategoryRequest;
+import com.cinemaai.catalog.dto.request.product.ProductBundleRequest;
+import com.cinemaai.catalog.dto.request.product.ProductRequest;
+import com.cinemaai.catalog.dto.response.product.ProductCategoryResponse;
+import com.cinemaai.catalog.dto.response.product.ProductBundleResponse;
+import com.cinemaai.catalog.dto.response.product.ProductResponse;
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
-import com.cinemaai.catalog.service.FoodCategoryService;
-import com.cinemaai.catalog.service.FoodService;
+import com.cinemaai.catalog.service.ProductCategoryService;
+import com.cinemaai.catalog.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -35,44 +35,44 @@ import java.util.List;
 @RequiredArgsConstructor
 @SecurityRequirement(name = "Bearer Authentication")
 @Tag(name = "Admin - Food & Combo", description = "Admin food management endpoints - requires ADMIN role")
-public class AdminFoodController {
+public class AdminProductController {
 
-    private final FoodService foodService;
-    private final FoodCategoryService foodCategoryService;
+    private final ProductService productService;
+    private final ProductCategoryService productCategoryService;
 
     // ── Categories Endpoints ────────────────────────────────────────────────
     @GetMapping("/categories")
     @Operation(summary = "Get all food categories (Admin)", description = "Get all food categories (Admin only)")
-    public ApiResponse<List<FoodCategoryResponse>> getCategories() {
-        return ApiResponse.success(foodCategoryService.getAllCategories());
+    public ApiResponse<List<ProductCategoryResponse>> getCategories() {
+        return ApiResponse.success(productCategoryService.getAllCategories());
     }
 
     @PostMapping("/categories")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create food category (Admin)", description = "Create a new food category (Admin only)")
-    public ApiResponse<FoodCategoryResponse> createCategory(@Valid @RequestBody FoodCategoryRequest request) {
-        return ApiResponse.success(foodCategoryService.createCategory(request), "Category created successfully");
+    public ApiResponse<ProductCategoryResponse> createCategory(@Valid @RequestBody ProductCategoryRequest request) {
+        return ApiResponse.success(productCategoryService.createCategory(request), "Category created successfully");
     }
 
     @PutMapping("/categories/{categoryId}")
     @Operation(summary = "Update food category (Admin)", description = "Update an existing food category (Admin only)")
-    public ApiResponse<FoodCategoryResponse> updateCategory(
+    public ApiResponse<ProductCategoryResponse> updateCategory(
             @PathVariable Long categoryId,
-            @Valid @RequestBody FoodCategoryRequest request
+            @Valid @RequestBody ProductCategoryRequest request
     ) {
-        return ApiResponse.success(foodCategoryService.updateCategory(categoryId, request), "Category updated successfully");
+        return ApiResponse.success(productCategoryService.updateCategory(categoryId, request), "Category updated successfully");
     }
 
     @DeleteMapping("/categories/{categoryId}")
     @Operation(summary = "Delete food category (Admin)", description = "Soft delete / deactivate a food category (Admin only)")
-    public ApiResponse<FoodCategoryResponse> deleteCategory(@PathVariable Long categoryId) {
-        return ApiResponse.success(foodCategoryService.deleteCategory(categoryId), "Category deleted successfully");
+    public ApiResponse<ProductCategoryResponse> deleteCategory(@PathVariable Long categoryId) {
+        return ApiResponse.success(productCategoryService.deleteCategory(categoryId), "Category deleted successfully");
     }
 
     @PostMapping("/categories/{categoryId}/restore")
     @Operation(summary = "Restore food category (Admin)", description = "Restore an inactive food category (Admin only)")
-    public ApiResponse<FoodCategoryResponse> restoreCategory(@PathVariable Long categoryId) {
-        return ApiResponse.success(foodCategoryService.restoreCategory(categoryId), "Category restored successfully");
+    public ApiResponse<ProductCategoryResponse> restoreCategory(@PathVariable Long categoryId) {
+        return ApiResponse.success(productCategoryService.restoreCategory(categoryId), "Category restored successfully");
     }
 
     // ── Food Items Endpoints ────────────────────────────────────────────────
@@ -83,11 +83,11 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
     })
-    public ApiResponse<PageResponse<FoodItemResponse>> getItems(
+    public ApiResponse<PageResponse<ProductResponse>> getItems(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(foodService.getAllItems(page, size));
+        return ApiResponse.success(productService.getAllItems(page, size));
     }
 
     @GetMapping("/combos")
@@ -97,11 +97,11 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
     })
-    public ApiResponse<PageResponse<FoodComboResponse>> getCombos(
+    public ApiResponse<PageResponse<ProductBundleResponse>> getCombos(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(foodService.getAllCombos(page, size));
+        return ApiResponse.success(productService.getAllCombos(page, size));
     }
 
     @PostMapping("/items")
@@ -113,8 +113,8 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
     })
-    public ApiResponse<FoodItemResponse> createItem(@Valid @RequestBody FoodItemRequest request) {
-        return ApiResponse.success(foodService.createItem(request), "Food item created successfully");
+    public ApiResponse<ProductResponse> createItem(@Valid @RequestBody ProductRequest request) {
+        return ApiResponse.success(productService.createItem(request), "Food item created successfully");
     }
 
     @PostMapping("/combos")
@@ -126,8 +126,8 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized - JWT token missing or invalid"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role")
     })
-    public ApiResponse<FoodComboResponse> createCombo(@Valid @RequestBody FoodComboRequest request) {
-        return ApiResponse.success(foodService.createCombo(request), "Food combo created successfully");
+    public ApiResponse<ProductBundleResponse> createCombo(@Valid @RequestBody ProductBundleRequest request) {
+        return ApiResponse.success(productService.createCombo(request), "Food combo created successfully");
     }
 
     @PutMapping("/items/{itemId}")
@@ -139,11 +139,11 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Food item not found")
     })
-    public ApiResponse<FoodItemResponse> updateItem(
+    public ApiResponse<ProductResponse> updateItem(
             @PathVariable Long itemId,
-            @Valid @RequestBody FoodItemRequest request
+            @Valid @RequestBody ProductRequest request
     ) {
-        return ApiResponse.success(foodService.updateItem(itemId, request), "Food item updated successfully");
+        return ApiResponse.success(productService.updateItem(itemId, request), "Food item updated successfully");
     }
 
     @PutMapping("/combos/{comboId}")
@@ -155,20 +155,20 @@ public class AdminFoodController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden - User does not have ADMIN role"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Food combo not found")
     })
-    public ApiResponse<FoodComboResponse> updateCombo(
+    public ApiResponse<ProductBundleResponse> updateCombo(
             @PathVariable Long comboId,
-            @Valid @RequestBody FoodComboRequest request
+            @Valid @RequestBody ProductBundleRequest request
     ) {
-        return ApiResponse.success(foodService.updateCombo(comboId, request), "Food combo updated successfully");
+        return ApiResponse.success(productService.updateCombo(comboId, request), "Food combo updated successfully");
     }
 
     @DeleteMapping("/items/{itemId}")
-    public ApiResponse<FoodItemResponse> deleteItem(@PathVariable Long itemId) {
-        return ApiResponse.success(foodService.deleteItem(itemId), "Food item deleted successfully");
+    public ApiResponse<ProductResponse> deleteItem(@PathVariable Long itemId) {
+        return ApiResponse.success(productService.deleteItem(itemId), "Food item deleted successfully");
     }
 
     @DeleteMapping("/combos/{comboId}")
-    public ApiResponse<FoodComboResponse> deleteCombo(@PathVariable Long comboId) {
-        return ApiResponse.success(foodService.deleteCombo(comboId), "Food combo deleted successfully");
+    public ApiResponse<ProductBundleResponse> deleteCombo(@PathVariable Long comboId) {
+        return ApiResponse.success(productService.deleteCombo(comboId), "Food combo deleted successfully");
     }
 }
