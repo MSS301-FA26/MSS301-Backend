@@ -4,10 +4,10 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record ProductQuoteResponse(
-        List<FoodItemSnapshot> items,
+        List<ProductSnapshot> items,
         BigDecimal totalAmount
 ) {
-    public record FoodItemSnapshot(
+    public record ProductSnapshot(
             Long productId,
             boolean isCombo,
             String productName,
