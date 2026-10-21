@@ -2,7 +2,7 @@ package com.cinemaai.booking.security;
 
 import com.cinemaai.booking.controller.AdminOrderController;
 import com.cinemaai.booking.dto.response.PageResponse;
-import com.cinemaai.booking.service.FoodOrderService;
+import com.cinemaai.booking.service.OrderService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -36,11 +36,11 @@ class AdminOrderAuthorizationTest {
     private static final String KEY = "01234567890123456789012345678901";
 
     @Autowired MockMvc mvc;
-    @MockBean FoodOrderService foodOrderService;
+    @MockBean OrderService orderService;
 
     @Test
     void adminCanListFoodOrders() throws Exception {
-        when(foodOrderService.listAll(any())).thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0, true, true));
+        when(orderService.listAll(any())).thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0, true, true));
 
         mvc.perform(get("/api/v1/admin/food-orders")
                         .header("X-Gateway-Secret", "gateway-test")

@@ -3,7 +3,7 @@ package com.cinemaai.booking.client.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
-public class CatalogFoodQuoteDto {
+public class CatalogProductQuoteDto {
 
     public record Request(
             List<Item> foods

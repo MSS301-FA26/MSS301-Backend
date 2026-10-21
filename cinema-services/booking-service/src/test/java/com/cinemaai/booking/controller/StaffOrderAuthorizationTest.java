@@ -1,11 +1,11 @@
 package com.cinemaai.booking.controller;
 
-import com.cinemaai.booking.entity.FoodOrder;
+import com.cinemaai.booking.entity.Order;
 import com.cinemaai.booking.exception.ForbiddenException;
 import com.cinemaai.booking.mapper.BookingMapper;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.security.AuthenticatedUser;
 import com.cinemaai.booking.security.CinemaSecurityService;
 import java.util.List;
@@ -18,10 +18,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class StaffFoodOrderAuthorizationTest {
+class StaffOrderAuthorizationTest {
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final BookingSeatRepository seats = mock(BookingSeatRepository.class);
-    private final FoodOrderRepository orders = mock(FoodOrderRepository.class);
+    private final OrderRepository orders = mock(OrderRepository.class);
     private final CinemaSecurityService cinemaSecurity = mock(CinemaSecurityService.class);
     private final BookingMapper mapper = mock(BookingMapper.class);
     private StaffCheckInController controller;
@@ -44,7 +44,7 @@ class StaffFoodOrderAuthorizationTest {
     @Test
     void pickupRejectsStaffFromAnotherCinemaWithoutChangingState() {
         AuthenticatedUser staff = staffAt(101L);
-        FoodOrder order = order(8L, 202L, "PAID");
+        Order order = order(8L, 202L, "PAID");
         when(orders.findByFoodOrderCode("FO-8")).thenReturn(Optional.of(order));
         doThrow(new ForbiddenException("wrong cinema"))
                 .when(cinemaSecurity).validateCinemaAccess(staff, 202L, true);
@@ -59,7 +59,7 @@ class StaffFoodOrderAuthorizationTest {
     @Test
     void authorizedStaffCanLookupAndPickupOrderAtAssignedCinema() {
         AuthenticatedUser staff = staffAt(101L);
-        FoodOrder order = order(8L, 101L, "PAID");
+        Order order = order(8L, 101L, "PAID");
         when(orders.findByFoodOrderCode("FO-8")).thenReturn(Optional.of(order));
 
         assertEquals(8L, controller.lookupFoodOrder(staff, "FO-8").data().get("id"));
@@ -74,8 +74,8 @@ class StaffFoodOrderAuthorizationTest {
                 List.of(new SimpleGrantedAuthority("ROLE_STAFF")), cinemaId);
     }
 
-    private FoodOrder order(Long id, Long cinemaId, String status) {
-        return FoodOrder.builder().id(id).foodOrderCode("FO-8").userId(20L)
+    private Order order(Long id, Long cinemaId, String status) {
+        return Order.builder().id(id).foodOrderCode("FO-8").userId(20L)
                 .cinemaId(cinemaId).status(status).build();
     }
 }

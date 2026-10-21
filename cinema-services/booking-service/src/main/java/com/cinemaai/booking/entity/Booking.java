@@ -126,5 +126,5 @@ public class Booking extends BaseEntity {
 
     @Builder.Default
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BookingFoodItem> foodItems = new ArrayList<>();
+    private List<BookingProductItem> foodItems = new ArrayList<>();
 }
