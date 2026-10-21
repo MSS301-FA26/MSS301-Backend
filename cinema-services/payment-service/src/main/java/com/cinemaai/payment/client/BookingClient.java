@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Component
@@ -55,13 +56,13 @@ public class BookingClient {
                     .retrieve()
                     .body(new ParameterizedTypeReference<ApiResponse<BookingInfo>>() {});
 
-            if (response == null || response.data() == null) {
-                throw new NotFoundException("Booking info not found from booking service");
-            }
+            if (response == null || response.data() == null) throw new IllegalStateException("Invalid booking-service response");
             return response.data();
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 404) throw new NotFoundException("Booking not found: " + bookingId);
+            throw new IllegalStateException("Booking service lookup failed with HTTP " + ex.getStatusCode().value(), ex);
         } catch (Exception ex) {
-            log.error("Failed to query booking {} from booking-service: {}", bookingId, ex.getMessage());
-            throw new NotFoundException("Không tìm thấy thông tin đặt vé: " + ex.getMessage());
+            throw new IllegalStateException("Booking service unavailable or returned an invalid response", ex);
         }
     }
 
@@ -73,13 +74,13 @@ public class BookingClient {
                     .retrieve()
                     .body(new ParameterizedTypeReference<ApiResponse<FoodOrderInfo>>() {});
 
-            if (response == null || response.data() == null) {
-                throw new NotFoundException("Food order info not found from booking service");
-            }
+            if (response == null || response.data() == null) throw new IllegalStateException("Invalid booking-service response");
             return response.data();
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 404) throw new NotFoundException("Food order not found: " + foodOrderId);
+            throw new IllegalStateException("Booking service lookup failed with HTTP " + ex.getStatusCode().value(), ex);
         } catch (Exception ex) {
-            log.error("Failed to query food order {} from booking-service: {}", foodOrderId, ex.getMessage());
-            throw new NotFoundException("Không tìm thấy thông tin đơn bắp nước: " + ex.getMessage());
+            throw new IllegalStateException("Booking service unavailable or returned an invalid response", ex);
         }
     }
 
@@ -94,6 +95,7 @@ public class BookingClient {
             log.info("Directly marked booking {} as PAID via internal REST call", bookingId);
         } catch (Exception ex) {
             log.warn("Direct REST markBookingPaid failed for booking {}: {}", bookingId, ex.getMessage());
+            throw new IllegalStateException("Booking mark-paid outcome is unknown", ex);
         }
     }
 
@@ -108,6 +110,7 @@ public class BookingClient {
             log.info("Directly marked food order {} as PAID via internal REST call", foodOrderId);
         } catch (Exception ex) {
             log.warn("Direct REST markFoodOrderPaid failed for food order {}: {}", foodOrderId, ex.getMessage());
+            throw new IllegalStateException("Food-order mark-paid outcome is unknown", ex);
         }
     }
 }

@@ -63,6 +63,7 @@ public class PaymentEventListener {
 
             LocalDateTime now = LocalDateTime.now();
             if (booking.getStatus() == BookingStatus.PAID) {
+                awardBookingLoyalty(booking);
                 processedEventRepository.save(new ProcessedEvent(
                         event.eventId(),
                         "PaymentSucceededEvent",
@@ -119,17 +120,7 @@ public class PaymentEventListener {
             bookingRepository.save(booking);
             log.info("Successfully marked Booking {} as PAID with QR code.", booking.getBookingCode());
 
-            // Tich diem thuong loyalty cho khach hang
-            if (booking.getUserId() != null) {
-                paymentClient.awardLoyaltyPoints(
-                        booking.getUserId(),
-                        booking.getId(),
-                        booking.getBookingCode(),
-                        booking.getTotalAmount(),
-                        booking.getLoyaltyPointsRedeemed(),
-                        booking.getCinemaId()
-                );
-            }
+            awardBookingLoyalty(booking);
         }
 
         if (event.foodOrderId() != null) {
@@ -147,5 +138,13 @@ public class PaymentEventListener {
                 "PaymentSucceededEvent",
                 LocalDateTime.now()
         ));
+    }
+
+    private void awardBookingLoyalty(Booking booking) {
+        if (booking.getUserId() != null) {
+            paymentClient.awardLoyaltyPoints(
+                    booking.getUserId(), booking.getId(), booking.getBookingCode(),
+                    booking.getTotalAmount(), booking.getLoyaltyPointsRedeemed(), booking.getCinemaId());
+        }
     }
 }
