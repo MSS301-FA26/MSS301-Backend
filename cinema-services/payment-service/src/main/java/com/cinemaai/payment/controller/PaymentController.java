@@ -3,6 +3,7 @@ package com.cinemaai.payment.controller;
 import com.cinemaai.payment.dto.response.ApiResponse;
 import com.cinemaai.payment.dto.response.PaymentResponse;
 import com.cinemaai.payment.dto.response.VNPayPaymentResponse;
+import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.security.AuthenticatedUser;
 import com.cinemaai.payment.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,11 +29,12 @@ public class PaymentController {
             @RequestBody(required = false) com.cinemaai.payment.dto.request.CreatePaymentRequest body,
             @RequestParam(required = false) Long bookingId,
             @RequestParam(required = false) Long foodOrderId,
+            @RequestParam(required = false) Long orderId,
             HttpServletRequest request
     ) {
         Long userId = user.id();
         Long targetBookingId = body != null && body.bookingId() != null ? body.bookingId() : bookingId;
-        Long targetFoodOrderId = body != null && body.foodOrderId() != null ? body.foodOrderId() : foodOrderId;
+        Long targetFoodOrderId = resolveOrderId(body, foodOrderId, orderId);
 
         String clientIp = request.getHeader("X-Forwarded-For");
         if (clientIp == null || clientIp.isBlank()) {
@@ -48,11 +50,12 @@ public class PaymentController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody(required = false) com.cinemaai.payment.dto.request.CreatePaymentRequest body,
             @RequestParam(required = false) Long bookingId,
-            @RequestParam(required = false) Long foodOrderId
+            @RequestParam(required = false) Long foodOrderId,
+            @RequestParam(required = false) Long orderId
     ) {
         Long userId = user.id();
         Long targetBookingId = body != null && body.bookingId() != null ? body.bookingId() : bookingId;
-        Long targetFoodOrderId = body != null && body.foodOrderId() != null ? body.foodOrderId() : foodOrderId;
+        Long targetFoodOrderId = resolveOrderId(body, foodOrderId, orderId);
 
         PaymentResponse response = paymentService.mockPayment(userId, targetBookingId, targetFoodOrderId);
         return ApiResponse.success(response, "Thanh toán giả lập thành công");
@@ -128,5 +131,21 @@ public class PaymentController {
         Long userId = user.id();
         PaymentResponse response = paymentService.mockPayment(userId, null, foodOrderId);
         return ApiResponse.success(response, "Thanh toán giả lập bắp nước thành công");
+    }
+
+    private Long resolveOrderId(
+            com.cinemaai.payment.dto.request.CreatePaymentRequest body,
+            Long foodOrderId,
+            Long orderId
+    ) {
+        Long resolved = body != null ? body.foodOrderId() : null;
+        for (Long candidate : new Long[]{foodOrderId, orderId}) {
+            if (candidate == null) continue;
+            if (resolved != null && !resolved.equals(candidate)) {
+                throw new BadRequestException("foodOrderId and orderId must identify the same order");
+            }
+            resolved = candidate;
+        }
+        return resolved;
     }
 }
