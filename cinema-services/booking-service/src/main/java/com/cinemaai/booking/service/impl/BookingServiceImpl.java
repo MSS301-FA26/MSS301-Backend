@@ -749,18 +749,6 @@ public class BookingServiceImpl implements BookingService {
         bookingRepository.save(booking);
         log.info("Directly marked Booking {} as PAID via internal REST call (transactionId: {})", booking.getBookingCode(), transactionId);
 
-        // Tich diem thuong loyalty cho khach hang
-        if (booking.getUserId() != null) {
-            paymentClient.awardLoyaltyPoints(
-                    booking.getUserId(),
-                    booking.getId(),
-                    booking.getBookingCode(),
-                    booking.getTotalAmount(),
-                    booking.getLoyaltyPointsRedeemed(),
-                    booking.getCinemaId()
-            );
-        }
-
         return bookingMapper.toResponse(booking);
     }
 

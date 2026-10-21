@@ -34,6 +34,7 @@ class BookingExpirationLifecycleTest {
     private BookingRepository bookings;
     private BookingSeatRepository seats;
     private CatalogClient catalog;
+    private PaymentClient payment;
     private BookingServiceImpl service;
 
     @BeforeEach
@@ -41,9 +42,10 @@ class BookingExpirationLifecycleTest {
         bookings = mock(BookingRepository.class);
         seats = mock(BookingSeatRepository.class);
         catalog = mock(CatalogClient.class);
+        payment = mock(PaymentClient.class);
         service = new BookingServiceImpl(bookings, seats,
                 mock(BookingTicketRepository.class), mock(BookingFoodItemRepository.class),
-                catalog, mock(PaymentClient.class), mock(BookingMapper.class));
+                catalog, payment, mock(BookingMapper.class));
     }
 
     @Test
@@ -90,6 +92,19 @@ class BookingExpirationLifecycleTest {
 
         assertEquals(BookingStatus.CANCELLED, booking.getStatus());
         verify(bookings, never()).save(any());
+    }
+
+    @Test
+    void directMarkPaidDoesNotAwardLoyaltyBeforeBookingCommit() {
+        Booking booking = booking(BookingStatus.PENDING_PAYMENT, LocalDateTime.now().plusMinutes(1));
+        booking.setSeats(List.of(seat(BookingSeatStatus.HOLDING)));
+        when(bookings.findByIdForUpdate(7L)).thenReturn(Optional.of(booking));
+
+        service.markPaidInternal(7L, "TXN");
+
+        assertEquals(BookingStatus.PAID, booking.getStatus());
+        verify(bookings).save(booking);
+        verifyNoInteractions(payment);
     }
 
     @Test
