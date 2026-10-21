@@ -51,7 +51,7 @@ public class BookingController {
     public ApiResponse<BookingResponse> updateItems(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId,
-            @RequestBody UpdateHoldingBookingRequest request
+            @Valid @RequestBody UpdateHoldingBookingRequest request
     ) {
         Long userId = user.id();
         return ApiResponse.success(bookingService.updateHoldingItems(userId, bookingId, request), "Cập nhật thông tin vé thành công");

@@ -1,11 +1,12 @@
 package com.cinemaai.booking.dto.request;
 
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 
 public record BookingFoodRequest(
-        Long foodItemId,
-        Long foodComboId,
-        Long productId,
+        @Positive Long foodItemId,
+        @Positive Long foodComboId,
+        @Positive Long productId,
         Boolean isCombo,
         @Min(value = 1, message = "Số lượng phải lớn hơn 0")
         int quantity

@@ -38,6 +38,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CheckoutQuoteResponse quote(CheckoutQuoteRequest request) {
+        validateRequestStructure(request);
         var showtime = showtimes.findWithDetailsById(request.showtimeId())
                 .orElseThrow(() -> new BadRequestException("Showtime does not exist"));
         if (showtime.getStatus() != ShowtimeStatus.OPEN
@@ -62,7 +63,9 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                     .toList();
         }
 
-        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() == null || ticket.quantity() < 0))
+        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() == null || ticket.quantity() == 0))
+            throw new BadRequestException("Ticket quantity must be greater than zero");
+        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() < 0))
             throw new BadRequestException("Số lượng vé không được âm");
         if (effectiveTickets.stream().mapToLong(CheckoutQuoteRequest.Ticket::quantity).sum() != requested.size())
             throw new BadRequestException("Số lượng vé phải bằng số lượng ghế đã chọn.");
@@ -94,6 +97,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         BigDecimal foodTotal = BigDecimal.ZERO;
         if (request.foods() != null) {
             for (var food : request.foods()) {
+                validateFoodIdentifiers(food);
                 Long resolvedId = food.productId();
                 if (resolvedId == null) {
                     if (food.foodComboId() != null) resolvedId = food.foodComboId();
@@ -103,9 +107,10 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 final Long productId = resolvedId;
 
                 boolean isCombo = Boolean.TRUE.equals(food.isCombo()) || food.foodComboId() != null;
-                int qty = food.quantity() != null && food.quantity() > 0 ? food.quantity() : 1;
+                if (food.quantity() == null || food.quantity() <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+                int qty = food.quantity();
 
-                if (!foodKeys.add(isCombo + ":" + productId)) continue;
+                if (!foodKeys.add(isCombo + ":" + productId)) throw new BadRequestException("Duplicate food selection");
                 String name;
                 BigDecimal price;
                 FoodItemStatus status;
@@ -187,6 +192,48 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 movieSummary,
                 cinemaSummary
         );
+    }
+
+    private void validateRequestStructure(CheckoutQuoteRequest request) {
+        if (request == null || request.showtimeId() == null || request.showtimeId() <= 0)
+            throw new BadRequestException("Showtime ID must be positive");
+        if (request.seatIds() == null || request.seatIds().isEmpty()) throw new BadRequestException("At least one seat is required");
+        if (request.seatIds().size() > 100) throw new BadRequestException("Too many seats");
+        if (request.seatIds().stream().anyMatch(id -> id == null || id <= 0)) throw new BadRequestException("Seat IDs must be positive");
+        if (request.tickets() != null && request.tickets().size() > 100) throw new BadRequestException("Too many ticket lines");
+        if (request.foods() != null && request.foods().size() > 100) throw new BadRequestException("Too many food lines");
+        if (request.tickets() != null) for (var ticket : request.tickets()) {
+            if (ticket == null || ticket.ticketType() == null || ticket.viewerAge() == null || ticket.viewerAge() < 0
+                    || ticket.quantity() == null)
+                throw new BadRequestException("Invalid ticket selection");
+            if (ticket.quantity() < 0) throw new BadRequestException("Số lượng vé không được âm");
+            if (ticket.quantity() == 0) throw new BadRequestException("Ticket quantity must be greater than zero");
+            if (ticket.seatId() != null && ticket.seatId() <= 0) throw new BadRequestException("Ticket seat ID must be positive");
+        }
+        Set<String> foodKeys = new HashSet<>();
+        if (request.foods() != null) for (var food : request.foods()) {
+            validateFoodIdentifiers(food);
+            Long id = food.productId() != null ? food.productId() : food.foodComboId() != null ? food.foodComboId() : food.foodItemId();
+            boolean combo = food.foodComboId() != null || Boolean.TRUE.equals(food.isCombo());
+            if (!foodKeys.add(combo + ":" + id)) throw new BadRequestException("Duplicate food selection");
+        }
+    }
+
+    private void validateFoodIdentifiers(CheckoutQuoteRequest.Food food) {
+        if (food == null) throw new BadRequestException("Food selection is required");
+        Long productId = food.productId();
+        Long itemId = food.foodItemId();
+        Long comboId = food.foodComboId();
+        if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+        if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+        if (productId != null && productId <= 0 || itemId != null && itemId <= 0 || comboId != null && comboId <= 0)
+            throw new BadRequestException("Food product ID must be positive");
+        if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(food.isCombo())))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(food.isCombo())))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && itemId == null && comboId == null && food.isCombo() == null)
+            throw new BadRequestException("Food product type is required");
     }
 
     private BigDecimal resolveTicketPrice(Showtime showtime, Seat seat, TicketType ticketType) {

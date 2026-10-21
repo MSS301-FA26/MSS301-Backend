@@ -22,6 +22,18 @@ public class InternalPaymentController {
 
     private final PaymentRepository paymentRepository;
 
+    @Operation(summary = "Kiểm tra Booking có giao dịch thanh toán đang xử lý hoặc đã thành công")
+    @GetMapping("/bookings/{bookingId}/status")
+    public ApiResponse<Map<String, Object>> getBookingPaymentStatus(@PathVariable Long bookingId) {
+        Payment payment = paymentRepository.findByBookingId(bookingId).orElse(null);
+        boolean active = payment != null
+                && (payment.getStatus() == PaymentStatus.PENDING || payment.getStatus() == PaymentStatus.SUCCESS);
+        return ApiResponse.success(Map.of(
+                "activePayment", active,
+                "status", payment != null ? payment.getStatus().name() : "NONE"
+        ));
+    }
+
     @Operation(summary = "Kiểm tra trạng thái thanh toán đơn bắp nước (Internal)")
     @GetMapping("/food-orders/{foodOrderId}/status")
     public ApiResponse<Map<String, Object>> getFoodOrderPaymentStatus(@PathVariable Long foodOrderId) {

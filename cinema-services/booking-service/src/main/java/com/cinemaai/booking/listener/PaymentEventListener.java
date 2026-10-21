@@ -55,6 +55,12 @@ public class PaymentEventListener {
                 return;
             }
 
+            if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
+                log.error("Payment event {} for booking {} requires manual reconciliation because the booking contains unverified loyalty redemption",
+                        event.eventId(), booking.getId());
+                return;
+            }
+
             LocalDateTime now = LocalDateTime.now();
             if (booking.getStatus() == BookingStatus.EXPIRED
                     || ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
