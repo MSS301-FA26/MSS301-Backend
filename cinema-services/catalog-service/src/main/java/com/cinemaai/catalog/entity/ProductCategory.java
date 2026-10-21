@@ -1,15 +1,11 @@
 package com.cinemaai.catalog.entity;
 
-import com.cinemaai.catalog.enums.FoodItemStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,16 +13,20 @@ import lombok.Setter;
 
 @Getter
 @Entity
-@Table(name = "food_items")
+@Table(name = "food_categories")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class FoodItem extends BaseEntity {
+public class ProductCategory extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Setter
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true, length = 50)
+    private String code;
+
+    @Setter
+    @Column(nullable = false, length = 100)
     private String name;
 
     @Setter
@@ -34,25 +34,18 @@ public class FoodItem extends BaseEntity {
     private String description;
 
     @Setter
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal price;
+    @Column(name = "sort_order")
+    private Integer sortOrder = 0;
 
     @Setter
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
-
-    @Setter
-    @Column(name = "category_id")
-    private Long categoryId;
-
-    @Setter
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private FoodItemStatus status = FoodItemStatus.ACTIVE;
+    private String status = "ACTIVE";
 
-    public FoodItem(String name, String description, BigDecimal price) {
+    public ProductCategory(String code, String name, String description, Integer sortOrder, String status) {
+        this.code = code;
         this.name = name;
         this.description = description;
-        this.price = price;
+        this.sortOrder = sortOrder != null ? sortOrder : 0;
+        this.status = status != null ? status : "ACTIVE";
     }
 }

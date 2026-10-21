@@ -1,6 +1,6 @@
 package com.cinemaai.catalog.entity;
 
-import com.cinemaai.catalog.enums.FoodItemStatus;
+import com.cinemaai.catalog.enums.ProductStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,9 +17,9 @@ import lombok.Setter;
 
 @Getter
 @Entity
-@Table(name = "food_combos")
+@Table(name = "food_items")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class FoodCombo extends BaseEntity {
+public class Product extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,7 +30,7 @@ public class FoodCombo extends BaseEntity {
     private String name;
 
     @Setter
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 500)
     private String description;
 
     @Setter
@@ -42,11 +42,15 @@ public class FoodCombo extends BaseEntity {
     private String imageUrl;
 
     @Setter
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    @Setter
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private FoodItemStatus status = FoodItemStatus.ACTIVE;
+    private ProductStatus status = ProductStatus.ACTIVE;
 
-    public FoodCombo(String name, String description, BigDecimal price) {
+    public Product(String name, String description, BigDecimal price) {
         this.name = name;
         this.description = description;
         this.price = price;

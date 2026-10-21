@@ -1,11 +1,11 @@
-package com.cinemaai.catalog.dto.request.food;
+package com.cinemaai.catalog.dto.request.product;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
 import java.util.List;
 
-public record FoodQuoteRequest(
+public record ProductQuoteRequest(
         @NotEmpty List<@Valid Item> foods
 ) {
     public record Item(
