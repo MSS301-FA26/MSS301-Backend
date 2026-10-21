@@ -38,50 +38,6 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     private final PaymentClient paymentClient;
     private final FoodOrderMapper foodOrderMapper;
 
-    private static final Map<Long, String> FALLBACK_ITEM_NAMES = Map.ofEntries(
-            Map.entry(1L, "Bắp Rang Bơ Truyền Thống 64oz"),
-            Map.entry(2L, "Bắp Rang Phô Mai 64oz"),
-            Map.entry(3L, "Bắp Rang Caramel 64oz"),
-            Map.entry(4L, "Bắp Rang Socola 64oz"),
-            Map.entry(5L, "Coca-Cola 32oz"),
-            Map.entry(6L, "Sprite 32oz"),
-            Map.entry(7L, "Fanta Cam 32oz"),
-            Map.entry(8L, "Trà Đào Hạt Chia 32oz"),
-            Map.entry(9L, "Nước Khoáng Dasani 500ml"),
-            Map.entry(10L, "Xúc Xích Phô Mai Nướng"),
-            Map.entry(11L, "Khoai Tây Lắc Phô Mai")
-    );
-
-    private static final Map<Long, BigDecimal> FALLBACK_ITEM_PRICES = Map.ofEntries(
-            Map.entry(1L, BigDecimal.valueOf(45000)),
-            Map.entry(2L, BigDecimal.valueOf(55000)),
-            Map.entry(3L, BigDecimal.valueOf(55000)),
-            Map.entry(4L, BigDecimal.valueOf(55000)),
-            Map.entry(5L, BigDecimal.valueOf(35000)),
-            Map.entry(6L, BigDecimal.valueOf(35000)),
-            Map.entry(7L, BigDecimal.valueOf(35000)),
-            Map.entry(8L, BigDecimal.valueOf(40000)),
-            Map.entry(9L, BigDecimal.valueOf(20000)),
-            Map.entry(10L, BigDecimal.valueOf(45000)),
-            Map.entry(11L, BigDecimal.valueOf(45000))
-    );
-
-    private static final Map<Long, String> FALLBACK_COMBO_NAMES = Map.ofEntries(
-            Map.entry(1L, "Combo Solo Movie"),
-            Map.entry(2L, "Combo Couple Sweet"),
-            Map.entry(3L, "Combo Party Friends"),
-            Map.entry(4L, "Combo VIP Deluxe"),
-            Map.entry(5L, "Combo Gia Đình (Family Pack)")
-    );
-
-    private static final Map<Long, BigDecimal> FALLBACK_COMBO_PRICES = Map.ofEntries(
-            Map.entry(1L, BigDecimal.valueOf(79000)),
-            Map.entry(2L, BigDecimal.valueOf(109000)),
-            Map.entry(3L, BigDecimal.valueOf(189000)),
-            Map.entry(4L, BigDecimal.valueOf(169000)),
-            Map.entry(5L, BigDecimal.valueOf(229000))
-    );
-
     @Override
     @Transactional
     public FoodOrderResponse createStandalone(Long userId, FoodOrderRequest request) {
@@ -221,6 +177,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
         if (request == null || request.foods() == null || request.foods().isEmpty()) {
             throw new BadRequestException("Vui lòng chọn ít nhất một món bắp nước");
         }
+        validateFoodSelections(request.foods());
 
         String orderCode = "FO-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 900 + 100);
 
@@ -253,8 +210,27 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
         BigDecimal total = BigDecimal.ZERO;
 
-        if (quoteResponse != null && quoteResponse.items() != null && !quoteResponse.items().isEmpty()) {
-            for (CatalogFoodQuoteDto.Response.ItemSnapshot snap : quoteResponse.items()) {
+        if (quoteResponse == null || quoteResponse.items() == null || quoteResponse.items().size() != request.foods().size()) {
+            throw new BadRequestException("Unable to verify food availability and pricing");
+        }
+        Set<String> requestedProducts = request.foods().stream()
+                .map(food -> {
+                    Long id = food.productId() != null ? food.productId()
+                            : food.foodComboId() != null ? food.foodComboId() : food.foodItemId();
+                    boolean combo = food.foodComboId() != null || Boolean.TRUE.equals(food.isCombo());
+                    return combo + ":" + id + ":" + food.quantity();
+                })
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> quotedProducts = new HashSet<>();
+        for (CatalogFoodQuoteDto.Response.ItemSnapshot snap : quoteResponse.items()) {
+                if (snap.productId() == null || snap.productId() <= 0 || snap.quantity() <= 0
+                        || snap.unitPrice() == null || snap.unitPrice().signum() < 0
+                        || snap.lineTotal() == null || snap.lineTotal().signum() < 0
+                        || snap.unitPrice().multiply(BigDecimal.valueOf(snap.quantity())).compareTo(snap.lineTotal()) != 0) {
+                    throw new BadRequestException("Catalog returned an invalid food quote");
+                }
+                if (!quotedProducts.add(snap.isCombo() + ":" + snap.productId() + ":" + snap.quantity()))
+                    throw new BadRequestException("Catalog returned duplicate food items");
                 FoodOrderItem orderItem = FoodOrderItem.builder()
                         .foodOrder(order)
                         .productId(snap.productId())
@@ -266,55 +242,40 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                         .build();
                 order.getItems().add(orderItem);
                 total = total.add(snap.lineTotal());
-            }
-        } else {
-            // Fallback resolution using predefined catalog
-            for (BookingFoodRequest foodReq : request.foods()) {
-                Long productId = foodReq.productId();
-                boolean isCombo = Boolean.TRUE.equals(foodReq.isCombo());
-
-                if (productId == null) {
-                    if (foodReq.foodComboId() != null) {
-                        productId = foodReq.foodComboId();
-                        isCombo = true;
-                    } else if (foodReq.foodItemId() != null) {
-                        productId = foodReq.foodItemId();
-                        isCombo = false;
-                    }
-                }
-
-                if (productId == null) continue;
-                int qty = foodReq.quantity() > 0 ? foodReq.quantity() : 1;
-
-                String name = isCombo
-                        ? FALLBACK_COMBO_NAMES.getOrDefault(productId, "Combo #" + productId)
-                        : FALLBACK_ITEM_NAMES.getOrDefault(productId, "Món bắp nước #" + productId);
-
-                BigDecimal unitPrice = isCombo
-                        ? FALLBACK_COMBO_PRICES.getOrDefault(productId, BigDecimal.valueOf(109000))
-                        : FALLBACK_ITEM_PRICES.getOrDefault(productId, BigDecimal.valueOf(45000));
-
-                BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty));
-
-                FoodOrderItem orderItem = FoodOrderItem.builder()
-                        .foodOrder(order)
-                        .productId(productId)
-                        .isCombo(isCombo)
-                        .productNameSnapshot(name)
-                        .quantity(qty)
-                        .unitPrice(unitPrice)
-                        .lineTotal(lineTotal)
-                        .build();
-
-                order.getItems().add(orderItem);
-                total = total.add(lineTotal);
-            }
         }
+        if (!quotedProducts.equals(requestedProducts))
+            throw new BadRequestException("Catalog food quote does not match requested products");
+        if (quoteResponse.totalAmount() == null || quoteResponse.totalAmount().signum() < 0
+                || total.compareTo(quoteResponse.totalAmount()) != 0)
+            throw new BadRequestException("Catalog food total is inconsistent");
 
         order.setSubtotal(total);
         order.setTotalAmount(total);
 
         return foodOrderRepository.save(order);
+    }
+
+    private void validateFoodSelections(List<BookingFoodRequest> foods) {
+        Set<String> keys = new HashSet<>();
+        for (BookingFoodRequest food : foods) {
+            if (food == null || food.quantity() <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+            Long productId = food.productId();
+            Long itemId = food.foodItemId();
+            Long comboId = food.foodComboId();
+            if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+            if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+            if (productId != null && productId <= 0 || itemId != null && itemId <= 0 || comboId != null && comboId <= 0)
+                throw new BadRequestException("Food product ID must be positive");
+            if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(food.isCombo())))
+                throw new BadRequestException("Food product identifiers conflict");
+            if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(food.isCombo())))
+                throw new BadRequestException("Food product identifiers conflict");
+            if (productId != null && itemId == null && comboId == null && food.isCombo() == null)
+                throw new BadRequestException("Food product type is required");
+            Long id = productId != null ? productId : comboId != null ? comboId : itemId;
+            boolean combo = comboId != null || Boolean.TRUE.equals(food.isCombo());
+            if (!keys.add(combo + ":" + id)) throw new BadRequestException("Duplicate food selection");
+        }
     }
 
     private LocalDateTime getExpiresAt(FoodOrder order) {

@@ -42,6 +42,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
 
+    private static final String LOYALTY_REDEMPTION_DISABLED =
+            "Chức năng sử dụng điểm thưởng để giảm giá hiện tạm thời không khả dụng. Vui lòng tiếp tục thanh toán không sử dụng điểm.";
+
     private BigDecimal calculateLoyaltyDiscount(int points, Long cinemaId, BigDecimal subtotal) {
         if (points <= 0 || subtotal == null || subtotal.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
@@ -84,34 +87,18 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse holdSeats(Long userId, HoldSeatsRequest request) {
+        validateBookingInput(request, request == null ? null : request.seatIds());
         LocalDateTime now = LocalDateTime.now();
 
-        if (new HashSet<>(request.seatIds()).size() != request.seatIds().size()) {
-            throw new BadRequestException("Danh sách ghế không được chứa ghế trùng lặp.");
-        }
-
-        expireStaleHolds(request.showtimeId(), request.seatIds(), now);
-
-        // A retry replaces only this user's unfinished hold for the same showtime.
-        releaseExistingHolds(userId, request.showtimeId(), now);
-
-        // Existing active rows are locked here. V5 also protects the empty-row race at the database level.
-        List<Long> conflicts = bookingSeatRepository.findConflictedSeatIds(
-                request.showtimeId(), request.seatIds(), now);
-
-        if (!conflicts.isEmpty()) {
-            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
-        }
-
-        // 2. Prepare quote request to fetch Authoritative metadata & pricing from Catalog
+        // Validate authoritative seat metadata and pricing before changing any existing hold.
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
         if (request.tickets() != null && !request.tickets().isEmpty()) {
             for (HoldSeatsRequest.TicketSelection t : request.tickets()) {
                 quoteTickets.add(new CatalogQuoteDto.Request.Ticket(
                         t.seatId(),
-                        t.ticketType() == null ? "ADULT" : t.ticketType().toUpperCase(),
-                        t.viewerAge() == null ? 20 : t.viewerAge(),
-                        t.quantity() == null ? 1 : t.quantity()
+                        t.ticketType().toUpperCase(),
+                        t.viewerAge(),
+                        t.quantity()
                 ));
             }
         } else {
@@ -131,13 +118,27 @@ public class BookingServiceImpl implements BookingService {
         );
 
         CatalogQuoteDto.Response quote = catalogClient.getQuote(quoteReq);
+        validateQuote(quote, request.showtimeId(), request.seatIds());
+
+        expireStaleHolds(request.showtimeId(), request.seatIds(), now);
+
+        // A retry replaces only this user's unfinished hold for the same showtime.
+        releaseExistingHolds(userId, request.showtimeId(), now);
+
+        // Existing active rows are locked here. V5 also protects the empty-row race at the database level.
+        List<Long> conflicts = bookingSeatRepository.findConflictedSeatIds(
+                request.showtimeId(), request.seatIds(), now);
+
+        if (!conflicts.isEmpty()) {
+            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
+        }
 
         // 3. Create new Booking Entity with Snapshots
         String bookingCode = "BK" + now.format(DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", new Random().nextInt(10000));
 
-        int holdPoints = request.loyaltyPointsToRedeem() != null ? request.loyaltyPointsToRedeem() : 0;
-        BigDecimal holdDiscount = calculateLoyaltyDiscount(holdPoints, quote.showtime().cinemaId(), quote.subtotal());
+        int holdPoints = 0;
+        BigDecimal holdDiscount = BigDecimal.ZERO;
 
         Booking booking = Booking.builder()
                 .bookingCode(bookingCode)
@@ -253,12 +254,14 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse checkout(Long userId, Long bookingId, CheckoutBookingRequest request) {
+        if (request == null) throw new BadRequestException("Checkout payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), true);
     }
 
     @Override
     @Transactional
     public BookingResponse updateHoldingItems(Long userId, Long bookingId, UpdateHoldingBookingRequest request) {
+        if (request == null) throw new BadRequestException("Update payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), false);
     }
 
@@ -274,6 +277,18 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
 
+        boolean legacyLoyaltyDiscount = booking.getLoyaltyPointsRedeemed() > 0;
+        if (legacyLoyaltyDiscount && loyaltyPointsToRedeem == null) {
+            throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
+        }
+        if (legacyLoyaltyDiscount && Integer.valueOf(0).equals(loyaltyPointsToRedeem)
+                && paymentClient.hasActiveBookingPayment(bookingId)) {
+            throw new BadRequestException("Đơn đặt vé đã có giao dịch thanh toán đang xử lý. Không thể tự động cập nhật lại giá; vui lòng tạo đơn mới.");
+        }
+
+        List<Long> seatIds = booking.getSeats().stream().map(BookingSeat::getSeatId).toList();
+        validateSelections(seatIds, tickets, foods, loyaltyPointsToRedeem);
+
         if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             throw new BadRequestException("Đơn đặt vé không ở trạng thái hợp lệ để cập nhật.");
         }
@@ -287,17 +302,15 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
         }
 
-        List<Long> seatIds = booking.getSeats().stream().map(BookingSeat::getSeatId).toList();
-
         // Prepare quote request
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
         if (tickets != null && !tickets.isEmpty()) {
             for (HoldSeatsRequest.TicketSelection t : tickets) {
                 quoteTickets.add(new CatalogQuoteDto.Request.Ticket(
                         t.seatId(),
-                        t.ticketType() == null ? "ADULT" : t.ticketType().toUpperCase(),
-                        t.viewerAge() == null ? 20 : t.viewerAge(),
-                        t.quantity() == null ? 1 : t.quantity()
+                        t.ticketType().toUpperCase(),
+                        t.viewerAge(),
+                        t.quantity()
                 ));
             }
         } else {
@@ -316,6 +329,7 @@ public class BookingServiceImpl implements BookingService {
         );
 
         CatalogQuoteDto.Response quote = catalogClient.getQuote(quoteReq);
+        validateQuote(quote, booking.getShowtimeId(), seatIds);
 
         // Update snapshot fields from quote
         booking.setMovieTitleSnapshot(quote.showtime().movieTitle());
@@ -326,8 +340,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setSubtotal(quote.subtotal());
 
         // Calculate discount if loyalty points redeemed according to branch-specific configuration
-        int points = loyaltyPointsToRedeem != null ? loyaltyPointsToRedeem : booking.getLoyaltyPointsRedeemed();
-        BigDecimal discount = calculateLoyaltyDiscount(points, booking.getCinemaId(), quote.subtotal());
+        int points = 0;
+        BigDecimal discount = BigDecimal.ZERO;
         booking.setDiscountAmount(discount);
         booking.setLoyaltyPointsRedeemed(points);
         booking.setTotalAmount(quote.subtotal().subtract(discount).max(BigDecimal.ZERO));
@@ -360,7 +374,7 @@ public class BookingServiceImpl implements BookingService {
                 }
                 if (pId != null) {
                     boolean isCombo = Boolean.TRUE.equals(combo);
-                    int qty = f.quantity() == null || f.quantity() <= 0 ? 1 : f.quantity();
+                    int qty = f.quantity();
                     quoteFoods.add(new CatalogQuoteDto.Request.Food(
                             pId,
                             isCombo,
@@ -372,6 +386,98 @@ public class BookingServiceImpl implements BookingService {
             }
         }
         return quoteFoods;
+    }
+
+    private void validateBookingInput(HoldSeatsRequest request, List<Long> seatIds) {
+        if (request == null || request.showtimeId() == null || request.showtimeId() <= 0)
+            throw new BadRequestException("Showtime ID must be positive");
+        validateSelections(seatIds, request.tickets(), request.foods(), request.loyaltyPointsToRedeem());
+    }
+
+    private void validateSelections(List<Long> seatIds, List<HoldSeatsRequest.TicketSelection> tickets,
+                                    List<HoldSeatsRequest.FoodSelection> foods, Integer loyaltyPoints) {
+        if (seatIds == null || seatIds.isEmpty()) throw new BadRequestException("At least one seat is required");
+        if (seatIds.stream().anyMatch(id -> id == null || id <= 0)) throw new BadRequestException("Seat IDs must be positive");
+        if (new HashSet<>(seatIds).size() != seatIds.size()) throw new BadRequestException("Duplicate seat IDs");
+        if (loyaltyPoints != null && loyaltyPoints < 0) throw new BadRequestException("Loyalty points cannot be negative");
+        if (loyaltyPoints != null && loyaltyPoints > 0) throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
+
+        if (tickets != null && !tickets.isEmpty()) {
+            long total = 0;
+            Set<Long> assigned = new HashSet<>();
+            for (var ticket : tickets) {
+                if (ticket == null || ticket.ticketType() == null || ticket.ticketType().isBlank()
+                        || ticket.viewerAge() == null || ticket.viewerAge() < 0
+                        || ticket.quantity() == null || ticket.quantity() <= 0)
+                    throw new BadRequestException("Invalid ticket selection");
+                try { TicketType.valueOf(ticket.ticketType().toUpperCase()); }
+                catch (IllegalArgumentException ex) { throw new BadRequestException("Invalid ticket type"); }
+                if (ticket.seatId() != null && (ticket.seatId() <= 0 || !seatIds.contains(ticket.seatId()) || !assigned.add(ticket.seatId()) || ticket.quantity() != 1))
+                    throw new BadRequestException("Invalid or duplicate ticket seat assignment");
+                try { total = Math.addExact(total, ticket.quantity().longValue()); }
+                catch (ArithmeticException ex) { throw new BadRequestException("Ticket quantity is too large"); }
+            }
+            if (total != seatIds.size()) throw new BadRequestException("Ticket quantity must match selected seats");
+        }
+
+        Set<String> foodKeys = new HashSet<>();
+        if (foods != null) for (var food : foods) {
+            validateFoodIdentifiers(food.productId(), food.isCombo(), food.foodItemId(), food.foodComboId(), food.quantity());
+            Long id = food.productId() != null ? food.productId() : food.foodComboId() != null ? food.foodComboId() : food.foodItemId();
+            boolean combo = food.foodComboId() != null || Boolean.TRUE.equals(food.isCombo());
+            if (!foodKeys.add(combo + ":" + id)) throw new BadRequestException("Duplicate food selection");
+        }
+    }
+
+    private void validateFoodIdentifiers(Long productId, Boolean isCombo, Long itemId, Long comboId, Integer quantity) {
+        if (quantity == null || quantity <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+        if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+        if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+        if (productId != null && productId <= 0 || itemId != null && itemId <= 0 || comboId != null && comboId <= 0)
+            throw new BadRequestException("Food product ID must be positive");
+        if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && itemId == null && comboId == null && isCombo == null)
+            throw new BadRequestException("Food product type is required");
+    }
+
+    private void validateQuote(CatalogQuoteDto.Response quote, Long showtimeId, List<Long> seatIds) {
+        if (quote == null || quote.showtime() == null || !showtimeId.equals(quote.showtime().showtimeId())
+                || quote.seats() == null || quote.tickets() == null || quote.foods() == null
+                || quote.ticketSubtotal() == null || quote.foodSubtotal() == null || quote.subtotal() == null)
+            throw new BadRequestException("Catalog returned an invalid checkout quote");
+        Set<Long> quotedSeats = quote.seats().stream().map(CatalogQuoteDto.Response.SeatSnapshot::seatId).collect(java.util.stream.Collectors.toSet());
+        if (quotedSeats.size() != quote.seats().size() || !quotedSeats.equals(new HashSet<>(seatIds)))
+            throw new BadRequestException("Catalog quote seats do not match selected seats");
+        if (quote.ticketSubtotal().signum() < 0 || quote.foodSubtotal().signum() < 0 || quote.subtotal().signum() < 0
+                || quote.ticketSubtotal().add(quote.foodSubtotal()).compareTo(quote.subtotal()) != 0)
+            throw new BadRequestException("Catalog quote total is inconsistent");
+        BigDecimal quotedTicketTotal = BigDecimal.ZERO;
+        long quotedTicketQuantity = 0;
+        for (var ticket : quote.tickets()) {
+            if (ticket == null || ticket.seatId() == null || !quotedSeats.contains(ticket.seatId())
+                    || ticket.quantity() <= 0 || ticket.unitPrice() == null || ticket.unitPrice().signum() < 0
+                    || ticket.lineTotal() == null || ticket.lineTotal().signum() < 0
+                    || ticket.unitPrice().multiply(BigDecimal.valueOf(ticket.quantity())).compareTo(ticket.lineTotal()) != 0)
+                throw new BadRequestException("Catalog returned an invalid ticket quote");
+            quotedTicketTotal = quotedTicketTotal.add(ticket.lineTotal());
+            quotedTicketQuantity = Math.addExact(quotedTicketQuantity, (long) ticket.quantity());
+        }
+        if (quotedTicketQuantity != seatIds.size() || quotedTicketTotal.compareTo(quote.ticketSubtotal()) != 0)
+            throw new BadRequestException("Catalog ticket total is inconsistent");
+        BigDecimal quotedFoodTotal = BigDecimal.ZERO;
+        for (var food : quote.foods()) {
+            if (food == null || food.productId() == null || food.productId() <= 0 || food.quantity() <= 0
+                    || food.unitPrice() == null || food.unitPrice().signum() < 0
+                    || food.lineTotal() == null || food.lineTotal().signum() < 0
+                    || food.unitPrice().multiply(BigDecimal.valueOf(food.quantity())).compareTo(food.lineTotal()) != 0)
+                throw new BadRequestException("Catalog returned an invalid food quote");
+            quotedFoodTotal = quotedFoodTotal.add(food.lineTotal());
+        }
+        if (quotedFoodTotal.compareTo(quote.foodSubtotal()) != 0)
+            throw new BadRequestException("Catalog food total is inconsistent");
     }
 
     private void populateTicketsAndFoods(Booking booking, CatalogQuoteDto.Response quote) {
@@ -614,6 +720,10 @@ public class BookingServiceImpl implements BookingService {
             }
             bookingRepository.save(booking);
             throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Đơn đặt vé đã bị hủy.");
+        }
+
+        if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
+            throw new BadRequestException("Booking contains unverified loyalty redemption and requires manual payment reconciliation");
         }
 
         booking.setStatus(BookingStatus.PAID);

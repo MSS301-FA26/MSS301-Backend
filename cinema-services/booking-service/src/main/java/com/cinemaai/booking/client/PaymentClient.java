@@ -42,6 +42,21 @@ public class PaymentClient {
         return false;
     }
 
+    public boolean hasActiveBookingPayment(Long bookingId) {
+        try {
+            ApiResponse<Map<String, Object>> res = restClient.get()
+                    .uri("/internal/v1/payments/bookings/{bookingId}/status", bookingId)
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<Map<String, Object>>>() {});
+            if (res == null || res.data() == null) return true;
+            return Boolean.TRUE.equals(res.data().get("activePayment"));
+        } catch (Exception ex) {
+            log.warn("Failed to check booking payment status from payment service: {}", ex.getMessage());
+            return true;
+        }
+    }
+
     public BigDecimal creditWalletForRefund(Long userId, BigDecimal amount, Long bookingId, String bookingCode, String reason) {
         if (userId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("Invalid wallet credit parameters: userId={}, amount={}", userId, amount);
