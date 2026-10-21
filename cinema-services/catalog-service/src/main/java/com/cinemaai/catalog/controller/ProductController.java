@@ -1,13 +1,13 @@
 package com.cinemaai.catalog.controller;
 
-import com.cinemaai.catalog.dto.response.food.FoodCategoryResponse;
-import com.cinemaai.catalog.dto.response.food.FoodComboResponse;
-import com.cinemaai.catalog.dto.response.food.FoodItemResponse;
+import com.cinemaai.catalog.dto.response.product.ProductCategoryResponse;
+import com.cinemaai.catalog.dto.response.product.ProductBundleResponse;
+import com.cinemaai.catalog.dto.response.product.ProductResponse;
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
-import com.cinemaai.catalog.enums.FoodItemStatus;
-import com.cinemaai.catalog.service.FoodCategoryService;
-import com.cinemaai.catalog.service.FoodService;
+import com.cinemaai.catalog.enums.ProductStatus;
+import com.cinemaai.catalog.service.ProductCategoryService;
+import com.cinemaai.catalog.service.ProductService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -19,50 +19,50 @@ import java.util.Map;
 @RequestMapping("/api/v1/foods")
 @Tag(name = "Food & Combo")
 @RequiredArgsConstructor
-public class FoodController {
+public class ProductController {
 
-    private final FoodService foodService;
-    private final FoodCategoryService foodCategoryService;
+    private final ProductService productService;
+    private final ProductCategoryService productCategoryService;
 
     @GetMapping("/categories")
-    public ApiResponse<List<FoodCategoryResponse>> getCategories() {
-        return ApiResponse.success(foodCategoryService.getActiveCategories());
+    public ApiResponse<List<ProductCategoryResponse>> getCategories() {
+        return ApiResponse.success(productCategoryService.getActiveCategories());
     }
 
     @GetMapping("/items")
-    public ApiResponse<PageResponse<FoodItemResponse>> getItems(
+    public ApiResponse<PageResponse<ProductResponse>> getItems(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(foodService.getActiveItems(page, size));
+        return ApiResponse.success(productService.getActiveItems(page, size));
     }
 
     @GetMapping("/combos")
-    public ApiResponse<PageResponse<FoodComboResponse>> getCombos(
+    public ApiResponse<PageResponse<ProductBundleResponse>> getCombos(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(foodService.getActiveCombos(page, size));
+        return ApiResponse.success(productService.getActiveCombos(page, size));
     }
 
     @GetMapping("/all/items")
-    public ApiResponse<PageResponse<FoodItemResponse>> getAllItems(
+    public ApiResponse<PageResponse<ProductResponse>> getAllItems(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size
     ) {
-        return ApiResponse.success(foodService.getAllItems(page, size));
+        return ApiResponse.success(productService.getAllItems(page, size));
     }
 
     @GetMapping("/all/combos")
-    public ApiResponse<PageResponse<FoodComboResponse>> getAllCombos(
+    public ApiResponse<PageResponse<ProductBundleResponse>> getAllCombos(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size
     ) {
-        return ApiResponse.success(foodService.getAllCombos(page, size));
+        return ApiResponse.success(productService.getAllCombos(page, size));
     }
 
     @PatchMapping("/items/{itemId}/status")
-    public ApiResponse<FoodItemResponse> updateItemStatus(
+    public ApiResponse<ProductResponse> updateItemStatus(
             @PathVariable Long itemId,
             @RequestParam(required = false) String status,
             @RequestBody(required = false) Map<String, String> body
@@ -71,12 +71,12 @@ public class FoodController {
         if ((targetStatus == null || targetStatus.isBlank()) && body != null) {
             targetStatus = body.get("status");
         }
-        FoodItemStatus parsed = parseStatus(targetStatus);
-        return ApiResponse.success(foodService.updateItemStatus(itemId, parsed), "Cập nhật trạng thái món thành công");
+        ProductStatus parsed = parseStatus(targetStatus);
+        return ApiResponse.success(productService.updateItemStatus(itemId, parsed), "Cập nhật trạng thái món thành công");
     }
 
     @PatchMapping("/combos/{comboId}/status")
-    public ApiResponse<FoodComboResponse> updateComboStatus(
+    public ApiResponse<ProductBundleResponse> updateComboStatus(
             @PathVariable Long comboId,
             @RequestParam(required = false) String status,
             @RequestBody(required = false) Map<String, String> body
@@ -85,19 +85,19 @@ public class FoodController {
         if ((targetStatus == null || targetStatus.isBlank()) && body != null) {
             targetStatus = body.get("status");
         }
-        FoodItemStatus parsed = parseStatus(targetStatus);
-        return ApiResponse.success(foodService.updateComboStatus(comboId, parsed), "Cập nhật trạng thái combo thành công");
+        ProductStatus parsed = parseStatus(targetStatus);
+        return ApiResponse.success(productService.updateComboStatus(comboId, parsed), "Cập nhật trạng thái combo thành công");
     }
 
-    private FoodItemStatus parseStatus(String status) {
-        if (status == null || status.isBlank()) return FoodItemStatus.ACTIVE;
+    private ProductStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) return ProductStatus.ACTIVE;
         try {
-            return FoodItemStatus.valueOf(status.trim().toUpperCase());
+            return ProductStatus.valueOf(status.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
             if ("INACTIVE".equalsIgnoreCase(status) || "HET".equalsIgnoreCase(status)) {
-                return FoodItemStatus.OUT_OF_STOCK;
+                return ProductStatus.OUT_OF_STOCK;
             }
-            return FoodItemStatus.ACTIVE;
+            return ProductStatus.ACTIVE;
         }
     }
 }

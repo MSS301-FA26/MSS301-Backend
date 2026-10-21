@@ -1,13 +1,13 @@
-package com.cinemaai.catalog.dto.request.food;
+package com.cinemaai.catalog.dto.request.product;
 
-import com.cinemaai.catalog.enums.FoodItemStatus;
+import com.cinemaai.catalog.enums.ProductStatus;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
-public record FoodComboRequest(
+public record ProductBundleRequest(
         @NotBlank(message = "Food combo name is required")
         String name,
 
@@ -20,6 +20,6 @@ public record FoodComboRequest(
         @Size(max = 500, message = "Image URL must be at most 500 characters")
         String imageUrl,
 
-        FoodItemStatus status
+        ProductStatus status
 ) {
 }

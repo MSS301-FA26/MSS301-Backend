@@ -1,9 +1,9 @@
-package com.cinemaai.catalog.dto.response.food;
+package com.cinemaai.catalog.dto.response.product;
 
 import java.math.BigDecimal;
 import java.util.List;
 
-public record FoodQuoteResponse(
+public record ProductQuoteResponse(
         List<FoodItemSnapshot> items,
         BigDecimal totalAmount
 ) {

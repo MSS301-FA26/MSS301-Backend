@@ -1,6 +1,6 @@
 package com.cinemaai.catalog.enums;
 
-public enum FoodItemStatus {
+public enum ProductStatus {
     ACTIVE,
     LOW_STOCK,
     INACTIVE,

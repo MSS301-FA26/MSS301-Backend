@@ -1,12 +1,12 @@
 package com.cinemaai.catalog.service.impl;
 
-import com.cinemaai.catalog.dto.request.food.FoodCategoryRequest;
-import com.cinemaai.catalog.dto.response.food.FoodCategoryResponse;
-import com.cinemaai.catalog.entity.FoodCategory;
+import com.cinemaai.catalog.dto.request.product.ProductCategoryRequest;
+import com.cinemaai.catalog.dto.response.product.ProductCategoryResponse;
+import com.cinemaai.catalog.entity.ProductCategory;
 import com.cinemaai.catalog.exception.BadRequestException;
 import com.cinemaai.catalog.exception.NotFoundException;
-import com.cinemaai.catalog.repository.FoodCategoryRepository;
-import com.cinemaai.catalog.service.FoodCategoryService;
+import com.cinemaai.catalog.repository.ProductCategoryRepository;
+import com.cinemaai.catalog.service.ProductCategoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,13 +17,13 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class FoodCategoryServiceImpl implements FoodCategoryService {
+public class ProductCategoryServiceImpl implements ProductCategoryService {
 
-    private final FoodCategoryRepository repository;
+    private final ProductCategoryRepository repository;
 
     @Override
     @Transactional(readOnly = true)
-    public List<FoodCategoryResponse> getActiveCategories() {
+    public List<ProductCategoryResponse> getActiveCategories() {
         checkAndSeedDefaults();
         return repository.findByStatusOrderBySortOrderAscNameAsc("ACTIVE")
                 .stream()
@@ -33,7 +33,7 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<FoodCategoryResponse> getAllCategories() {
+    public List<ProductCategoryResponse> getAllCategories() {
         checkAndSeedDefaults();
         return repository.findAllByOrderBySortOrderAscNameAsc()
                 .stream()
@@ -43,15 +43,15 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
 
     @Override
     @Transactional(readOnly = true)
-    public FoodCategoryResponse getCategoryById(Long id) {
-        FoodCategory category = repository.findById(id)
+    public ProductCategoryResponse getCategoryById(Long id) {
+        ProductCategory category = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Food category not found with id: " + id));
         return toResponse(category);
     }
 
     @Override
     @Transactional
-    public FoodCategoryResponse createCategory(FoodCategoryRequest request) {
+    public ProductCategoryResponse createCategory(ProductCategoryRequest request) {
         String code = request.code() != null ? request.code().trim().toUpperCase() : "";
         if (code.isBlank()) {
             throw new BadRequestException("Category code is required");
@@ -59,7 +59,7 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
         if (repository.existsByCode(code)) {
             throw new BadRequestException("Category code already exists: " + code);
         }
-        FoodCategory category = new FoodCategory(
+        ProductCategory category = new ProductCategory(
                 code,
                 request.name().trim(),
                 request.description(),
@@ -71,8 +71,8 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
 
     @Override
     @Transactional
-    public FoodCategoryResponse updateCategory(Long id, FoodCategoryRequest request) {
-        FoodCategory category = repository.findById(id)
+    public ProductCategoryResponse updateCategory(Long id, ProductCategoryRequest request) {
+        ProductCategory category = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Food category not found with id: " + id));
 
         String code = request.code() != null ? request.code().trim().toUpperCase() : category.getCode();
@@ -98,8 +98,8 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
 
     @Override
     @Transactional
-    public FoodCategoryResponse deleteCategory(Long id) {
-        FoodCategory category = repository.findById(id)
+    public ProductCategoryResponse deleteCategory(Long id) {
+        ProductCategory category = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Food category not found with id: " + id));
         category.setStatus("INACTIVE");
         return toResponse(repository.save(category));
@@ -107,15 +107,15 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
 
     @Override
     @Transactional
-    public FoodCategoryResponse restoreCategory(Long id) {
-        FoodCategory category = repository.findById(id)
+    public ProductCategoryResponse restoreCategory(Long id) {
+        ProductCategory category = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Food category not found with id: " + id));
         category.setStatus("ACTIVE");
         return toResponse(repository.save(category));
     }
 
-    private FoodCategoryResponse toResponse(FoodCategory cat) {
-        return new FoodCategoryResponse(
+    private ProductCategoryResponse toResponse(ProductCategory cat) {
+        return new ProductCategoryResponse(
                 cat.getId(),
                 cat.getCode(),
                 cat.getName(),
@@ -129,10 +129,10 @@ public class FoodCategoryServiceImpl implements FoodCategoryService {
         if (repository.count() == 0) {
             log.info("Seeding initial food categories into database...");
             repository.saveAll(List.of(
-                    new FoodCategory("COMBO", "Combo Tiết Kiệm", "Các gói combo bắp nước siêu tiết kiệm kèm ưu đãi", 1, "ACTIVE"),
-                    new FoodCategory("POPCORN", "Bắp Rang Bơ", "Bắp rang bơ nóng hổi thơm ngon các vị bơ, phô mai, caramel, socola", 2, "ACTIVE"),
-                    new FoodCategory("DRINK", "Nước Giải Khát", "Nước ngọt có ga mát lạnh, trà trái cây và nước suối tinh khiết", 3, "ACTIVE"),
-                    new FoodCategory("SNACK", "Đồ Ăn Vặt", "Khoai tây lắc phô mai, xúc xích nướng thơm lừng nóng hổi", 4, "ACTIVE")
+                    new ProductCategory("COMBO", "Combo Tiết Kiệm", "Các gói combo bắp nước siêu tiết kiệm kèm ưu đãi", 1, "ACTIVE"),
+                    new ProductCategory("POPCORN", "Bắp Rang Bơ", "Bắp rang bơ nóng hổi thơm ngon các vị bơ, phô mai, caramel, socola", 2, "ACTIVE"),
+                    new ProductCategory("DRINK", "Nước Giải Khát", "Nước ngọt có ga mát lạnh, trà trái cây và nước suối tinh khiết", 3, "ACTIVE"),
+                    new ProductCategory("SNACK", "Đồ Ăn Vặt", "Khoai tây lắc phô mai, xúc xích nướng thơm lừng nóng hổi", 4, "ACTIVE")
             ));
         }
     }

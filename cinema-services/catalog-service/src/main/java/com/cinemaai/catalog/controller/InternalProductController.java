@@ -1,14 +1,14 @@
 package com.cinemaai.catalog.controller;
 
-import com.cinemaai.catalog.dto.request.food.FoodQuoteRequest;
+import com.cinemaai.catalog.dto.request.product.ProductQuoteRequest;
 import com.cinemaai.catalog.dto.response.ApiResponse;
-import com.cinemaai.catalog.dto.response.food.FoodQuoteResponse;
-import com.cinemaai.catalog.entity.FoodCombo;
-import com.cinemaai.catalog.entity.FoodItem;
-import com.cinemaai.catalog.enums.FoodItemStatus;
+import com.cinemaai.catalog.dto.response.product.ProductQuoteResponse;
+import com.cinemaai.catalog.entity.ProductBundle;
+import com.cinemaai.catalog.entity.Product;
+import com.cinemaai.catalog.enums.ProductStatus;
 import com.cinemaai.catalog.exception.BadRequestException;
-import com.cinemaai.catalog.repository.FoodComboRepository;
-import com.cinemaai.catalog.repository.FoodItemRepository;
+import com.cinemaai.catalog.repository.ProductBundleRepository;
+import com.cinemaai.catalog.repository.ProductRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.math.BigDecimal;
@@ -27,23 +27,23 @@ import jakarta.validation.Valid;
 @RequestMapping("/internal/v1/foods")
 @RequiredArgsConstructor
 @Tag(name = "Internal Foods", description = "Internal food quote validation for microservices")
-public class InternalFoodController {
+public class InternalProductController {
 
-    private final FoodItemRepository foodItemRepository;
-    private final FoodComboRepository foodComboRepository;
+    private final ProductRepository productRepository;
+    private final ProductBundleRepository productBundleRepository;
 
     @Operation(summary = "Quote and validate food items/combos")
     @PostMapping("/quote")
-    public ApiResponse<FoodQuoteResponse> quoteFoods(@Valid @RequestBody FoodQuoteRequest request) {
+    public ApiResponse<ProductQuoteResponse> quoteFoods(@Valid @RequestBody ProductQuoteRequest request) {
         if (request == null || request.foods() == null || request.foods().isEmpty()) {
-            return ApiResponse.success(new FoodQuoteResponse(List.of(), BigDecimal.ZERO), "No foods requested");
+            return ApiResponse.success(new ProductQuoteResponse(List.of(), BigDecimal.ZERO), "No foods requested");
         }
 
-        List<FoodQuoteResponse.FoodItemSnapshot> resultItems = new ArrayList<>();
+        List<ProductQuoteResponse.FoodItemSnapshot> resultItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         java.util.Set<String> productKeys = new java.util.HashSet<>();
 
-        for (FoodQuoteRequest.Item item : request.foods()) {
+        for (ProductQuoteRequest.Item item : request.foods()) {
             validateFoodIdentifiers(item.productId(), item.isCombo(), item.foodItemId(), item.foodComboId());
             Long resolvedId = item.productId();
             boolean isCombo = Boolean.TRUE.equals(item.isCombo());
@@ -67,30 +67,30 @@ public class InternalFoodController {
             if (!productKeys.add(finalIsCombo + ":" + targetId)) throw new BadRequestException("Duplicate food selection");
             String name;
             BigDecimal price;
-            FoodItemStatus status;
+            ProductStatus status;
 
             if (finalIsCombo) {
-                FoodCombo combo = foodComboRepository.findById(targetId)
+                ProductBundle combo = productBundleRepository.findById(targetId)
                         .orElseThrow(() -> new BadRequestException("Food combo does not exist: " + targetId));
                 name = combo.getName();
                 price = combo.getPrice();
                 status = combo.getStatus();
             } else {
-                FoodItem foodItem = foodItemRepository.findById(targetId)
+                Product foodItem = productRepository.findById(targetId)
                         .orElseThrow(() -> new BadRequestException("Food item does not exist: " + targetId));
                 name = foodItem.getName();
                 price = foodItem.getPrice();
                 status = foodItem.getStatus();
             }
 
-            if (status != FoodItemStatus.ACTIVE && status != FoodItemStatus.LOW_STOCK) {
+            if (status != ProductStatus.ACTIVE && status != ProductStatus.LOW_STOCK) {
                 throw new BadRequestException("Sản phẩm '" + name + "' hiện không khả dụng (Trạng thái: " + status + ")");
             }
 
             BigDecimal lineTotal = price.multiply(BigDecimal.valueOf(qty));
             totalAmount = totalAmount.add(lineTotal);
 
-            resultItems.add(new FoodQuoteResponse.FoodItemSnapshot(
+            resultItems.add(new ProductQuoteResponse.FoodItemSnapshot(
                     targetId,
                     finalIsCombo,
                     name,
@@ -100,7 +100,7 @@ public class InternalFoodController {
             ));
         }
 
-        return ApiResponse.success(new FoodQuoteResponse(resultItems, totalAmount), "Food quote calculated successfully");
+        return ApiResponse.success(new ProductQuoteResponse(resultItems, totalAmount), "Food quote calculated successfully");
     }
 
     private void validateFoodIdentifiers(Long productId, Boolean isCombo, Long itemId, Long comboId) {

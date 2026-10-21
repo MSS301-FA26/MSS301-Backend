@@ -1,6 +1,6 @@
-package com.cinemaai.catalog.dto.response.food;
+package com.cinemaai.catalog.dto.response.product;
 
-public record FoodCategoryResponse(
+public record ProductCategoryResponse(
         Long id,
         String code,
         String name,
