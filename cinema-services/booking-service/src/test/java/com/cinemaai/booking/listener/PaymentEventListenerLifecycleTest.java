@@ -94,16 +94,31 @@ class PaymentEventListenerLifecycleTest {
     }
 
     @Test
-    void differentDuplicateEventForAlreadyPaidBookingDoesNotAwardAgain() throws Exception {
-        Booking booking = Booking.builder().id(7L).bookingCode("BK7").status(BookingStatus.PAID)
+    void eventForAlreadyPaidBookingRetriesIdempotentLoyaltyAward() throws Exception {
+        Booking booking = Booking.builder().id(7L).bookingCode("BK7").userId(1L).cinemaId(2L)
+                .totalAmount(BigDecimal.TEN).loyaltyPointsRedeemed(0).status(BookingStatus.PAID)
                 .seats(List.of(BookingSeat.builder().status(BookingSeatStatus.BOOKED).build())).build();
         when(bookings.findByIdForUpdate(7L)).thenReturn(Optional.of(booking));
 
         listener.onPaymentSucceeded(payload("evt-paid-retry"));
 
         verify(bookings, never()).save(any());
-        verifyNoInteractions(payment);
+        verify(payment).awardLoyaltyPoints(1L, 7L, "BK7", BigDecimal.TEN, 0, 2L);
         verify(processed).save(any());
+    }
+
+    @Test
+    void loyaltyFailureLeavesEventUnprocessedForRetry() throws Exception {
+        Booking booking = Booking.builder().id(7L).bookingCode("BK7").userId(1L).cinemaId(2L)
+                .totalAmount(BigDecimal.TEN).loyaltyPointsRedeemed(0).status(BookingStatus.PAID)
+                .seats(List.of(BookingSeat.builder().status(BookingSeatStatus.BOOKED).build())).build();
+        when(bookings.findByIdForUpdate(7L)).thenReturn(Optional.of(booking));
+        doThrow(new IllegalStateException("loyalty unavailable")).when(payment)
+                .awardLoyaltyPoints(1L, 7L, "BK7", BigDecimal.TEN, 0, 2L);
+
+        assertThrows(IllegalStateException.class, () -> listener.onPaymentSucceeded(payload("evt-retry")));
+
+        verify(processed, never()).save(any());
     }
 
     private String payload(String eventId) throws Exception {
