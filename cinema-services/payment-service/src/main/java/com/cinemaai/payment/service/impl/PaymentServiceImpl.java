@@ -84,10 +84,8 @@ public class PaymentServiceImpl implements PaymentService {
             activeBooking = bookingClient.getBooking(bookingId);
             requireOwner(userId, activeBooking.userId());
             rejectUnverifiedLoyaltyRedemption(activeBooking);
-            if (!"PENDING_PAYMENT".equalsIgnoreCase(activeBooking.status())
-                || activeBooking.totalAmount() == null || activeBooking.totalAmount().signum() <= 0
-                || "EXPIRED".equalsIgnoreCase(activeBooking.status()) ||
-                (activeBooking.holdExpiresAt() != null && activeBooking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
+            if (!isBookingAwaitingValidPayment(activeBooking, LocalDateTime.now())
+                    || activeBooking.totalAmount() == null || activeBooking.totalAmount().signum() <= 0) {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Vui lòng chọn lại ghế.");
             }
             amount = activeBooking.totalAmount();
@@ -235,8 +233,7 @@ public class PaymentServiceImpl implements PaymentService {
             BookingClient.BookingInfo booking = bookingClient.getBooking(bookingId);
             requireOwner(userId, booking.userId());
             rejectUnverifiedLoyaltyRedemption(booking);
-            if ("EXPIRED".equalsIgnoreCase(booking.status()) ||
-                (booking.holdExpiresAt() != null && booking.holdExpiresAt().isBefore(LocalDateTime.now()))) {
+            if (!isBookingAwaitingValidPayment(booking, LocalDateTime.now())) {
                 throw new BadRequestException("Thời gian giữ ghế đã hết hạn (3 phút). Đơn đặt vé đã bị hủy.");
             }
             amount = booking.totalAmount();
@@ -349,10 +346,11 @@ public class PaymentServiceImpl implements PaymentService {
             if (payment.getBookingId() != null) {
                 try {
                     BookingClient.BookingInfo booking = bookingClient.getBooking(payment.getBookingId());
-                    if (!hasUnverifiedLoyaltyRedemption(booking)) {
+                    if (!hasUnverifiedLoyaltyRedemption(booking)
+                            && isBookingAwaitingValidPayment(booking, LocalDateTime.now())) {
                         bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), payment.getPaidAt());
                     } else {
-                        log.error("Captured payment {} requires manual reconciliation: booking {} contains unverified loyalty redemption",
+                        log.error("Captured payment {} requires manual reconciliation: booking {} is not safely fulfilable",
                                 payment.getId(), payment.getBookingId());
                     }
                 } catch (Exception ex) {
@@ -374,16 +372,6 @@ public class PaymentServiceImpl implements PaymentService {
             if (payment.getBookingId() != null) {
                 try {
                     capturedBooking = bookingClient.getBooking(payment.getBookingId());
-                    if ("EXPIRED".equalsIgnoreCase(capturedBooking.status()) ||
-                        (capturedBooking.holdExpiresAt() != null && capturedBooking.holdExpiresAt().isBefore(now))) {
-                        log.error("VNPay IPN: Payment arrived after hold expired for booking #{}", payment.getBookingId());
-                        payment.setStatus(PaymentStatus.FAILED);
-                        payment.setTransactionId(params.get("vnp_TransactionNo"));
-                        payment.setPaymentAccountLabel("VNPAY EXPIRED REJECTED");
-                        payment.setCallbackPayload(params.toString());
-                        paymentRepository.save(payment);
-                        return Map.of("RspCode", "00", "Message", "Booking hold expired, payment rejected");
-                    }
                 } catch (Exception ex) {
                     log.warn("Failed to check booking expiration in IPN for booking {}: {}", payment.getBookingId(), ex.getMessage());
                 }
@@ -396,8 +384,9 @@ public class PaymentServiceImpl implements PaymentService {
             paymentRepository.save(payment);
 
             if (payment.getBookingId() != null
-                    && (capturedBooking == null || hasUnverifiedLoyaltyRedemption(capturedBooking))) {
-                log.error("VNPay captured payment {} for booking {} that could not be safely validated; preserving SUCCESS callback evidence for manual reconciliation without issuing tickets or loyalty",
+                    && (capturedBooking == null || hasUnverifiedLoyaltyRedemption(capturedBooking)
+                        || !isBookingAwaitingValidPayment(capturedBooking, now))) {
+                log.error("VNPay captured payment {} for booking {} that cannot be safely fulfilled; preserving SUCCESS callback evidence for manual reconciliation without issuing tickets or loyalty",
                         payment.getId(), payment.getBookingId());
                 return Map.of("RspCode", "00", "Message", "Payment captured; manual reconciliation required");
             }
@@ -475,6 +464,13 @@ public class PaymentServiceImpl implements PaymentService {
     private boolean hasUnverifiedLoyaltyRedemption(BookingClient.BookingInfo booking) {
         return booking != null && booking.loyaltyPointsRedeemed() != null
                 && booking.loyaltyPointsRedeemed() > 0;
+    }
+
+    private boolean isBookingAwaitingValidPayment(BookingClient.BookingInfo booking, LocalDateTime now) {
+        return booking != null
+                && "PENDING_PAYMENT".equalsIgnoreCase(booking.status())
+                && booking.holdExpiresAt() != null
+                && booking.holdExpiresAt().isAfter(now);
     }
 
     private void rejectUnverifiedLoyaltyRedemption(BookingClient.BookingInfo booking) {

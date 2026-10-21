@@ -66,7 +66,7 @@ class BookingLoyaltySecurityTest {
     @Test
     void positivePointsAreDeniedAtCheckoutAndUpdate() {
         Booking booking = activeBooking(0);
-        when(bookings.findByIdAndUserId(99L, 7L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdAndUserIdForUpdate(99L, 7L)).thenReturn(Optional.of(booking));
         assertThrows(BadRequestException.class, () -> service.checkout(7L, 99L,
                 new CheckoutBookingRequest(null, null, 1)));
         assertThrows(BadRequestException.class, () -> service.updateHoldingItems(7L, 99L,
@@ -78,7 +78,7 @@ class BookingLoyaltySecurityTest {
     @Test
     void legacyBookingCannotBypassWithNullAndFailedZeroRecoveryDoesNotMutate() {
         Booking booking = activeBooking(500);
-        when(bookings.findByIdAndUserId(99L, 7L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdAndUserIdForUpdate(99L, 7L)).thenReturn(Optional.of(booking));
         when(payment.hasActiveBookingPayment(99L)).thenReturn(false);
         when(catalog.getQuote(any())).thenThrow(new BadRequestException("re-quote failed"));
 
@@ -97,7 +97,7 @@ class BookingLoyaltySecurityTest {
     @Test
     void internalMarkPaidRejectsUnpaidLegacyDiscount() {
         Booking booking = activeBooking(500);
-        when(bookings.findById(99L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdForUpdate(99L)).thenReturn(Optional.of(booking));
 
         assertThrows(BadRequestException.class, () -> service.markPaidInternal(99L, "TXN"));
 
@@ -109,7 +109,7 @@ class BookingLoyaltySecurityTest {
     @Test
     void explicitZeroRecoversLegacyBookingThroughAuthoritativeRequote() {
         Booking booking = activeBooking(500);
-        when(bookings.findByIdAndUserId(99L, 7L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdAndUserIdForUpdate(99L, 7L)).thenReturn(Optional.of(booking));
         when(payment.hasActiveBookingPayment(99L)).thenReturn(false);
         when(catalog.getQuote(any())).thenReturn(validQuote());
         when(bookings.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -126,7 +126,7 @@ class BookingLoyaltySecurityTest {
     @Test
     void activePaymentPreventsLegacyRepriceBeforeCatalogOrMutation() {
         Booking booking = activeBooking(500);
-        when(bookings.findByIdAndUserId(99L, 7L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdAndUserIdForUpdate(99L, 7L)).thenReturn(Optional.of(booking));
         when(payment.hasActiveBookingPayment(99L)).thenReturn(true);
 
         assertThrows(BadRequestException.class, () -> service.checkout(7L, 99L,

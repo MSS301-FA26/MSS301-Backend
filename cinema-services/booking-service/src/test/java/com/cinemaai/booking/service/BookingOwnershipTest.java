@@ -54,11 +54,11 @@ class BookingOwnershipTest {
     void internalLookupStillReadsByIdWithoutUserOwnershipFilter() {
         Booking booking = booking(7L, 2L, "BK-B");
         BookingResponse response = mock(BookingResponse.class);
-        when(bookings.findById(7L)).thenReturn(Optional.of(booking));
+        when(bookings.findByIdForUpdate(7L)).thenReturn(Optional.of(booking));
         when(mapper.toResponse(booking)).thenReturn(response);
 
         assertSame(response, service.getBookingByIdInternal(7L));
-        verify(bookings).findById(7L);
+        verify(bookings).findByIdForUpdate(7L);
     }
 
     private Booking booking(Long id, Long userId, String code) {
