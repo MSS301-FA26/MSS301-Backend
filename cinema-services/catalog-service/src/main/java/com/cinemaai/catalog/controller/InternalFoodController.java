@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 @Slf4j
 @RestController
@@ -33,15 +34,17 @@ public class InternalFoodController {
 
     @Operation(summary = "Quote and validate food items/combos")
     @PostMapping("/quote")
-    public ApiResponse<FoodQuoteResponse> quoteFoods(@RequestBody FoodQuoteRequest request) {
+    public ApiResponse<FoodQuoteResponse> quoteFoods(@Valid @RequestBody FoodQuoteRequest request) {
         if (request == null || request.foods() == null || request.foods().isEmpty()) {
             return ApiResponse.success(new FoodQuoteResponse(List.of(), BigDecimal.ZERO), "No foods requested");
         }
 
         List<FoodQuoteResponse.FoodItemSnapshot> resultItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
+        java.util.Set<String> productKeys = new java.util.HashSet<>();
 
         for (FoodQuoteRequest.Item item : request.foods()) {
+            validateFoodIdentifiers(item.productId(), item.isCombo(), item.foodItemId(), item.foodComboId());
             Long resolvedId = item.productId();
             boolean isCombo = Boolean.TRUE.equals(item.isCombo());
 
@@ -55,13 +58,13 @@ public class InternalFoodController {
                 }
             }
 
-            if (resolvedId == null) {
-                continue;
-            }
+            if (resolvedId == null) throw new BadRequestException("Food product identifier is required");
 
             final Long targetId = resolvedId;
             final boolean finalIsCombo = isCombo;
-            int qty = item.quantity() != null && item.quantity() > 0 ? item.quantity() : 1;
+            if (item.quantity() == null || item.quantity() <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+            int qty = item.quantity();
+            if (!productKeys.add(finalIsCombo + ":" + targetId)) throw new BadRequestException("Duplicate food selection");
             String name;
             BigDecimal price;
             FoodItemStatus status;
@@ -98,5 +101,16 @@ public class InternalFoodController {
         }
 
         return ApiResponse.success(new FoodQuoteResponse(resultItems, totalAmount), "Food quote calculated successfully");
+    }
+
+    private void validateFoodIdentifiers(Long productId, Boolean isCombo, Long itemId, Long comboId) {
+        if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+        if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+        if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && itemId == null && comboId == null && isCombo == null)
+            throw new BadRequestException("Food product type is required");
     }
 }

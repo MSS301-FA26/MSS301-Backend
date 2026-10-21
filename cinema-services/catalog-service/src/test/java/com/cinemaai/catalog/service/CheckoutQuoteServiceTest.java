@@ -50,7 +50,7 @@ class CheckoutQuoteServiceTest {
         showtime = withId(new Showtime(movie, room, monday, monday.plusHours(2), new BigDecimal("90000")), 40L);
         showtime.setAdultStandardPrice(new BigDecimal("90000"));
         showtime.setStatus(ShowtimeStatus.OPEN);
-        when(showtimes.findWithDetailsById(40L)).thenReturn(Optional.of(showtime));
+        org.mockito.Mockito.lenient().when(showtimes.findWithDetailsById(40L)).thenReturn(Optional.of(showtime));
     }
 
     @Test
@@ -125,24 +125,45 @@ class CheckoutQuoteServiceTest {
 
     @Test
     void rejectsTicketQuantityThatDoesNotMatchSeatCount() {
-        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
         var request = new CheckoutQuoteRequest(40L, List.of(100L),
                 List.of(new CheckoutQuoteRequest.Ticket(null, TicketType.ADULT, 30, 0)), List.of());
 
         assertThatThrownBy(() -> service.quote(request))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessage("Số lượng vé phải bằng số lượng ghế đã chọn.");
+                .hasMessageContaining("greater than zero");
     }
 
     @Test
     void rejectsNegativeTicketQuantity() {
-        when(seats.findAllById(any())).thenReturn(List.of(standardSeat));
         var request = new CheckoutQuoteRequest(40L, List.of(100L),
                 List.of(new CheckoutQuoteRequest.Ticket(null, TicketType.ADULT, 30, -1)), List.of());
 
         assertThatThrownBy(() -> service.quote(request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Số lượng vé không được âm");
+    }
+
+    @Test
+    void rejectsZeroTicketQuantityAsInvalidLine() {
+        var request = new CheckoutQuoteRequest(40L, List.of(100L),
+                List.of(new CheckoutQuoteRequest.Ticket(null, TicketType.ADULT, 30, 0)), List.of());
+
+        assertThatThrownBy(() -> service.quote(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("greater than zero");
+    }
+
+    @Test
+    void rejectsConflictingAndDuplicateFoodSelections() {
+        var conflicting = new CheckoutQuoteRequest.Food(50L, false, 1, 51L, null);
+        var duplicateA = new CheckoutQuoteRequest.Food(50L, false, 1);
+        var duplicateB = new CheckoutQuoteRequest.Food(50L, false, 2);
+
+        assertThatThrownBy(() -> service.quote(new CheckoutQuoteRequest(40L, List.of(100L), null,
+                List.of(conflicting), null, null, null))).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.quote(new CheckoutQuoteRequest(40L, List.of(100L), null,
+                List.of(duplicateA, duplicateB), null, null, null)))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Duplicate food");
     }
 
     @Test

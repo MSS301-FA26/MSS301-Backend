@@ -30,15 +30,15 @@ public record CheckoutQuoteRequest(
     // seatId is optional for batch clients; without it seats are assigned in input order.
     public record Ticket(
             @Positive Long seatId,
-            TicketType ticketType,
-            Integer viewerAge,
-            @PositiveOrZero Integer quantity
+            @NotNull TicketType ticketType,
+            @NotNull @PositiveOrZero Integer viewerAge,
+            @NotNull @Positive Integer quantity
     ) {
         public Ticket(Long seatId, TicketType ticketType, Integer viewerAge, Integer quantity) {
             this.seatId = seatId;
-            this.ticketType = ticketType != null ? ticketType : TicketType.ADULT;
-            this.viewerAge = viewerAge != null ? viewerAge : 22;
-            this.quantity = quantity != null ? quantity : 1;
+            this.ticketType = ticketType;
+            this.viewerAge = viewerAge;
+            this.quantity = quantity;
         }
     }
 
@@ -54,7 +54,6 @@ public record CheckoutQuoteRequest(
         }
 
         public Food {
-            if (quantity == null || quantity <= 0) quantity = 1;
             if (productId == null) {
                 if (foodComboId != null) {
                     productId = foodComboId;

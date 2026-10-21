@@ -430,27 +430,10 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                         .status(LoyaltyStatus.ACTIVE)
                         .build()));
 
-        // 1. If customer redeemed points for this booking, record REDEEM if not already recorded
+        // Redemption is temporarily disabled. Never infer a committed redemption from Booking input.
         if (redeemedPoints > 0 && bookingId != null) {
-            long existingRedeem = loyaltyPointTransactionRepository.sumDeltaByBookingIdAndType(bookingId, LoyaltyPointType.REDEEM);
-            if (existingRedeem == 0) {
-                int currentPoints = lp.getPoints();
-                int newPoints = Math.max(0, currentPoints - redeemedPoints);
-                lp.setPoints(newPoints);
-                loyaltyPointRepository.save(lp);
-
-                loyaltyPointTransactionRepository.save(LoyaltyPointTransaction.builder()
-                        .userId(userId)
-                        .bookingId(bookingId)
-                        .bookingCode(bookingCode)
-                        .type(LoyaltyPointType.REDEEM)
-                        .pointsDelta(-redeemedPoints)
-                        .balanceAfter(lp.getPoints())
-                        .note("Đổi " + redeemedPoints + " điểm giảm giá đơn đặt vé " + bookingCode)
-                        .occurredAt(LocalDateTime.now())
-                        .build());
-                log.info("Deducted {} redeemed points from userId {} for booking {}", redeemedPoints, userId, bookingCode);
-            }
+            log.error("Ignored unverified redeemedPoints={} for paid booking {}; no REDEEM ledger entry was created",
+                    redeemedPoints, bookingCode);
         }
 
         // 2. Check if EARN points already awarded for this booking (Idempotency)
@@ -534,8 +517,10 @@ public class LoyaltyServiceImpl implements LoyaltyService {
         // 1. Restore redeemed points if any, with idempotency check
         if (redeemedPoints > 0 && bookingId != null) {
             long alreadyRestored = loyaltyPointTransactionRepository.sumDeltaByBookingIdAndType(bookingId, LoyaltyPointType.RESTORE);
-            if (alreadyRestored == 0) {
-                lp.setPoints(lp.getPoints() + redeemedPoints);
+            long committedRedeemDelta = loyaltyPointTransactionRepository.sumDeltaByBookingIdAndType(bookingId, LoyaltyPointType.REDEEM);
+            int committedRedeemedPoints = (int) Math.min(Integer.MAX_VALUE, Math.abs(committedRedeemDelta));
+            if (alreadyRestored == 0 && committedRedeemedPoints > 0) {
+                lp.setPoints(Math.addExact(lp.getPoints(), committedRedeemedPoints));
                 loyaltyPointRepository.save(lp);
 
                 loyaltyPointTransactionRepository.save(LoyaltyPointTransaction.builder()
@@ -543,12 +528,12 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                         .bookingId(bookingId)
                         .bookingCode(bookingCode)
                         .type(LoyaltyPointType.RESTORE)
-                        .pointsDelta(redeemedPoints)
+                        .pointsDelta(committedRedeemedPoints)
                         .balanceAfter(lp.getPoints())
-                        .note("Hoàn lại " + redeemedPoints + " điểm đã dùng từ vé bị hủy: " + bookingCode + " (" + reason + ")")
+                        .note("Hoàn lại " + committedRedeemedPoints + " điểm đã có REDEEM ledger từ vé bị hủy: " + bookingCode + " (" + reason + ")")
                         .occurredAt(LocalDateTime.now())
                         .build());
-                log.info("Restored {} redeemed points to userId {} for refunded booking {}", redeemedPoints, userId, bookingCode);
+                log.info("Restored {} ledger-backed redeemed points to userId {} for refunded booking {}", committedRedeemedPoints, userId, bookingCode);
             }
         }
 
