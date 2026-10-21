@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public record FoodOrderResponse(
+public record OrderResponse(
         Long id,
         String orderCode,
         String foodOrderCode,
@@ -21,9 +21,9 @@ public record FoodOrderResponse(
         Long cinemaId,
         String cinemaName,
         String cinemaAddress,
-        List<FoodOrderItemResponse> items
+        List<OrderItemResponse> items
 ) {
-    public FoodOrderResponse(
+    public OrderResponse(
             Long id,
             String orderCode,
             String foodOrderCode,
@@ -37,12 +37,12 @@ public record FoodOrderResponse(
             LocalDateTime cancelledAt,
             LocalDateTime createdAt,
             String qrCode,
-            List<FoodOrderItemResponse> items
+            List<OrderItemResponse> items
     ) {
         this(id, orderCode, foodOrderCode, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, qrCode, null, null, null, items);
     }
 
-    public FoodOrderResponse(
+    public OrderResponse(
             Long id,
             String orderCode,
             String foodOrderCode,
@@ -55,7 +55,7 @@ public record FoodOrderResponse(
             LocalDateTime expiresAt,
             LocalDateTime cancelledAt,
             LocalDateTime createdAt,
-            List<FoodOrderItemResponse> items
+            List<OrderItemResponse> items
     ) {
         this(id, orderCode, foodOrderCode, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, null, null, null, null, items);
     }

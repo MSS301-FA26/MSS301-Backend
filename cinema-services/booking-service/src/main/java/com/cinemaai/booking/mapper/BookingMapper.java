@@ -1,11 +1,11 @@
 package com.cinemaai.booking.mapper;
 
-import com.cinemaai.booking.dto.response.BookingFoodResponse;
+import com.cinemaai.booking.dto.response.BookingProductResponse;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.dto.response.BookingSeatResponse;
 import com.cinemaai.booking.dto.response.BookingTicketResponse;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.BookingFoodItem;
+import com.cinemaai.booking.entity.BookingProductItem;
 import com.cinemaai.booking.entity.BookingSeat;
 import com.cinemaai.booking.entity.BookingTicket;
 import org.mapstruct.Mapper;
@@ -35,5 +35,5 @@ public interface BookingMapper {
     BookingTicketResponse toTicketResponse(BookingTicket ticket);
 
     @Mapping(target = "isCombo", source = "combo")
-    BookingFoodResponse toFoodResponse(BookingFoodItem food);
+    BookingProductResponse toFoodResponse(BookingProductItem food);
 }

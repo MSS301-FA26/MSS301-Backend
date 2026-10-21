@@ -7,7 +7,7 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.event.PaymentSucceededEvent;
 import com.cinemaai.booking.repository.BookingRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.repository.ProcessedEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -33,7 +33,7 @@ class PaymentEventListenerLifecycleTest {
         processed = mock(ProcessedEventRepository.class);
         payment = mock(PaymentClient.class);
         json = new ObjectMapper().findAndRegisterModules();
-        listener = new PaymentEventListener(bookings, mock(FoodOrderRepository.class), processed, payment, json);
+        listener = new PaymentEventListener(bookings, mock(OrderRepository.class), processed, payment, json);
     }
 
     @Test

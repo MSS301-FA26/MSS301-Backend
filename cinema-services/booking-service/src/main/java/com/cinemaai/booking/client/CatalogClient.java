@@ -1,6 +1,6 @@
 package com.cinemaai.booking.client;
 
-import com.cinemaai.booking.client.dto.CatalogFoodQuoteDto;
+import com.cinemaai.booking.client.dto.CatalogProductQuoteDto;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.exception.BadRequestException;
@@ -97,15 +97,15 @@ public class CatalogClient {
         }
     }
 
-    public CatalogFoodQuoteDto.Response getFoodQuote(CatalogFoodQuoteDto.Request request) {
+    public CatalogProductQuoteDto.Response getFoodQuote(CatalogProductQuoteDto.Request request) {
         try {
-            ApiResponse<CatalogFoodQuoteDto.Response> response = restClient.post()
+            ApiResponse<CatalogProductQuoteDto.Response> response = restClient.post()
                     .uri("/internal/v1/foods/quote")
                     .header("X-Internal-Service-Secret", internalSecret)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .body(new ParameterizedTypeReference<ApiResponse<CatalogFoodQuoteDto.Response>>() {});
+                    .body(new ParameterizedTypeReference<ApiResponse<CatalogProductQuoteDto.Response>>() {});
 
             if (response != null && response.data() != null) {
                 return response.data();
