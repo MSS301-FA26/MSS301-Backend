@@ -36,7 +36,7 @@ public class PaymentEventListener {
             event = objectMapper.readValue(payload, PaymentSucceededEvent.class);
         } catch (Exception ex) {
             log.error("Failed to deserialize PaymentSucceededEvent payload: {}", payload, ex);
-            return;
+            throw new IllegalArgumentException("Invalid PaymentSucceededEvent payload", ex);
         }
 
         log.info("Received PaymentSucceededEvent: eventId={}, bookingId={}, foodOrderId={}, amount={}",
