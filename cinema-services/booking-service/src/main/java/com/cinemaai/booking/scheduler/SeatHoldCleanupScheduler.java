@@ -24,7 +24,7 @@ public class SeatHoldCleanupScheduler {
     @Transactional
     public void cleanupExpiredHolds() {
         LocalDateTime now = LocalDateTime.now();
-        List<Booking> expiredBookings = bookingRepository.findByStatusInAndHoldExpiresAtBefore(
+        List<Booking> expiredBookings = bookingRepository.findExpiredActiveBookingsForUpdate(
                 List.of(BookingStatus.HOLDING, BookingStatus.PENDING_PAYMENT), now);
 
         if (expiredBookings.isEmpty()) {
@@ -37,7 +37,9 @@ public class SeatHoldCleanupScheduler {
             booking.setCancelledAt(now);
             if (booking.getSeats() != null) {
                 for (BookingSeat seat : booking.getSeats()) {
-                    seat.setStatus(BookingSeatStatus.RELEASED);
+                    if (seat.getStatus() == BookingSeatStatus.HOLDING) {
+                        seat.setStatus(BookingSeatStatus.RELEASED);
+                    }
                 }
             }
         }

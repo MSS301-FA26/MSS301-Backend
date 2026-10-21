@@ -49,7 +49,7 @@ public class PaymentEventListener {
         }
 
         if (event.bookingId() != null) {
-            Booking booking = bookingRepository.findById(event.bookingId()).orElse(null);
+            Booking booking = bookingRepository.findByIdForUpdate(event.bookingId()).orElse(null);
             if (booking == null) {
                 log.error("Booking with id {} not found for payment success event", event.bookingId());
                 return;
@@ -62,23 +62,39 @@ public class PaymentEventListener {
             }
 
             LocalDateTime now = LocalDateTime.now();
-            if (booking.getStatus() == BookingStatus.EXPIRED
-                    || ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
-                        && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now))) {
-                log.warn("PaymentSucceededEvent received for expired booking #{}. Keeping EXPIRED status and releasing seats.", booking.getId());
-                booking.setStatus(BookingStatus.EXPIRED);
-                booking.setCancelledAt(now);
-                if (booking.getSeats() != null) {
-                    for (BookingSeat seat : booking.getSeats()) {
-                        seat.setStatus(BookingSeatStatus.RELEASED);
-                    }
-                }
-                bookingRepository.save(booking);
+            if (booking.getStatus() == BookingStatus.PAID) {
                 processedEventRepository.save(new ProcessedEvent(
                         event.eventId(),
                         "PaymentSucceededEvent",
-                        LocalDateTime.now()
+                        now
                 ));
+                return;
+            }
+
+            boolean expired = booking.getHoldExpiresAt() == null || !booking.getHoldExpiresAt().isAfter(now);
+            if (booking.getStatus() == BookingStatus.EXPIRED
+                    || (booking.getStatus() == BookingStatus.PENDING_PAYMENT && expired)) {
+                log.warn("PaymentSucceededEvent received for expired booking #{}. Tickets will not be issued; reconciliation is required.", booking.getId());
+                if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+                    booking.setStatus(BookingStatus.EXPIRED);
+                    booking.setCancelledAt(now);
+                    if (booking.getSeats() != null) {
+                        booking.getSeats().stream()
+                                .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                                .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+                    }
+                    bookingRepository.save(booking);
+                }
+                processedEventRepository.save(new ProcessedEvent(event.eventId(), "PaymentSucceededEvent", now));
+                return;
+            }
+
+            if (booking.getStatus() != BookingStatus.PENDING_PAYMENT
+                    || booking.getSeats() == null
+                    || booking.getSeats().stream().anyMatch(seat -> seat.getStatus() != BookingSeatStatus.HOLDING)) {
+                log.error("Payment event {} cannot fulfil booking {} in state {}; manual reconciliation is required",
+                        event.eventId(), booking.getId(), booking.getStatus());
+                processedEventRepository.save(new ProcessedEvent(event.eventId(), "PaymentSucceededEvent", now));
                 return;
             }
 

@@ -175,6 +175,16 @@
       "nextAction": "Keep new deployment/provider settings in application.properties placeholders and placeholder-only .env.example entries"
     },
     {
+      "id": "TASK04-BOOKING-EXPIRATION",
+      "name": "Booking Expiration and Seat Hold Lifecycle Hardening",
+      "status": "blocked",
+      "scope": ["Three-minute hold boundary", "Atomic expiration cleanup", "Scheduler locking", "Late payment and event guards", "Captured-payment evidence preservation"],
+      "outOfScope": ["New settlement state", "Reconciliation schema", "Automated gateway refund", "Database migration", "Frontend changes"],
+      "verification": ["13 Task 04 booking tests", "40 selected payment/security tests", "23-test final focused transaction/locking regression", "69 passing assertions from the wider booking regression before a corrected test-only assertion error", "Booking/Payment/Catalog compile"],
+      "evidence": ["Deadline equality and null expiration fail closed", "Only HOLDING seats are released", "Terminal bookings are not revived by payment events", "Late VNPay capture remains SUCCESS with callback evidence and no fulfillment", "No tests were skipped"],
+      "nextAction": "Run approved isolated PostgreSQL locking/transaction tests and approve a captured-payment reconciliation workflow before deployment"
+    },
+    {
       "id": "HARNESS-001",
       "name": "Repository Harness Engineering",
       "status": "done",

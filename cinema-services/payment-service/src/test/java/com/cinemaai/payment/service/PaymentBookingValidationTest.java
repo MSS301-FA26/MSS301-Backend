@@ -40,4 +40,5 @@ class PaymentBookingValidationTest {
     @Test void rejectsExpiredHold() { rejects(1L, "PENDING_PAYMENT", LocalDateTime.now().minusSeconds(1)); }
     @Test void rejectsPaidBooking() { rejects(1L, "PAID", LocalDateTime.now().plusMinutes(2)); }
     @Test void rejectsCancelledBooking() { rejects(1L, "CANCELLED", LocalDateTime.now().plusMinutes(2)); }
+    @Test void rejectsMissingExpirationFailClosed() { rejects(1L, "PENDING_PAYMENT", null); }
 }
