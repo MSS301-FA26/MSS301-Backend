@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/internal/v1/food-orders")
 @RequiredArgsConstructor
-@Tag(name = "Internal Food Order API", description = "Internal communication between microservices")
-public class InternalFoodOrderController {
+@Tag(name = "Internal Order API", description = "Internal order communication between microservices")
+public class InternalOrderController {
 
     private final FoodOrderService foodOrderService;
 
