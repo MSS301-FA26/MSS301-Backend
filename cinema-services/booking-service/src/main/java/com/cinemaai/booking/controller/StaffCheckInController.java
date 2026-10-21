@@ -4,7 +4,7 @@ import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.entity.BookingSeat;
-import com.cinemaai.booking.entity.FoodOrder;
+import com.cinemaai.booking.entity.Order;
 import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
@@ -13,7 +13,7 @@ import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
@@ -36,7 +36,7 @@ public class StaffCheckInController {
 
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
-    private final FoodOrderRepository foodOrderRepository;
+    private final OrderRepository orderRepository;
     private final com.cinemaai.booking.security.CinemaSecurityService cinemaSecurityService;
     private final BookingMapper bookingMapper;
 
@@ -271,14 +271,14 @@ public class StaffCheckInController {
             throw new BadRequestException("Ma tra cuu bap nuoc khong duoc de trong");
         }
 
-        java.util.Optional<FoodOrder> orderOpt = foodOrderRepository.findByFoodOrderCode(cleanCode);
+        java.util.Optional<Order> orderOpt = orderRepository.findByFoodOrderCode(cleanCode);
 
         if (orderOpt.isEmpty()) {
             String bookingCode = extractBookingCode(code);
             java.util.Optional<Booking> bookingOpt = bookingRepository.findByBookingCode(bookingCode);
             if (bookingOpt.isPresent()) {
                 Booking booking = bookingOpt.get();
-                List<FoodOrder> linkedOrders = foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+                List<Order> linkedOrders = orderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
                 if (!linkedOrders.isEmpty()) {
                     orderOpt = java.util.Optional.of(linkedOrders.get(0));
                 } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
@@ -299,7 +299,7 @@ public class StaffCheckInController {
                     map.put("paidAt", booking.getPaidAt());
                     java.math.BigDecimal total = java.math.BigDecimal.ZERO;
                     List<Map<String, Object>> itemsList = new ArrayList<>();
-                    for (com.cinemaai.booking.entity.BookingFoodItem f : booking.getFoodItems()) {
+                    for (com.cinemaai.booking.entity.BookingProductItem f : booking.getFoodItems()) {
                         Map<String, Object> itemMap = new HashMap<>();
                         itemMap.put("id", f.getId());
                         itemMap.put("productId", f.getProductId());
@@ -319,7 +319,7 @@ public class StaffCheckInController {
             }
         }
 
-        FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
+        Order order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
         cinemaSecurityService.validateCinemaAccess(user, resolveFoodOrderCinemaId(order), true);
 
         Map<String, Object> map = new HashMap<>();
@@ -375,14 +375,14 @@ public class StaffCheckInController {
         }
 
         String cleanCode = extractFoodOrderCode(code);
-        java.util.Optional<FoodOrder> orderOpt = foodOrderRepository.findByFoodOrderCode(cleanCode);
+        java.util.Optional<Order> orderOpt = orderRepository.findByFoodOrderCode(cleanCode);
 
         if (orderOpt.isEmpty()) {
             String bookingCode = extractBookingCode(code);
             java.util.Optional<Booking> bookingOpt = bookingRepository.findByBookingCode(bookingCode);
             if (bookingOpt.isPresent()) {
                 Booking booking = bookingOpt.get();
-                List<FoodOrder> linkedOrders = foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+                List<Order> linkedOrders = orderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
                 if (!linkedOrders.isEmpty()) {
                     orderOpt = java.util.Optional.of(linkedOrders.get(0));
                 } else if (booking.getFoodItems() != null && !booking.getFoodItems().isEmpty()) {
@@ -397,7 +397,7 @@ public class StaffCheckInController {
             }
         }
 
-        FoodOrder order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
+        Order order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
         cinemaSecurityService.validateCinemaAccess(user, resolveFoodOrderCinemaId(order), true);
 
         if ("PICKED_UP".equalsIgnoreCase(order.getStatus())) {
@@ -405,7 +405,7 @@ public class StaffCheckInController {
         }
 
         order.setStatus("PICKED_UP");
-        foodOrderRepository.save(order);
+        orderRepository.save(order);
 
         Map<String, Object> map = new HashMap<>();
         map.put("id", order.getId());
@@ -415,7 +415,7 @@ public class StaffCheckInController {
         return ApiResponse.success(map, "Xac nhan giao mon thanh cong");
     }
 
-    private Long resolveFoodOrderCinemaId(FoodOrder order) {
+    private Long resolveFoodOrderCinemaId(Order order) {
         if (order.getBookingId() != null) {
             return bookingRepository.findById(order.getBookingId())
                     .map(Booking::getCinemaId)
@@ -432,7 +432,7 @@ public class StaffCheckInController {
             @RequestParam(defaultValue = "50") int limit
     ) {
         Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(user, null, true);
-        List<FoodOrder> orders = foodOrderRepository.findAll(
+        List<Order> orders = orderRepository.findAll(
                 org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt")
         );
         if (enforcedCinemaId != null) {

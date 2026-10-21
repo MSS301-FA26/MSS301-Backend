@@ -2,22 +2,22 @@ package com.cinemaai.booking.service.impl;
 
 import com.cinemaai.booking.client.CatalogClient;
 import com.cinemaai.booking.client.PaymentClient;
-import com.cinemaai.booking.client.dto.CatalogFoodQuoteDto;
-import com.cinemaai.booking.dto.request.BookingFoodRequest;
-import com.cinemaai.booking.dto.request.FoodOrderRequest;
-import com.cinemaai.booking.dto.response.FoodOrderItemResponse;
-import com.cinemaai.booking.dto.response.FoodOrderResponse;
+import com.cinemaai.booking.client.dto.CatalogProductQuoteDto;
+import com.cinemaai.booking.dto.request.BookingProductRequest;
+import com.cinemaai.booking.dto.request.OrderRequest;
+import com.cinemaai.booking.dto.response.OrderItemResponse;
+import com.cinemaai.booking.dto.response.OrderResponse;
 import com.cinemaai.booking.dto.response.PageResponse;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.FoodOrder;
-import com.cinemaai.booking.entity.FoodOrderItem;
+import com.cinemaai.booking.entity.Order;
+import com.cinemaai.booking.entity.OrderItem;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.repository.BookingRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
-import com.cinemaai.booking.service.FoodOrderService;
-import com.cinemaai.booking.mapper.FoodOrderMapper;
+import com.cinemaai.booking.repository.OrderRepository;
+import com.cinemaai.booking.service.OrderService;
+import com.cinemaai.booking.mapper.OrderMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -32,25 +32,25 @@ import org.springframework.data.domain.Sort;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class FoodOrderServiceImpl implements FoodOrderService {
+public class OrderServiceImpl implements OrderService {
 
     private static final long PAYMENT_WINDOW_MINUTES = 15;
 
-    private final FoodOrderRepository foodOrderRepository;
+    private final OrderRepository orderRepository;
     private final BookingRepository bookingRepository;
     private final CatalogClient catalogClient;
     private final PaymentClient paymentClient;
-    private final FoodOrderMapper foodOrderMapper;
+    private final OrderMapper orderMapper;
 
     @Override
     @Transactional
-    public FoodOrderResponse createStandalone(Long userId, FoodOrderRequest request) {
+    public OrderResponse createStandalone(Long userId, OrderRequest request) {
         return toResponse(createOrder(null, userId, request));
     }
 
     @Override
     @Transactional
-    public FoodOrderResponse createForBooking(Long userId, Long bookingId, FoodOrderRequest request) {
+    public OrderResponse createForBooking(Long userId, Long bookingId, OrderRequest request) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy thông tin vé #" + bookingId));
 
@@ -66,11 +66,11 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
     @Override
     @Transactional
-    public List<FoodOrderResponse> listMine(Long userId) {
-        List<FoodOrder> orders = foodOrderRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    public List<OrderResponse> listMine(Long userId) {
+        List<Order> orders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId);
         LocalDateTime now = LocalDateTime.now();
 
-        for (FoodOrder order : orders) {
+        for (Order order : orders) {
             if ("PENDING_PAYMENT".equalsIgnoreCase(order.getStatus())) {
                 LocalDateTime expiresAt = getExpiresAt(order);
                 if (now.isAfter(expiresAt)) {
@@ -83,7 +83,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<FoodOrderResponse> listAll(Pageable pageable) {
+    public PageResponse<OrderResponse> listAll(Pageable pageable) {
         int page = Math.max(0, pageable.getPageNumber());
         int size = Math.min(Math.max(pageable.getPageSize(), 1), 100);
         PageRequest stablePage = PageRequest.of(
@@ -91,13 +91,13 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 size,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
-        return PageResponse.from(foodOrderRepository.findAll(stablePage).map(this::toResponse));
+        return PageResponse.from(orderRepository.findAll(stablePage).map(this::toResponse));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<FoodOrderResponse> listByBooking(Long userId, Long bookingId) {
-        return foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(bookingId)
+    public List<OrderResponse> listByBooking(Long userId, Long bookingId) {
+        return orderRepository.findByBookingIdOrderByCreatedAtDesc(bookingId)
                 .stream()
                 .filter(o -> o.getUserId().equals(userId))
                 .map(this::toResponse)
@@ -106,8 +106,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
     @Override
     @Transactional
-    public FoodOrderResponse cancel(Long userId, Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findByIdAndUserId(foodOrderId, userId)
+    public OrderResponse cancel(Long userId, Long foodOrderId) {
+        Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
 
         if ("PENDING_PAYMENT".equalsIgnoreCase(order.getStatus())) {
@@ -126,39 +126,39 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public FoodOrderResponse getById(Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findById(foodOrderId)
+    public OrderResponse getById(Long foodOrderId) {
+        Order order = orderRepository.findById(foodOrderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
         return toResponse(order);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public FoodOrderResponse getByIdAndUser(Long userId, Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findByIdAndUserId(foodOrderId, userId)
+    public OrderResponse getByIdAndUser(Long userId, Long foodOrderId) {
+        Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
         return toResponse(order);
     }
 
     @Override
     @Transactional
-    public FoodOrderResponse markPaid(Long foodOrderId, String transactionId) {
-        FoodOrder order = foodOrderRepository.findById(foodOrderId)
+    public OrderResponse markPaid(Long foodOrderId, String transactionId) {
+        Order order = orderRepository.findById(foodOrderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
 
         order.setStatus("PAID");
         if (order.getPaidAt() == null) {
             order.setPaidAt(LocalDateTime.now());
         }
-        FoodOrder saved = foodOrderRepository.save(order);
-        log.info("Successfully marked FoodOrder {} as PAID (transactionId: {})", saved.getFoodOrderCode(), transactionId);
+        Order saved = orderRepository.save(order);
+        log.info("Successfully marked Order {} as PAID (transactionId: {})", saved.getFoodOrderCode(), transactionId);
         return toResponse(saved);
     }
 
     @Override
     @Transactional
-    public FoodOrderResponse syncPaymentStatus(Long userId, Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findByIdAndUserId(foodOrderId, userId)
+    public OrderResponse syncPaymentStatus(Long userId, Long foodOrderId) {
+        Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
 
         if ("PAID".equalsIgnoreCase(order.getStatus())) {
@@ -172,8 +172,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 if (order.getPaidAt() == null) {
                     order.setPaidAt(LocalDateTime.now());
                 }
-                foodOrderRepository.save(order);
-                log.info("Synced FoodOrder {} status to PAID via PaymentClient", order.getFoodOrderCode());
+                orderRepository.save(order);
+                log.info("Synced Order {} status to PAID via PaymentClient", order.getFoodOrderCode());
             }
         } catch (Exception ex) {
             log.warn("Failed to check payment status from Payment Service for food order {}: {}", foodOrderId, ex.getMessage());
@@ -182,7 +182,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
         return toResponse(order);
     }
 
-    private FoodOrder createOrder(Booking booking, Long userId, FoodOrderRequest request) {
+    private Order createOrder(Booking booking, Long userId, OrderRequest request) {
         if (request == null || request.foods() == null || request.foods().isEmpty()) {
             throw new BadRequestException("Vui lòng chọn ít nhất một món bắp nước");
         }
@@ -190,7 +190,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
         String orderCode = "FO-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 900 + 100);
 
-        FoodOrder order = FoodOrder.builder()
+        Order order = Order.builder()
                 .foodOrderCode(orderCode)
                 .userId(userId)
                 .bookingId(booking != null ? booking.getId() : null)
@@ -204,9 +204,9 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 .build();
 
         // 1. Attempt quote from Catalog Service
-        List<CatalogFoodQuoteDto.Request.Item> quoteItems = new ArrayList<>();
-        for (BookingFoodRequest item : request.foods()) {
-            quoteItems.add(new CatalogFoodQuoteDto.Request.Item(
+        List<CatalogProductQuoteDto.Request.Item> quoteItems = new ArrayList<>();
+        for (BookingProductRequest item : request.foods()) {
+            quoteItems.add(new CatalogProductQuoteDto.Request.Item(
                     item.foodItemId(),
                     item.foodComboId(),
                     item.productId(),
@@ -215,7 +215,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
             ));
         }
 
-        CatalogFoodQuoteDto.Response quoteResponse = catalogClient.getFoodQuote(new CatalogFoodQuoteDto.Request(quoteItems));
+        CatalogProductQuoteDto.Response quoteResponse = catalogClient.getFoodQuote(new CatalogProductQuoteDto.Request(quoteItems));
 
         BigDecimal total = BigDecimal.ZERO;
 
@@ -231,7 +231,7 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 })
                 .collect(java.util.stream.Collectors.toSet());
         Set<String> quotedProducts = new HashSet<>();
-        for (CatalogFoodQuoteDto.Response.ItemSnapshot snap : quoteResponse.items()) {
+        for (CatalogProductQuoteDto.Response.ItemSnapshot snap : quoteResponse.items()) {
                 if (snap.productId() == null || snap.productId() <= 0 || snap.quantity() <= 0
                         || snap.unitPrice() == null || snap.unitPrice().signum() < 0
                         || snap.lineTotal() == null || snap.lineTotal().signum() < 0
@@ -240,8 +240,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 }
                 if (!quotedProducts.add(snap.isCombo() + ":" + snap.productId() + ":" + snap.quantity()))
                     throw new BadRequestException("Catalog returned duplicate food items");
-                FoodOrderItem orderItem = FoodOrderItem.builder()
-                        .foodOrder(order)
+                OrderItem orderItem = OrderItem.builder()
+                        .order(order)
                         .productId(snap.productId())
                         .isCombo(snap.isCombo())
                         .productNameSnapshot(snap.productName())
@@ -261,12 +261,12 @@ public class FoodOrderServiceImpl implements FoodOrderService {
         order.setSubtotal(total);
         order.setTotalAmount(total);
 
-        return foodOrderRepository.save(order);
+        return orderRepository.save(order);
     }
 
-    private void validateFoodSelections(List<BookingFoodRequest> foods) {
+    private void validateFoodSelections(List<BookingProductRequest> foods) {
         Set<String> keys = new HashSet<>();
-        for (BookingFoodRequest food : foods) {
+        for (BookingProductRequest food : foods) {
             if (food == null || food.quantity() <= 0) throw new BadRequestException("Food quantity must be greater than zero");
             Long productId = food.productId();
             Long itemId = food.foodItemId();
@@ -287,12 +287,12 @@ public class FoodOrderServiceImpl implements FoodOrderService {
         }
     }
 
-    private LocalDateTime getExpiresAt(FoodOrder order) {
+    private LocalDateTime getExpiresAt(Order order) {
         LocalDateTime base = order.getCreatedAt() != null ? order.getCreatedAt() : LocalDateTime.now();
         return base.plusMinutes(PAYMENT_WINDOW_MINUTES);
     }
 
-    private FoodOrderResponse toResponse(FoodOrder order) {
+    private OrderResponse toResponse(Order order) {
         String bookingCode = null;
         if (order.getBookingId() != null) {
             bookingCode = bookingRepository.findById(order.getBookingId())
@@ -300,8 +300,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                     .orElse(null);
         }
 
-        List<FoodOrderItemResponse> items = order.getItems() != null
-                ? foodOrderMapper.toItemResponseList(order.getItems())
+        List<OrderItemResponse> items = order.getItems() != null
+                ? orderMapper.toItemResponseList(order.getItems())
                 : Collections.emptyList();
 
         LocalDateTime expiresAt = getExpiresAt(order);
@@ -310,6 +310,6 @@ public class FoodOrderServiceImpl implements FoodOrderService {
                 ? ("FOOD:" + order.getFoodOrderCode() + ":" + order.getId())
                 : null;
 
-        return foodOrderMapper.toResponse(order, bookingCode, expiresAt, qrCode, items);
+        return orderMapper.toResponse(order, bookingCode, expiresAt, qrCode, items);
     }
 }

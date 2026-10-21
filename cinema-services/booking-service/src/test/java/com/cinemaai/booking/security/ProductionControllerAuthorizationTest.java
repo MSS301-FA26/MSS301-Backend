@@ -6,7 +6,7 @@ import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
 import com.cinemaai.booking.mapper.BookingMapper;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.service.AdminBookingService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -44,7 +44,7 @@ class ProductionControllerAuthorizationTest {
     @MockBean AdminBookingService adminBookingService;
     @MockBean BookingRepository bookingRepository;
     @MockBean BookingSeatRepository bookingSeatRepository;
-    @MockBean FoodOrderRepository foodOrderRepository;
+    @MockBean OrderRepository orderRepository;
     @MockBean CinemaSecurityService cinemaSecurityService;
     @MockBean BookingMapper bookingMapper;
 

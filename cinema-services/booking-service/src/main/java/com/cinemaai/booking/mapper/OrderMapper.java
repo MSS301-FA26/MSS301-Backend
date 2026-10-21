@@ -1,25 +1,25 @@
 package com.cinemaai.booking.mapper;
 
-import com.cinemaai.booking.dto.response.FoodOrderItemResponse;
-import com.cinemaai.booking.dto.response.FoodOrderResponse;
-import com.cinemaai.booking.entity.FoodOrder;
-import com.cinemaai.booking.entity.FoodOrderItem;
+import com.cinemaai.booking.dto.response.OrderItemResponse;
+import com.cinemaai.booking.dto.response.OrderResponse;
+import com.cinemaai.booking.entity.Order;
+import com.cinemaai.booking.entity.OrderItem;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
-public interface FoodOrderMapper {
+public interface OrderMapper {
 
     @Mapping(target = "foodItemId", expression = "java(item.isCombo() ? null : item.getProductId())")
     @Mapping(target = "foodComboId", expression = "java(item.isCombo() ? item.getProductId() : null)")
     @Mapping(target = "isCombo", expression = "java(item.isCombo())")
     @Mapping(target = "name", source = "item.productNameSnapshot")
     @Mapping(target = "productName", source = "item.productNameSnapshot")
-    FoodOrderItemResponse toItemResponse(FoodOrderItem item);
+    OrderItemResponse toItemResponse(OrderItem item);
 
-    List<FoodOrderItemResponse> toItemResponseList(List<FoodOrderItem> items);
+    List<OrderItemResponse> toItemResponseList(List<OrderItem> items);
 
     @Mapping(target = "id", source = "order.id")
     @Mapping(target = "orderCode", source = "order.foodOrderCode")
@@ -38,11 +38,11 @@ public interface FoodOrderMapper {
     @Mapping(target = "cinemaName", expression = "java(order.getCinemaName() != null ? order.getCinemaName() : \"CinemaAI Dragon City\")")
     @Mapping(target = "cinemaAddress", expression = "java(order.getCinemaAddress() != null ? order.getCinemaAddress() : \"Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà, Đà Nẵng\")")
     @Mapping(target = "items", source = "items")
-    FoodOrderResponse toResponse(
-            FoodOrder order,
+    OrderResponse toResponse(
+            Order order,
             String bookingCode,
             LocalDateTime expiresAt,
             String qrCode,
-            List<FoodOrderItemResponse> items
+            List<OrderItemResponse> items
     );
 }

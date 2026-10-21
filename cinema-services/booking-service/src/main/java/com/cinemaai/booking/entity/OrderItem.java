@@ -7,24 +7,19 @@ import lombok.*;
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "booking_food_items",
-        indexes = {
-                @Index(name = "idx_booking_food_booking", columnList = "booking_id")
-        }
-)
+@Table(name = "food_order_items")
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class BookingFoodItem extends BaseEntity {
+public class OrderItem extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "booking_id", nullable = false)
-    private Booking booking;
+    @JoinColumn(name = "food_order_id", nullable = false)
+    private Order order;
 
     @Column(name = "product_id", nullable = false)
     private Long productId;

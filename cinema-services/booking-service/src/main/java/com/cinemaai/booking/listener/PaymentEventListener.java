@@ -8,7 +8,7 @@ import com.cinemaai.booking.enums.BookingSeatStatus;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.event.PaymentSucceededEvent;
 import com.cinemaai.booking.repository.BookingRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.repository.ProcessedEventRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentEventListener {
 
     private final BookingRepository bookingRepository;
-    private final FoodOrderRepository foodOrderRepository;
+    private final OrderRepository orderRepository;
     private final ProcessedEventRepository processedEventRepository;
     private final com.cinemaai.booking.client.PaymentClient paymentClient;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
@@ -124,11 +124,11 @@ public class PaymentEventListener {
         }
 
         if (event.foodOrderId() != null) {
-            foodOrderRepository.findById(event.foodOrderId()).ifPresent(order -> {
+            orderRepository.findById(event.foodOrderId()).ifPresent(order -> {
                 order.setStatus("PAID");
                 order.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());
-                foodOrderRepository.save(order);
-                log.info("Successfully marked FoodOrder {} as PAID.", order.getFoodOrderCode());
+                orderRepository.save(order);
+                log.info("Successfully marked Order {} as PAID.", order.getFoodOrderCode());
             });
         }
 

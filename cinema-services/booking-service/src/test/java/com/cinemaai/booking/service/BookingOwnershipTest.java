@@ -7,7 +7,7 @@ import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
-import com.cinemaai.booking.repository.BookingFoodItemRepository;
+import com.cinemaai.booking.repository.BookingProductItemRepository;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
 import com.cinemaai.booking.repository.BookingTicketRepository;
@@ -28,7 +28,7 @@ class BookingOwnershipTest {
     @BeforeEach
     void setUp() {
         service = new BookingServiceImpl(bookings, mock(BookingSeatRepository.class),
-                mock(BookingTicketRepository.class), mock(BookingFoodItemRepository.class),
+                mock(BookingTicketRepository.class), mock(BookingProductItemRepository.class),
                 mock(CatalogClient.class), mock(PaymentClient.class), mapper);
     }
 

@@ -1,9 +1,9 @@
 package com.cinemaai.booking.controller;
 
 import com.cinemaai.booking.dto.response.ApiResponse;
-import com.cinemaai.booking.dto.response.FoodOrderResponse;
+import com.cinemaai.booking.dto.response.OrderResponse;
 import com.cinemaai.booking.dto.response.PageResponse;
-import com.cinemaai.booking.service.FoodOrderService;
+import com.cinemaai.booking.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -18,16 +18,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/food-orders")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
-@Tag(name = "Admin Food Orders", description = "Read-only global FoodOrder visibility for administrators")
+@Tag(name = "Admin Food Orders", description = "Read-only global Order visibility for administrators")
 public class AdminOrderController {
 
-    private final FoodOrderService foodOrderService;
+    private final OrderService orderService;
 
     @GetMapping
     @Operation(summary = "List all food orders")
-    public ApiResponse<PageResponse<FoodOrderResponse>> listFoodOrders(
+    public ApiResponse<PageResponse<OrderResponse>> listFoodOrders(
             @PageableDefault(size = 20) Pageable pageable
     ) {
-        return ApiResponse.success(foodOrderService.listAll(pageable));
+        return ApiResponse.success(orderService.listAll(pageable));
     }
 }
