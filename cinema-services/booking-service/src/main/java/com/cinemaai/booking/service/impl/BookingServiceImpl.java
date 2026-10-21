@@ -455,16 +455,19 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Catalog quote total is inconsistent");
         BigDecimal quotedTicketTotal = BigDecimal.ZERO;
         long quotedTicketQuantity = 0;
+        Set<Long> quotedTicketSeats = new HashSet<>();
         for (var ticket : quote.tickets()) {
             if (ticket == null || ticket.seatId() == null || !quotedSeats.contains(ticket.seatId())
-                    || ticket.quantity() <= 0 || ticket.unitPrice() == null || ticket.unitPrice().signum() < 0
+                    || ticket.quantity() != 1 || !quotedTicketSeats.add(ticket.seatId())
+                    || ticket.unitPrice() == null || ticket.unitPrice().signum() < 0
                     || ticket.lineTotal() == null || ticket.lineTotal().signum() < 0
                     || ticket.unitPrice().multiply(BigDecimal.valueOf(ticket.quantity())).compareTo(ticket.lineTotal()) != 0)
                 throw new BadRequestException("Catalog returned an invalid ticket quote");
             quotedTicketTotal = quotedTicketTotal.add(ticket.lineTotal());
             quotedTicketQuantity = Math.addExact(quotedTicketQuantity, (long) ticket.quantity());
         }
-        if (quotedTicketQuantity != seatIds.size() || quotedTicketTotal.compareTo(quote.ticketSubtotal()) != 0)
+        if (!quotedTicketSeats.equals(quotedSeats) || quotedTicketQuantity != seatIds.size()
+                || quotedTicketTotal.compareTo(quote.ticketSubtotal()) != 0)
             throw new BadRequestException("Catalog ticket total is inconsistent");
         BigDecimal quotedFoodTotal = BigDecimal.ZERO;
         for (var food : quote.foods()) {
