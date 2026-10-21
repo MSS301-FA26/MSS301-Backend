@@ -266,40 +266,7 @@ public class PaymentServiceImpl implements PaymentService {
         writeOutboxEvent(payment, now);
         triggerOutboxPublishImmediately();
 
-        if (payment.getBookingId() != null) {
-            bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), now);
-            try {
-                var bInfo = bookingClient.getBooking(payment.getBookingId());
-                if (bInfo != null && bInfo.userId() != null) {
-                    loyaltyService.awardPointsForBooking(new com.cinemaai.payment.dto.request.AwardBookingPointsRequest(
-                            bInfo.userId(),
-                            bInfo.id(),
-                            bInfo.bookingCode(),
-                            payment.getAmount(),
-                            bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0,
-                            bInfo.cinemaId()
-                    ));
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to award loyalty points for booking {} in mockPayment: {}", payment.getBookingId(), ex.getMessage());
-            }
-        }
-        if (payment.getFoodOrderId() != null) {
-            bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), now);
-            try {
-                var foInfo = bookingClient.getFoodOrder(payment.getFoodOrderId());
-                if (foInfo != null && foInfo.userId() != null) {
-                    loyaltyService.awardPointsForFoodOrder(
-                            foInfo.userId(),
-                            foInfo.id(),
-                            foInfo.foodOrderCode(),
-                            payment.getAmount()
-                    );
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to award loyalty points for food order {} in mockPayment: {}", payment.getFoodOrderId(), ex.getMessage());
-            }
-        }
+        schedulePostCommitSideEffects(payment, now, true);
 
         return paymentMapper.toResponse(payment);
     }
@@ -348,7 +315,7 @@ public class PaymentServiceImpl implements PaymentService {
                     BookingClient.BookingInfo booking = bookingClient.getBooking(payment.getBookingId());
                     if (!hasUnverifiedLoyaltyRedemption(booking)
                             && isBookingAwaitingValidPayment(booking, LocalDateTime.now())) {
-                        bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), payment.getPaidAt());
+                        schedulePostCommitSideEffects(payment, payment.getPaidAt(), false);
                     } else {
                         log.error("Captured payment {} requires manual reconciliation: booking {} is not safely fulfilable",
                                 payment.getId(), payment.getBookingId());
@@ -357,9 +324,8 @@ public class PaymentServiceImpl implements PaymentService {
                     log.error("Captured payment {} requires manual reconciliation because booking {} could not be validated: {}",
                             payment.getId(), payment.getBookingId(), ex.getMessage());
                 }
-            }
-            if (payment.getFoodOrderId() != null) {
-                bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), payment.getPaidAt());
+            } else if (payment.getFoodOrderId() != null) {
+                schedulePostCommitSideEffects(payment, payment.getPaidAt(), false);
             }
             return Map.of("RspCode", "00", "Message", "Order already confirmed");
         }
@@ -395,39 +361,7 @@ public class PaymentServiceImpl implements PaymentService {
             writeOutboxEvent(payment, now);
             triggerOutboxPublishImmediately();
 
-            if (payment.getBookingId() != null) {
-                bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), now);
-                try {
-                    var bInfo = bookingClient.getBooking(payment.getBookingId());
-                    if (bInfo != null && bInfo.userId() != null) {
-                        loyaltyService.awardPointsForBooking(new com.cinemaai.payment.dto.request.AwardBookingPointsRequest(
-                                bInfo.userId(),
-                                bInfo.id(),
-                                bInfo.bookingCode(),
-                                payment.getAmount(),
-                                bInfo.loyaltyPointsRedeemed() != null ? bInfo.loyaltyPointsRedeemed() : 0
-                        ));
-                    }
-                } catch (Exception ex) {
-                    log.warn("Failed to award loyalty points for booking {} in VNPay IPN: {}", payment.getBookingId(), ex.getMessage());
-                }
-            }
-            if (payment.getFoodOrderId() != null) {
-                bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), now);
-                try {
-                    var foInfo = bookingClient.getFoodOrder(payment.getFoodOrderId());
-                    if (foInfo != null && foInfo.userId() != null) {
-                        loyaltyService.awardPointsForFoodOrder(
-                                foInfo.userId(),
-                                foInfo.id(),
-                                foInfo.foodOrderCode(),
-                                payment.getAmount()
-                        );
-                    }
-                } catch (Exception ex) {
-                    log.warn("Failed to award loyalty points for food order {} in VNPay IPN: {}", payment.getFoodOrderId(), ex.getMessage());
-                }
-            }
+            schedulePostCommitSideEffects(payment, now, true);
 
             log.info("VNPay IPN Success for Payment id={}, Booking id={}, FoodOrder id={}", payment.getId(), payment.getBookingId(), payment.getFoodOrderId());
             return Map.of("RspCode", "00", "Message", "Confirm Success");
@@ -437,6 +371,45 @@ public class PaymentServiceImpl implements PaymentService {
             paymentRepository.save(payment);
             log.warn("VNPay IPN Failed for Payment id={}, code={}", payment.getId(), responseCode);
             return Map.of("RspCode", "00", "Message", "Confirm Success");
+        }
+    }
+
+    private void schedulePostCommitSideEffects(Payment payment, LocalDateTime paidAt, boolean awardLoyalty) {
+        Runnable action = () -> performPostCommitSideEffects(payment, paidAt, awardLoyalty);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
+    private void performPostCommitSideEffects(Payment payment, LocalDateTime paidAt, boolean awardLoyalty) {
+        try {
+            if (payment.getBookingId() != null) {
+                bookingClient.markBookingPaid(payment.getBookingId(), payment.getTransactionId(), paidAt);
+            } else if (payment.getFoodOrderId() != null) {
+                bookingClient.markFoodOrderPaid(payment.getFoodOrderId(), payment.getTransactionId(), paidAt);
+            }
+        } catch (Exception ex) {
+            log.warn("Post-commit payment fulfillment call failed for payment {}; checking downstream state before loyalty: {}",
+                    payment.getId(), ex.getMessage());
+        }
+
+        if (!awardLoyalty || payment.getFoodOrderId() == null) return;
+        try {
+            var order = bookingClient.getFoodOrder(payment.getFoodOrderId());
+            if (order != null && order.userId() != null && "PAID".equalsIgnoreCase(order.status())) {
+                loyaltyService.awardPointsForFoodOrder(
+                        order.userId(), order.id(), order.foodOrderCode(), payment.getAmount());
+            }
+        } catch (Exception ex) {
+            log.warn("Post-commit loyalty could not be confirmed for payment {}; durable outbox remains available for fulfillment retry: {}",
+                    payment.getId(), ex.getMessage());
         }
     }
 
@@ -480,33 +453,35 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void writeOutboxEvent(Payment payment, LocalDateTime paidAt) {
+        String payload;
+        String eventId = UUID.randomUUID().toString();
+        PaymentSucceededEvent event = new PaymentSucceededEvent(
+                eventId,
+                payment.getId(),
+                payment.getBookingId(),
+                payment.getFoodOrderId(),
+                payment.getUserId(),
+                payment.getAmount(),
+                payment.getProvider().name(),
+                paidAt
+        );
         try {
-            String eventId = UUID.randomUUID().toString();
-            PaymentSucceededEvent event = new PaymentSucceededEvent(
-                    eventId,
-                    payment.getId(),
-                    payment.getBookingId(),
-                    payment.getFoodOrderId(),
-                    payment.getUserId(),
-                    payment.getAmount(),
-                    payment.getProvider().name(),
-                    paidAt
-            );
-
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                    .aggregateType("PAYMENT")
-                    .aggregateId(String.valueOf(payment.getId()))
-                    .eventType("PaymentSucceededEvent")
-                    .deduplicationKey(eventId)
-                    .payload(objectMapper.writeValueAsString(event))
-                    .status(OutboxStatus.PENDING)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-
-            outboxEventRepository.save(outboxEvent);
+            payload = objectMapper.writeValueAsString(event);
         } catch (Exception ex) {
-            log.error("Failed to serialize OutboxEvent: {}", ex.getMessage());
+            throw new IllegalStateException("Failed to serialize PaymentSucceededEvent", ex);
         }
+
+        OutboxEvent outboxEvent = OutboxEvent.builder()
+                .aggregateType("PAYMENT")
+                .aggregateId(String.valueOf(payment.getId()))
+                .eventType("PaymentSucceededEvent")
+                .deduplicationKey(eventId)
+                .payload(payload)
+                .status(OutboxStatus.PENDING)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        outboxEventRepository.save(outboxEvent);
     }
 
     @Override

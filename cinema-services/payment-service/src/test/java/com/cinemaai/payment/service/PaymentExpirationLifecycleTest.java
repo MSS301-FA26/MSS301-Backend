@@ -11,6 +11,7 @@ import com.cinemaai.payment.repository.PaymentRepository;
 import com.cinemaai.payment.service.impl.PaymentServiceImpl;
 import com.cinemaai.payment.util.VNPayUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -18,7 +19,9 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -83,6 +86,71 @@ class PaymentExpirationLifecycleTest {
 
         verify(booking, never()).markBookingPaid(anyLong(), any(), any());
         verifyNoInteractions(outbox, worker, loyalty);
+    }
+
+    @Test
+    void outboxSerializationFailureAbortsFulfilmentInsteadOfBeingIgnored() throws Exception {
+        ObjectMapper failingMapper = mock(ObjectMapper.class);
+        when(failingMapper.writeValueAsString(any())).thenThrow(new JsonProcessingException("boom") {});
+        service = new PaymentServiceImpl(payments, outbox, worker, booking, loyalty,
+                failingMapper, mock(PaymentMapper.class));
+        ReflectionTestUtils.setField(service, "vnpHashSecret", "secret");
+        Payment pending = Payment.builder().id(42L).bookingId(7L).userId(1L)
+                .provider(PaymentProvider.VNPAY).amount(BigDecimal.TEN).status(PaymentStatus.PENDING).build();
+        when(payments.findById(42L)).thenReturn(Optional.of(pending));
+        when(booking.getBooking(7L)).thenReturn(info("PENDING_PAYMENT", LocalDateTime.now().plusMinutes(1)));
+
+        assertThrows(IllegalStateException.class, () -> service.processVnpayIpn(successParams()));
+
+        verify(outbox, never()).save(any());
+        verify(booking, never()).markBookingPaid(anyLong(), any(), any());
+        verifyNoInteractions(worker, loyalty);
+    }
+
+    @Test
+    void externalFulfilmentIsDeferredUntilPaymentTransactionCommits() {
+        Payment pending = Payment.builder().id(42L).bookingId(7L).userId(1L)
+                .provider(PaymentProvider.VNPAY).amount(BigDecimal.TEN).status(PaymentStatus.PENDING).build();
+        when(payments.findById(42L)).thenReturn(Optional.of(pending));
+        when(booking.getBooking(7L)).thenReturn(info("PENDING_PAYMENT", LocalDateTime.now().plusMinutes(1)));
+
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.processVnpayIpn(successParams());
+
+            verify(booking, never()).markBookingPaid(anyLong(), any(), any());
+            verifyNoInteractions(worker, loyalty);
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(synchronization -> synchronization.afterCommit());
+            InOrder postCommitOrder = inOrder(worker, booking);
+            postCommitOrder.verify(worker).publishPendingEvents();
+            postCommitOrder.verify(booking).markBookingPaid(eq(7L), eq("VNP-42"), any());
+            verifyNoInteractions(loyalty);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
+    void rollbackDoesNotCallBookingOrLoyalty() {
+        Payment pending = Payment.builder().id(42L).bookingId(7L).userId(1L)
+                .provider(PaymentProvider.VNPAY).amount(BigDecimal.TEN).status(PaymentStatus.PENDING).build();
+        when(payments.findById(42L)).thenReturn(Optional.of(pending));
+        when(booking.getBooking(7L)).thenReturn(info("PENDING_PAYMENT", LocalDateTime.now().plusMinutes(1)));
+
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.processVnpayIpn(successParams());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+
+        verify(booking, never()).markBookingPaid(anyLong(), any(), any());
+        verifyNoInteractions(worker, loyalty);
     }
 
     private BookingClient.BookingInfo info(String status, LocalDateTime expiresAt) {

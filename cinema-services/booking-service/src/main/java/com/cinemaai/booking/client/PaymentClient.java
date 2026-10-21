@@ -154,6 +154,7 @@ public class PaymentClient {
             log.info("Successfully requested loyalty points award for userId {} booking {} cinemaId {}", userId, bookingCode, cinemaId);
         } catch (Exception ex) {
             log.warn("Failed to award loyalty points for userId {} booking {}: {}", userId, bookingCode, ex.getMessage());
+            throw new IllegalStateException("Loyalty award outcome is unknown for booking " + bookingCode, ex);
         }
     }
 
