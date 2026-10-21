@@ -1,6 +1,8 @@
 package com.cinemaai.catalog.dto.request.quote;
 
 import com.cinemaai.catalog.enums.TicketType;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -13,13 +15,28 @@ public record CheckoutQuoteRequest(
         @NotNull @Positive Long showtimeId,
         @NotEmpty @Size(max = 100) List<@NotNull @Positive Long> seatIds,
         @Size(max = 100) List<@Valid Ticket> tickets,
-        @Size(max = 100) List<@Valid Food> foods,
+        @Size(max = 100) List<@Valid ProductSelection> foods,
         String voucherCode,
         Integer cinePointsToUse,
         Long bookingSessionId
 ) {
-    public CheckoutQuoteRequest(Long showtimeId, List<Long> seatIds, List<Ticket> tickets, List<Food> foods) {
+    public CheckoutQuoteRequest(Long showtimeId, List<Long> seatIds, List<Ticket> tickets, List<ProductSelection> foods) {
         this(showtimeId, seatIds, tickets, foods, null, null, null);
+    }
+
+    @JsonCreator
+    public CheckoutQuoteRequest(
+            @JsonProperty("showtimeId") Long showtimeId,
+            @JsonProperty("seatIds") List<Long> seatIds,
+            @JsonProperty("tickets") List<Ticket> tickets,
+            @JsonProperty("foods") List<ProductSelection> foods,
+            @JsonProperty("products") List<ProductSelection> products,
+            @JsonProperty("voucherCode") String voucherCode,
+            @JsonProperty("cinePointsToUse") Integer cinePointsToUse,
+            @JsonProperty("bookingSessionId") Long bookingSessionId
+    ) {
+        this(showtimeId, seatIds, tickets, normalizeProducts(foods, products), voucherCode,
+                cinePointsToUse, bookingSessionId);
     }
 
     public CheckoutQuoteRequest {
@@ -42,18 +59,28 @@ public record CheckoutQuoteRequest(
         }
     }
 
-    public record Food(
+    private static List<ProductSelection> normalizeProducts(
+            List<ProductSelection> foods,
+            List<ProductSelection> products
+    ) {
+        if (foods != null && products != null) {
+            throw new IllegalArgumentException("Specify either foods or products, not both");
+        }
+        return foods != null ? foods : products;
+    }
+
+    public record ProductSelection(
             Long productId,
             Boolean isCombo,
             Integer quantity,
             Long foodItemId,
             Long foodComboId
     ) {
-        public Food(Long productId, Boolean isCombo, Integer quantity) {
+        public ProductSelection(Long productId, Boolean isCombo, Integer quantity) {
             this(productId, isCombo, quantity, null, null);
         }
 
-        public Food {
+        public ProductSelection {
             if (productId == null) {
                 if (foodComboId != null) {
                     productId = foodComboId;

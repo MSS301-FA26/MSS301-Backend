@@ -62,7 +62,7 @@ class CheckoutQuoteServiceTest {
         var response = service.quote(new CheckoutQuoteRequest(
                 40L, List.of(100L),
                 List.of(new CheckoutQuoteRequest.Ticket(100L, TicketType.ADULT, 22, 1)),
-                List.of(new CheckoutQuoteRequest.Food(50L, false, 1))));
+                List.of(new CheckoutQuoteRequest.ProductSelection(50L, false, 1))));
 
         assertThat(response.ticketSubtotal()).isEqualByComparingTo("90000");
         assertThat(response.foodSubtotal()).isEqualByComparingTo("45000");
@@ -110,7 +110,7 @@ class CheckoutQuoteServiceTest {
         when(items.findById(50L)).thenReturn(Optional.of(popcorn));
 
         // Frontend sends seatIds, foods with foodItemId (no tickets, no productId, no isCombo)
-        var food = new CheckoutQuoteRequest.Food(null, null, 2, 50L, null);
+        var food = new CheckoutQuoteRequest.ProductSelection(null, null, 2, 50L, null);
         var request = new CheckoutQuoteRequest(40L, List.of(100L), null, List.of(food), null, null, null);
 
         var response = service.quote(request);
@@ -155,9 +155,9 @@ class CheckoutQuoteServiceTest {
 
     @Test
     void rejectsConflictingAndDuplicateFoodSelections() {
-        var conflicting = new CheckoutQuoteRequest.Food(50L, false, 1, 51L, null);
-        var duplicateA = new CheckoutQuoteRequest.Food(50L, false, 1);
-        var duplicateB = new CheckoutQuoteRequest.Food(50L, false, 2);
+        var conflicting = new CheckoutQuoteRequest.ProductSelection(50L, false, 1, 51L, null);
+        var duplicateA = new CheckoutQuoteRequest.ProductSelection(50L, false, 1);
+        var duplicateB = new CheckoutQuoteRequest.ProductSelection(50L, false, 2);
 
         assertThatThrownBy(() -> service.quote(new CheckoutQuoteRequest(40L, List.of(100L), null,
                 List.of(conflicting), null, null, null))).isInstanceOf(BadRequestException.class);

@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -49,6 +50,26 @@ class ProductDomainCompatibilityTest {
     }
 
     @Test
+    void canonicalProductsJsonNormalizesToLegacyAccessor() throws Exception {
+        ProductQuoteRequest request = objectMapper.readValue("""
+                {"products":[{"productId":11,"isCombo":false,"quantity":2}]}
+                """, ProductQuoteRequest.class);
+
+        assertEquals(1, request.foods().size());
+        assertEquals(11L, request.foods().getFirst().productId());
+        assertFalse(request.foods().getFirst().isCombo());
+    }
+
+    @Test
+    void dualLegacyAndCanonicalFieldsAreRejectedRegardlessOfContent() {
+        Exception error = assertThrows(Exception.class, () -> objectMapper.readValue("""
+                {"foods":[],"products":[]}
+                """, ProductQuoteRequest.class));
+
+        assertTrue(error.getMessage().contains("either foods or products"));
+    }
+
+    @Test
     void productAndBundleWithSameNumericIdRemainDistinct() throws Exception {
         ProductRepository products = mock(ProductRepository.class);
         ProductBundleRepository bundles = mock(ProductBundleRepository.class);
@@ -59,14 +80,35 @@ class ProductDomainCompatibilityTest {
         InternalProductController controller = new InternalProductController(products, bundles);
 
         ProductQuoteRequest request = new ProductQuoteRequest(java.util.List.of(
-                new ProductQuoteRequest.Item(null, null, 11L, false, 2),
-                new ProductQuoteRequest.Item(null, null, 11L, true, 1)));
+                new ProductQuoteRequest.ProductSelection(null, null, 11L, false, 2),
+                new ProductQuoteRequest.ProductSelection(null, null, 11L, true, 1)));
         ProductQuoteResponse quote = controller.quoteFoods(request).data();
 
         assertEquals(2, quote.items().size());
         assertFalse(quote.items().get(0).isCombo());
         assertTrue(quote.items().get(1).isCombo());
         assertEquals(new BigDecimal("110000"), quote.totalAmount());
+    }
+
+    @Test
+    void equivalentLegacyAndCanonicalRequestsProduceIdenticalQuoteValues() throws Exception {
+        ProductRepository products = mock(ProductRepository.class);
+        ProductBundleRepository bundles = mock(ProductBundleRepository.class);
+        Product product = withId(new Product("Water", "Bottle", new BigDecimal("20000")), 11L);
+        when(products.findById(11L)).thenReturn(Optional.of(product));
+        InternalProductController controller = new InternalProductController(products, bundles);
+
+        ProductQuoteRequest legacy = objectMapper.readValue("""
+                {"foods":[{"productId":11,"isCombo":false,"quantity":2}]}
+                """, ProductQuoteRequest.class);
+        ProductQuoteRequest canonical = objectMapper.readValue("""
+                {"products":[{"productId":11,"isCombo":false,"quantity":2}]}
+                """, ProductQuoteRequest.class);
+
+        ProductQuoteResponse legacyQuote = controller.quoteFoods(legacy).data();
+        ProductQuoteResponse canonicalQuote = controller.quoteFoods(canonical).data();
+        assertEquals(legacyQuote, canonicalQuote);
+        assertEquals(new BigDecimal("40000"), canonicalQuote.totalAmount());
     }
 
     @Test

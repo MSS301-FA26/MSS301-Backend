@@ -1,5 +1,6 @@
 package com.cinemaai.booking.dto;
 
+import com.cinemaai.booking.client.dto.CatalogProductQuoteDto;
 import com.cinemaai.booking.dto.request.OrderRequest;
 import com.cinemaai.booking.dto.response.OrderItemResponse;
 import com.cinemaai.booking.dto.response.OrderResponse;
@@ -71,5 +72,18 @@ class OrderContractCompatibilityTest {
                 Order.class.getDeclaredField("foodOrderCode").getAnnotation(Column.class).name());
         assertEquals("food_order_id",
                 OrderItem.class.getDeclaredField("order").getAnnotation(JoinColumn.class).name());
+    }
+
+    @Test
+    void bookingCatalogClientContinuesSendingLegacyFoodsContract() throws Exception {
+        var request = new CatalogProductQuoteDto.Request(List.of(
+                new CatalogProductQuoteDto.Request.Item(null, null, 11L, false, 2)));
+
+        JsonNode json = objectMapper.readTree(objectMapper.writeValueAsBytes(request));
+
+        assertTrue(json.has("foods"));
+        assertFalse(json.has("products"));
+        assertEquals(11L, json.get("foods").get(0).get("productId").asLong());
+        assertFalse(json.get("foods").get(0).get("isCombo").asBoolean());
     }
 }
