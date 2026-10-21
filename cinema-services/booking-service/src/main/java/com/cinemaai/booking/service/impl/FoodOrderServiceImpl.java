@@ -7,6 +7,7 @@ import com.cinemaai.booking.dto.request.BookingFoodRequest;
 import com.cinemaai.booking.dto.request.FoodOrderRequest;
 import com.cinemaai.booking.dto.response.FoodOrderItemResponse;
 import com.cinemaai.booking.dto.response.FoodOrderResponse;
+import com.cinemaai.booking.dto.response.PageResponse;
 import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.entity.FoodOrder;
 import com.cinemaai.booking.entity.FoodOrderItem;
@@ -24,6 +25,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @Slf4j
 @Service
@@ -79,6 +83,19 @@ public class FoodOrderServiceImpl implements FoodOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    public PageResponse<FoodOrderResponse> listAll(Pageable pageable) {
+        int page = Math.max(0, pageable.getPageNumber());
+        int size = Math.min(Math.max(pageable.getPageSize(), 1), 100);
+        PageRequest stablePage = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        );
+        return PageResponse.from(foodOrderRepository.findAll(stablePage).map(this::toResponse));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<FoodOrderResponse> listByBooking(Long userId, Long bookingId) {
         return foodOrderRepository.findByBookingIdOrderByCreatedAtDesc(bookingId)
                 .stream()
@@ -90,12 +107,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     @Override
     @Transactional
     public FoodOrderResponse cancel(Long userId, Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findById(foodOrderId)
+        FoodOrder order = foodOrderRepository.findByIdAndUserId(foodOrderId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
-
-        if (!order.getUserId().equals(userId)) {
-            throw new BadRequestException("Bạn không có quyền thao tác trên đơn bắp nước này");
-        }
 
         if ("PENDING_PAYMENT".equalsIgnoreCase(order.getStatus())) {
             LocalDateTime expiresAt = getExpiresAt(order);
@@ -145,12 +158,8 @@ public class FoodOrderServiceImpl implements FoodOrderService {
     @Override
     @Transactional
     public FoodOrderResponse syncPaymentStatus(Long userId, Long foodOrderId) {
-        FoodOrder order = foodOrderRepository.findById(foodOrderId)
+        FoodOrder order = foodOrderRepository.findByIdAndUserId(foodOrderId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
-
-        if (!order.getUserId().equals(userId)) {
-            throw new BadRequestException("Bạn không có quyền thao tác trên đơn này");
-        }
 
         if ("PAID".equalsIgnoreCase(order.getStatus())) {
             return toResponse(order);
