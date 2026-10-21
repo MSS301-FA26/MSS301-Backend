@@ -257,7 +257,7 @@ to `EXPIRED`.
 | `PUT /loyalty/config` | `LoyaltyConfigurationRequest` | `LoyaltyConfigurationResponse` | `200` |
 | `GET /loyalty/transactions` | query `keyword,from,to,page,size` | `PageResponse<LoyaltyTransactionResponse>` | `200` |
 | `GET /loyalty/report` | query `from,to` | `LoyaltyReportResponse` | `200` |
-| `POST /loyalty/expire-now` | — | `Integer` | `200` |
+| `POST /api/v1/admin/loyalty/points/expire-all-active` | — | `Integer` | `200` |
 | `POST /loyalty/add` | `LoyaltyAddRequest` | `LoyaltyResponse` | `200` |
 | `POST /loyalty/{userId}/redeem` | query `points` | `LoyaltyResponse` | `200` |
 
