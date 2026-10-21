@@ -17,6 +17,7 @@ import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.enums.SeatType;
 import com.cinemaai.booking.enums.TicketType;
 import com.cinemaai.booking.exception.BadRequestException;
+import com.cinemaai.booking.exception.BookingExpiredException;
 import com.cinemaai.booking.exception.ConflictException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
@@ -227,7 +228,9 @@ public class BookingServiceImpl implements BookingService {
         for (Booking expiredBooking : expiredBookings) {
             expiredBooking.setStatus(BookingStatus.EXPIRED);
             expiredBooking.setCancelledAt(now);
-            expiredBooking.getSeats().forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+            expiredBooking.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
         }
         if (!expiredBookings.isEmpty()) {
             bookingRepository.saveAll(expiredBookings);
@@ -236,14 +239,14 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private void releaseExistingHolds(Long userId, Long showtimeId, LocalDateTime now) {
-        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusIn(
+        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusInForUpdate(
                 userId, showtimeId, List.of(BookingStatus.HOLDING));
         for (Booking oldHold : existingHolds) {
             oldHold.setStatus(BookingStatus.CANCELLED);
             oldHold.setCancelledAt(now);
-            for (BookingSeat seat : oldHold.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
+            oldHold.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
             bookingRepository.save(oldHold);
         }
         if (!existingHolds.isEmpty()) {
@@ -252,14 +255,14 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse checkout(Long userId, Long bookingId, CheckoutBookingRequest request) {
         if (request == null) throw new BadRequestException("Checkout payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), true);
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse updateHoldingItems(Long userId, Long bookingId, UpdateHoldingBookingRequest request) {
         if (request == null) throw new BadRequestException("Update payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), false);
@@ -274,8 +277,17 @@ public class BookingServiceImpl implements BookingService {
             boolean isCheckoutFinal
     ) {
         LocalDateTime now = LocalDateTime.now();
-        Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
+        Booking booking = bookingRepository.findByIdAndUserIdForUpdate(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
+
+        if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new BadRequestException("Đơn đặt vé không ở trạng thái hợp lệ để cập nhật.");
+        }
+        if (isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
+            bookingRepository.save(booking);
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
+        }
 
         boolean legacyLoyaltyDiscount = booking.getLoyaltyPointsRedeemed() > 0;
         if (legacyLoyaltyDiscount && loyaltyPointsToRedeem == null) {
@@ -288,19 +300,6 @@ public class BookingServiceImpl implements BookingService {
 
         List<Long> seatIds = booking.getSeats().stream().map(BookingSeat::getSeatId).toList();
         validateSelections(seatIds, tickets, foods, loyaltyPointsToRedeem);
-
-        if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
-            throw new BadRequestException("Đơn đặt vé không ở trạng thái hợp lệ để cập nhật.");
-        }
-
-        if (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now)) {
-            booking.setStatus(BookingStatus.EXPIRED);
-            for (BookingSeat seat : booking.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
-            bookingRepository.save(booking);
-            throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
-        }
 
         // Prepare quote request
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
@@ -528,19 +527,28 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse cancelBooking(Long userId, Long bookingId) {
-        Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
+        Booking booking = bookingRepository.findByIdAndUserIdForUpdate(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
 
         if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             throw new BadRequestException("Chỉ có thể hủy đơn đặt vé đang trong phiên giữ chỗ hoặc chờ thanh toán.");
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        if (isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
+            bookingRepository.save(booking);
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancelledAt(now);
         for (BookingSeat seat : booking.getSeats()) {
-            seat.setStatus(BookingSeatStatus.RELEASED);
+            if (seat.getStatus() == BookingSeatStatus.HOLDING) {
+                seat.setStatus(BookingSeatStatus.RELEASED);
+            }
         }
         bookingRepository.save(booking);
         return bookingMapper.toResponse(booking);
@@ -564,19 +572,13 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse getBookingByIdInternal(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
 
         LocalDateTime now = LocalDateTime.now();
         if ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
-                && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now)) {
-            booking.setStatus(BookingStatus.EXPIRED);
-            booking.setCancelledAt(now);
-            if (booking.getSeats() != null) {
-                for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
-                    seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.RELEASED);
-                }
-            }
+                && isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
             bookingRepository.save(booking);
         }
 
@@ -702,24 +704,23 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse markPaidInternal(Long bookingId, String transactionId) {
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new NotFoundException("Booking #" + bookingId + " not found"));
 
         LocalDateTime now = LocalDateTime.now();
         if (booking.getStatus() == BookingStatus.EXPIRED
-                || ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
-                    && booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now))) {
-            booking.setStatus(BookingStatus.EXPIRED);
-            booking.setCancelledAt(now);
-            if (booking.getSeats() != null) {
-                for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
-                    seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.RELEASED);
-                }
-            }
+                || (booking.getStatus() == BookingStatus.PENDING_PAYMENT && isHoldExpired(booking, now))) {
+            expireBooking(booking, now);
             bookingRepository.save(booking);
-            throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Đơn đặt vé đã bị hủy.");
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Đơn đặt vé đã bị hủy.");
+        }
+        if (booking.getStatus() == BookingStatus.PAID) {
+            return bookingMapper.toResponse(booking);
+        }
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new BadRequestException("Booking is not awaiting payment");
         }
 
         if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
@@ -758,5 +759,19 @@ public class BookingServiceImpl implements BookingService {
         }
 
         return bookingMapper.toResponse(booking);
+    }
+
+    private boolean isHoldExpired(Booking booking, LocalDateTime now) {
+        return booking.getHoldExpiresAt() == null || !booking.getHoldExpiresAt().isAfter(now);
+    }
+
+    private void expireBooking(Booking booking, LocalDateTime now) {
+        booking.setStatus(BookingStatus.EXPIRED);
+        booking.setCancelledAt(now);
+        if (booking.getSeats() != null) {
+            booking.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+        }
     }
 }
