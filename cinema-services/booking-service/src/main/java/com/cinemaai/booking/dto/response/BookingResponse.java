@@ -35,7 +35,7 @@ public record BookingResponse(
         String qrCode,
         List<BookingSeatResponse> seats,
         List<BookingTicketResponse> tickets,
-        List<BookingFoodResponse> foods,
+        List<BookingProductResponse> foods,
         LocalDateTime createdAt,
         String customerName,
         String customerPhone,
@@ -72,7 +72,7 @@ public record BookingResponse(
             String qrCode,
             List<BookingSeatResponse> seats,
             List<BookingTicketResponse> tickets,
-            List<BookingFoodResponse> foods,
+            List<BookingProductResponse> foods,
             LocalDateTime createdAt
     ) {
         this(id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot, posterUrl, moviePosterSnapshot,
@@ -111,7 +111,7 @@ public record BookingResponse(
             String qrCode,
             List<BookingSeatResponse> seats,
             List<BookingTicketResponse> tickets,
-            List<BookingFoodResponse> foods,
+            List<BookingProductResponse> foods,
             LocalDateTime createdAt
     ) {
         this(id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot, posterUrl, moviePosterSnapshot,

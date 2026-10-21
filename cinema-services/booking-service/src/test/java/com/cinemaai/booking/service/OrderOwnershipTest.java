@@ -2,17 +2,17 @@ package com.cinemaai.booking.service;
 
 import com.cinemaai.booking.client.CatalogClient;
 import com.cinemaai.booking.client.PaymentClient;
-import com.cinemaai.booking.dto.request.FoodOrderRequest;
-import com.cinemaai.booking.dto.response.FoodOrderResponse;
+import com.cinemaai.booking.dto.request.OrderRequest;
+import com.cinemaai.booking.dto.response.OrderResponse;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.FoodOrder;
+import com.cinemaai.booking.entity.Order;
 import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.NotFoundException;
-import com.cinemaai.booking.mapper.FoodOrderMapper;
+import com.cinemaai.booking.mapper.OrderMapper;
 import com.cinemaai.booking.repository.BookingRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
-import com.cinemaai.booking.service.impl.FoodOrderServiceImpl;
+import com.cinemaai.booking.repository.OrderRepository;
+import com.cinemaai.booking.service.impl.OrderServiceImpl;
 import java.util.List;
 import java.util.Optional;
 import java.time.LocalDateTime;
@@ -23,16 +23,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.util.ReflectionTestUtils.setField;
 
-class FoodOrderOwnershipTest {
-    private final FoodOrderRepository orders = mock(FoodOrderRepository.class);
+class OrderOwnershipTest {
+    private final OrderRepository orders = mock(OrderRepository.class);
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final PaymentClient payments = mock(PaymentClient.class);
-    private final FoodOrderMapper mapper = mock(FoodOrderMapper.class);
-    private FoodOrderServiceImpl service;
+    private final OrderMapper mapper = mock(OrderMapper.class);
+    private OrderServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new FoodOrderServiceImpl(orders, bookings, mock(CatalogClient.class), payments, mapper);
+        service = new OrderServiceImpl(orders, bookings, mock(CatalogClient.class), payments, mapper);
     }
 
     @Test
@@ -47,7 +47,7 @@ class FoodOrderOwnershipTest {
                 Booking.builder().id(7L).userId(2L).status(BookingStatus.PAID).build()));
 
         assertThrows(NotFoundException.class,
-                () -> service.createForBooking(1L, 7L, new FoodOrderRequest(List.of())));
+                () -> service.createForBooking(1L, 7L, new OrderRequest(List.of())));
         verifyNoInteractions(payments);
         verify(orders, never()).save(any());
     }
@@ -72,8 +72,8 @@ class FoodOrderOwnershipTest {
 
     @Test
     void listMineUsesRepositoryOwnerFilterAndReturnsOnlyOwnedOrders() {
-        FoodOrder owned = order(8L, 1L, "PAID");
-        FoodOrderResponse response = mock(FoodOrderResponse.class);
+        Order owned = order(8L, 1L, "PAID");
+        OrderResponse response = mock(OrderResponse.class);
         when(orders.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(owned));
         when(mapper.toItemResponseList(anyList())).thenReturn(List.of());
         when(mapper.toResponse(eq(owned), nullable(String.class), any(), nullable(String.class), anyList()))
@@ -85,11 +85,11 @@ class FoodOrderOwnershipTest {
 
     @Test
     void listMineExpiresOnlyOverduePendingOrders() {
-        FoodOrder expired = order(8L, 1L, "PENDING_PAYMENT");
+        Order expired = order(8L, 1L, "PENDING_PAYMENT");
         setField(expired, "createdAt", LocalDateTime.now().minusMinutes(16));
-        FoodOrder active = order(9L, 1L, "PENDING_PAYMENT");
+        Order active = order(9L, 1L, "PENDING_PAYMENT");
         setField(active, "createdAt", LocalDateTime.now().minusMinutes(14));
-        FoodOrder paid = order(10L, 1L, "PAID");
+        Order paid = order(10L, 1L, "PAID");
         setField(paid, "createdAt", LocalDateTime.now().minusHours(1));
         when(orders.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(expired, active, paid));
         when(mapper.toItemResponseList(anyList())).thenReturn(List.of());
@@ -110,7 +110,7 @@ class FoodOrderOwnershipTest {
         assertEquals(List.of(), service.listMine(1L));
     }
 
-    private FoodOrder order(Long id, Long userId, String status) {
-        return FoodOrder.builder().id(id).foodOrderCode("FO-8").userId(userId).status(status).build();
+    private Order order(Long id, Long userId, String status) {
+        return Order.builder().id(id).foodOrderCode("FO-8").userId(userId).status(status).build();
     }
 }

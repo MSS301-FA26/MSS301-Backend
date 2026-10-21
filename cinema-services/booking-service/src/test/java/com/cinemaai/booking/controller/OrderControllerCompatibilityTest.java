@@ -1,7 +1,7 @@
 package com.cinemaai.booking.controller;
 
 import com.cinemaai.booking.security.SecurityConfig;
-import com.cinemaai.booking.service.FoodOrderService;
+import com.cinemaai.booking.service.OrderService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -42,12 +42,12 @@ class OrderControllerCompatibilityTest {
             """;
 
     @Autowired MockMvc mvc;
-    @MockBean FoodOrderService foodOrderService;
+    @MockBean OrderService orderService;
 
     @Test
     void allCustomerRoutesKeepTheirMethodsStatusesAndAuthenticatedIdentity() throws Exception {
-        when(foodOrderService.listMine(7L)).thenReturn(List.of());
-        when(foodOrderService.listByBooking(7L, 31L)).thenReturn(List.of());
+        when(orderService.listMine(7L)).thenReturn(List.of());
+        when(orderService.listByBooking(7L, 31L)).thenReturn(List.of());
 
         mvc.perform(post("/api/v1/food-orders")
                         .headers(customerHeaders())
@@ -70,13 +70,13 @@ class OrderControllerCompatibilityTest {
         mvc.perform(get("/api/v1/bookings/31/food-orders").headers(customerHeaders()))
                 .andExpect(status().isOk());
 
-        verify(foodOrderService).createStandalone(eq(7L), any());
-        verify(foodOrderService).listMine(7L);
-        verify(foodOrderService).getByIdAndUser(7L, 41L);
-        verify(foodOrderService).cancel(7L, 41L);
-        verify(foodOrderService).syncPaymentStatus(7L, 41L);
-        verify(foodOrderService).createForBooking(eq(7L), eq(31L), any());
-        verify(foodOrderService).listByBooking(7L, 31L);
+        verify(orderService).createStandalone(eq(7L), any());
+        verify(orderService).listMine(7L);
+        verify(orderService).getByIdAndUser(7L, 41L);
+        verify(orderService).cancel(7L, 41L);
+        verify(orderService).syncPaymentStatus(7L, 41L);
+        verify(orderService).createForBooking(eq(7L), eq(31L), any());
+        verify(orderService).listByBooking(7L, 31L);
     }
 
     @Test
@@ -104,8 +104,8 @@ class OrderControllerCompatibilityTest {
                         .param("transactionId", "TX-41"))
                 .andExpect(status().isOk());
 
-        verify(foodOrderService).getById(41L);
-        verify(foodOrderService).markPaid(41L, "TX-41");
+        verify(orderService).getById(41L);
+        verify(orderService).markPaid(41L, "TX-41");
     }
 
     private org.springframework.http.HttpHeaders customerHeaders() {

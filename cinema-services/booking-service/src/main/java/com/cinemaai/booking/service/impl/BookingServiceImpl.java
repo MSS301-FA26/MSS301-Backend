@@ -9,7 +9,7 @@ import com.cinemaai.booking.dto.request.HoldSeatsRequest;
 import com.cinemaai.booking.dto.request.UpdateHoldingBookingRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.BookingFoodItem;
+import com.cinemaai.booking.entity.BookingProductItem;
 import com.cinemaai.booking.entity.BookingSeat;
 import com.cinemaai.booking.entity.BookingTicket;
 import com.cinemaai.booking.enums.BookingSeatStatus;
@@ -21,7 +21,7 @@ import com.cinemaai.booking.exception.BookingExpiredException;
 import com.cinemaai.booking.exception.ConflictException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
-import com.cinemaai.booking.repository.BookingFoodItemRepository;
+import com.cinemaai.booking.repository.BookingProductItemRepository;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
 import com.cinemaai.booking.repository.BookingTicketRepository;
@@ -80,7 +80,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
     private final BookingTicketRepository bookingTicketRepository;
-    private final BookingFoodItemRepository bookingFoodItemRepository;
+    private final BookingProductItemRepository bookingProductItemRepository;
     private final CatalogClient catalogClient;
     private final com.cinemaai.booking.client.PaymentClient paymentClient;
     private final BookingMapper bookingMapper;
@@ -516,7 +516,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (quote.foods() != null) {
             for (CatalogQuoteDto.Response.FoodSnapshot fs : quote.foods()) {
-                booking.getFoodItems().add(BookingFoodItem.builder()
+                booking.getFoodItems().add(BookingProductItem.builder()
                         .booking(booking)
                         .productId(fs.productId())
                         .isCombo(fs.isCombo())

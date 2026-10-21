@@ -12,7 +12,7 @@ import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.ConflictException;
 import com.cinemaai.booking.mapper.BookingMapper;
-import com.cinemaai.booking.repository.BookingFoodItemRepository;
+import com.cinemaai.booking.repository.BookingProductItemRepository;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
 import com.cinemaai.booking.repository.BookingTicketRepository;
@@ -44,7 +44,7 @@ class BookingExpirationLifecycleTest {
         catalog = mock(CatalogClient.class);
         payment = mock(PaymentClient.class);
         service = new BookingServiceImpl(bookings, seats,
-                mock(BookingTicketRepository.class), mock(BookingFoodItemRepository.class),
+                mock(BookingTicketRepository.class), mock(BookingProductItemRepository.class),
                 catalog, payment, mock(BookingMapper.class));
     }
 
