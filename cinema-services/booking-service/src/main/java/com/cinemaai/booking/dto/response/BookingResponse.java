@@ -4,7 +4,9 @@ import com.cinemaai.booking.enums.BookingStatus;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Builder;
 
+@Builder
 public record BookingResponse(
         Long id,
         String bookingCode,
