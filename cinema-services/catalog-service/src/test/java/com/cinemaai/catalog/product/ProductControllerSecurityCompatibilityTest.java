@@ -98,6 +98,21 @@ class ProductControllerSecurityCompatibilityTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void internalQuoteAcceptsCanonicalFieldAndRejectsDualFieldsAtHttpBoundary() throws Exception {
+        mvc.perform(post("/internal/v1/foods/quote")
+                        .header("X-Internal-Service-Secret", "internal-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"products\":[{\"productId\":11,\"isCombo\":false,\"quantity\":1}]}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(post("/internal/v1/foods/quote")
+                        .header("X-Internal-Service-Secret", "internal-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"foods\":[],\"products\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
     private org.springframework.http.HttpHeaders roleHeaders(String role) {
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.set("X-Gateway-Secret", "gateway-test");

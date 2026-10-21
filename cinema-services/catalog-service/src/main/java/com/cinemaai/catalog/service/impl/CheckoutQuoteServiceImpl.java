@@ -92,7 +92,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 ticketTotal = ticketTotal.add(price);
             }
         }
-        List<FoodSnapshot> foodLines = new ArrayList<>();
+        List<ProductSnapshot> foodLines = new ArrayList<>();
         Set<String> foodKeys = new HashSet<>();
         BigDecimal foodTotal = BigDecimal.ZERO;
         if (request.foods() != null) {
@@ -129,7 +129,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 }
                 if (status != ProductStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
                 BigDecimal total = price.multiply(BigDecimal.valueOf(qty));
-                foodLines.add(new FoodSnapshot(productId, isCombo, name, price, qty, total));
+                foodLines.add(new ProductSnapshot(productId, isCombo, name, price, qty, total));
                 foodTotal = foodTotal.add(total);
             }
         }
@@ -219,7 +219,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         }
     }
 
-    private void validateFoodIdentifiers(CheckoutQuoteRequest.Food food) {
+    private void validateFoodIdentifiers(CheckoutQuoteRequest.ProductSelection food) {
         if (food == null) throw new BadRequestException("Food selection is required");
         Long productId = food.productId();
         Long itemId = food.foodItemId();

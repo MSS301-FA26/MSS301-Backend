@@ -39,11 +39,11 @@ public class InternalProductController {
             return ApiResponse.success(new ProductQuoteResponse(List.of(), BigDecimal.ZERO), "No foods requested");
         }
 
-        List<ProductQuoteResponse.FoodItemSnapshot> resultItems = new ArrayList<>();
+        List<ProductQuoteResponse.ProductSnapshot> resultItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         java.util.Set<String> productKeys = new java.util.HashSet<>();
 
-        for (ProductQuoteRequest.Item item : request.foods()) {
+        for (ProductQuoteRequest.ProductSelection item : request.foods()) {
             validateFoodIdentifiers(item.productId(), item.isCombo(), item.foodItemId(), item.foodComboId());
             Long resolvedId = item.productId();
             boolean isCombo = Boolean.TRUE.equals(item.isCombo());
@@ -90,7 +90,7 @@ public class InternalProductController {
             BigDecimal lineTotal = price.multiply(BigDecimal.valueOf(qty));
             totalAmount = totalAmount.add(lineTotal);
 
-            resultItems.add(new ProductQuoteResponse.FoodItemSnapshot(
+            resultItems.add(new ProductQuoteResponse.ProductSnapshot(
                     targetId,
                     finalIsCombo,
                     name,
