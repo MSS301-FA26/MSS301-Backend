@@ -77,8 +77,11 @@ public class SecurityConfig {
                 try {
                     String path = request.getRequestURI();
 
-                    // Whitelisted endpoints: Docker/K8s healthcheck
-                    if (path.equals("/actuator/health") || path.startsWith("/actuator/health/")) {
+                    // Whitelisted endpoints: Docker/K8s healthcheck, Swagger / OpenAPI
+                    if (path.equals("/actuator/health") || path.startsWith("/actuator/health/")
+                            || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/swagger-ui")
+                            || path.equals("/swagger-ui.html")) {
                         filterChain.doFilter(request, response);
                         return;
                     }
@@ -125,6 +128,7 @@ public class SecurityConfig {
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/api/v1/admin/users/manager", "/api/v1/admin/users/*/cinema").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/users", "/api/v1/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/v1/admin/staff-profiles", "/api/v1/admin/staff-profiles/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                         .anyRequest().authenticated()

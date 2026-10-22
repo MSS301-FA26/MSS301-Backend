@@ -1,9 +1,11 @@
 package com.cinemaai.booking.dto.request;
 
 import java.util.List;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 
 public record CheckoutBookingRequest(
-        List<HoldSeatsRequest.TicketSelection> tickets,
-        List<HoldSeatsRequest.FoodSelection> foods,
-        Integer loyaltyPointsToRedeem
+        @Valid List<HoldSeatsRequest.TicketSelection> tickets,
+        @Valid List<HoldSeatsRequest.FoodSelection> foods,
+        @Min(0) Integer loyaltyPointsToRedeem
 ) {}

@@ -13,8 +13,8 @@ public record CheckoutQuoteResponse(
         ShowtimeSnapshot showtime,
         List<SeatSnapshot> seats,
         List<TicketSnapshot> tickets,
-        List<FoodSnapshot> foods,
-        List<FoodSnapshot> foodItems,
+        List<ProductSnapshot> foods,
+        List<ProductSnapshot> foodItems,
         BigDecimal ticketSubtotal,
         BigDecimal foodSubtotal,
         BigDecimal subtotal,
@@ -33,7 +33,7 @@ public record CheckoutQuoteResponse(
             ShowtimeSnapshot showtime,
             List<SeatSnapshot> seats,
             List<TicketSnapshot> tickets,
-            List<FoodSnapshot> foods,
+            List<ProductSnapshot> foods,
             BigDecimal ticketSubtotal,
             BigDecimal foodSubtotal,
             BigDecimal subtotal
@@ -72,6 +72,6 @@ public record CheckoutQuoteResponse(
     public record SeatSnapshot(Long seatId, String seatLabel, SeatType seatType, BigDecimal unitPrice) {}
     public record TicketSnapshot(Long seatId, TicketType ticketType, int quantity,
             BigDecimal unitPrice, BigDecimal lineTotal) {}
-    public record FoodSnapshot(Long productId, boolean isCombo, String productName, BigDecimal unitPrice,
+    public record ProductSnapshot(Long productId, boolean isCombo, String productName, BigDecimal unitPrice,
             int quantity, BigDecimal lineTotal) {}
 }

@@ -3,6 +3,8 @@ package com.cinemaai.catalog.service;
 import com.cinemaai.catalog.dto.request.cinema.AudiencePriceRequest;
 import com.cinemaai.catalog.dto.request.cinema.CinemaRequest;
 import com.cinemaai.catalog.dto.response.cinema.AudiencePriceResponse;
+import com.cinemaai.catalog.dto.request.cinema.DaySurchargeRequest;
+import com.cinemaai.catalog.dto.response.cinema.DaySurchargeResponse;
 import com.cinemaai.catalog.dto.response.cinema.CinemaResponse;
 import com.cinemaai.catalog.entity.Cinema;
 import com.cinemaai.catalog.entity.CinemaAudiencePrice;
@@ -58,4 +60,10 @@ public interface CinemaService {
          * Returns an empty map if not configured.
          */
         Map<AudienceType, BigDecimal> getAudiencePriceMap(Long cinemaId);
+
+        /** Get weekend and holiday surcharges for cinema. */
+        DaySurchargeResponse getDaySurcharges(Long cinemaId);
+
+        /** Upsert weekend and holiday surcharges for cinema. */
+        DaySurchargeResponse updateDaySurcharges(Long cinemaId, DaySurchargeRequest request);
 }

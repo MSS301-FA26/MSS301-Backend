@@ -8,10 +8,18 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 public record LoyaltyConfigurationRequest(
+        Long cinemaId,
+
+        String cinemaName,
+
         @NotNull(message = "Tỷ lệ tích điểm là bắt buộc")
         @DecimalMin(value = "0.00", message = "Tỷ lệ tích điểm không được âm")
         @DecimalMax(value = "100.00", message = "Tỷ lệ tích điểm không được vượt quá 100%")
         BigDecimal earningRatePercent,
+
+        @DecimalMin(value = "0.00", message = "Tỷ lệ quy đổi điểm không được âm")
+        @DecimalMax(value = "500.00", message = "Tỷ lệ quy đổi điểm không hợp lệ")
+        BigDecimal redemptionRatePercent,
 
         @Min(value = 1, message = "Số điểm quy đổi phải lớn hơn hoặc bằng 1")
         int redemptionPoints,
@@ -19,6 +27,10 @@ public record LoyaltyConfigurationRequest(
         @NotNull(message = "Giá trị giảm là bắt buộc")
         @DecimalMin(value = "0.01", message = "Giá trị giảm phải lớn hơn 0")
         BigDecimal redemptionValueVnd,
+
+        @DecimalMin(value = "1.00", message = "Giảm tối đa phải từ 1%")
+        @DecimalMax(value = "100.00", message = "Giảm tối đa không vượt quá 100%")
+        BigDecimal maxRedemptionPercent,
 
         @Min(value = 1, message = "Tháng reset điểm phải nằm trong khoảng 1 đến 12")
         @Max(value = 12, message = "Tháng reset điểm phải nằm trong khoảng 1 đến 12")

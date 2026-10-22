@@ -1,5 +1,6 @@
 package com.cinemaai.payment.service.impl;
 
+import com.cinemaai.payment.dto.request.CreditWalletInternalRequest;
 import com.cinemaai.payment.dto.request.WithdrawalCreateRequest;
 import com.cinemaai.payment.dto.request.WithdrawalProcessRequest;
 import com.cinemaai.payment.dto.response.PageResponse;
@@ -14,6 +15,7 @@ import com.cinemaai.payment.enums.WalletTransactionType;
 import com.cinemaai.payment.enums.WithdrawalStatus;
 import com.cinemaai.payment.exception.BadRequestException;
 import com.cinemaai.payment.exception.NotFoundException;
+import com.cinemaai.payment.mapper.WalletMapper;
 import com.cinemaai.payment.repository.CineWalletRepository;
 import com.cinemaai.payment.repository.WalletTransactionRepository;
 import com.cinemaai.payment.repository.WithdrawalRequestRepository;
@@ -37,12 +39,13 @@ public class WalletServiceImpl implements WalletService {
     private final CineWalletRepository cineWalletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final WalletMapper walletMapper;
 
     @Override
     @Transactional(readOnly = true)
     public WalletResponse getWallet(Long userId) {
         CineWallet wallet = getOrCreateWallet(userId);
-        return new WalletResponse(wallet.getId(), wallet.getBalance(), wallet.getCreatedAt());
+        return walletMapper.toResponse(wallet);
     }
 
     @Override
@@ -51,7 +54,7 @@ public class WalletServiceImpl implements WalletService {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(1, Math.min(size, 50)));
         Page<WalletTransactionResponse> result = walletTransactionRepository
                 .findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                .map(WalletTransactionResponse::from);
+                .map(walletMapper::toTransactionResponse);
         return PageResponse.from(result);
     }
 
@@ -96,7 +99,7 @@ public class WalletServiceImpl implements WalletService {
                 .build();
         WithdrawalRequest saved = withdrawalRequestRepository.save(wr);
         log.info("Created withdrawal request #{} for userId: {}, amount: {}", saved.getId(), userId, amount);
-        return WithdrawalResponse.from(saved);
+        return walletMapper.toWithdrawalResponse(saved);
     }
 
     @Override
@@ -105,7 +108,7 @@ public class WalletServiceImpl implements WalletService {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(1, Math.min(size, 50)));
         Page<WithdrawalResponse> result = withdrawalRequestRepository
                 .findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                .map(WithdrawalResponse::from);
+                .map(walletMapper::toWithdrawalResponse);
         return PageResponse.from(result);
     }
 
@@ -118,13 +121,13 @@ public class WalletServiceImpl implements WalletService {
             try {
                 WithdrawalStatus ws = WithdrawalStatus.valueOf(status.trim().toUpperCase());
                 result = withdrawalRequestRepository.findByStatusOrderByCreatedAtDesc(ws, pageable)
-                        .map(WithdrawalResponse::from);
+                        .map(walletMapper::toWithdrawalResponse);
             } catch (IllegalArgumentException ex) {
                 result = Page.empty(pageable);
             }
         } else {
             result = withdrawalRequestRepository.findAllByOrderByCreatedAtDesc(pageable)
-                    .map(WithdrawalResponse::from);
+                    .map(walletMapper::toWithdrawalResponse);
         }
         return PageResponse.from(result);
     }
@@ -157,7 +160,7 @@ public class WalletServiceImpl implements WalletService {
         walletTransactionRepository.save(tx);
 
         log.info("Approved withdrawal request #{}", withdrawalId);
-        return WithdrawalResponse.from(wr);
+        return walletMapper.toWithdrawalResponse(wr);
     }
 
     @Override
@@ -192,7 +195,7 @@ public class WalletServiceImpl implements WalletService {
         walletTransactionRepository.save(tx);
 
         log.info("Rejected withdrawal request #{} and refunded balance to userId {}", withdrawalId, wr.getUserId());
-        return WithdrawalResponse.from(wr);
+        return walletMapper.toWithdrawalResponse(wr);
     }
 
     @Override
@@ -208,7 +211,7 @@ public class WalletServiceImpl implements WalletService {
         Pageable top10 = PageRequest.of(0, 10);
         List<WalletTransactionResponse> recentTx = walletTransactionRepository
                 .findAllByOrderByCreatedAtDesc(top10)
-                .map(WalletTransactionResponse::from)
+                .map(walletMapper::toTransactionResponse)
                 .getContent();
 
         return new WalletDashboardResponse(
@@ -220,6 +223,57 @@ public class WalletServiceImpl implements WalletService {
                 totalWallets,
                 recentTx
         );
+    }
+
+
+    @Override
+    @Transactional
+    public WalletResponse creditWalletInternal(CreditWalletInternalRequest request) {
+        if (request == null || request.userId() == null) {
+            throw new BadRequestException("User ID khong duoc de trong");
+        }
+        if (request.amount() == null || request.amount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("So tien hoan vao vi phai lon hon 0");
+        }
+
+        String refCode = "REFUND-" + (request.bookingCode() != null && !request.bookingCode().isBlank()
+                ? request.bookingCode() : ("BK-" + request.bookingId()));
+
+        if (walletTransactionRepository.existsByReferenceCode(refCode)) {
+            log.warn("Giao dich hoan tien da ton tai cho ma tham chieu: {}", refCode);
+            CineWallet wallet = cineWalletRepository.findByUserId(request.userId()).orElse(null);
+            if (wallet != null) {
+                return walletMapper.toResponse(wallet);
+            }
+        }
+
+        CineWallet wallet = cineWalletRepository.findByUserIdForUpdate(request.userId())
+                .orElseGet(() -> cineWalletRepository.save(CineWallet.builder()
+                        .userId(request.userId())
+                        .balance(BigDecimal.ZERO)
+                        .build()));
+
+        BigDecimal newBalance = wallet.getBalance().add(request.amount());
+        wallet.setBalance(newBalance);
+        cineWalletRepository.save(wallet);
+
+        String desc = request.reason() != null && !request.reason().isBlank()
+                ? request.reason() : ("Hoan tien ve " + (request.bookingCode() != null ? request.bookingCode() : ""));
+
+        WalletTransaction tx = WalletTransaction.builder()
+                .wallet(wallet)
+                .userId(request.userId())
+                .bookingId(request.bookingId())
+                .type(WalletTransactionType.REFUND_CREDIT)
+                .amount(request.amount())
+                .balanceAfter(newBalance)
+                .referenceCode(refCode)
+                .description(desc)
+                .build();
+        walletTransactionRepository.save(tx);
+
+        log.info("Da hoan {} vao CineWallet cua userId {} (so du moi: {}, ref: {})", request.amount(), request.userId(), newBalance, refCode);
+        return walletMapper.toResponse(wallet);
     }
 
     private CineWallet getOrCreateWallet(Long userId) {

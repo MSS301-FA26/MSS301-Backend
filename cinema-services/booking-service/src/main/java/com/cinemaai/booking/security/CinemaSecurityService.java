@@ -49,7 +49,11 @@ public class CinemaSecurityService {
             throw new ForbiddenException("Tài khoản chưa được phân công rạp cụ thể");
         }
 
-        if (targetCinemaId != null && !userCinemaId.equals(targetCinemaId)) {
+        if (targetCinemaId == null) {
+            throw new ForbiddenException("Resource cinema could not be determined");
+        }
+
+        if (!userCinemaId.equals(targetCinemaId)) {
             throw new ForbiddenException("Bạn không có quyền thao tác trên dữ liệu của rạp khác (Rạp được phân công: " + userCinemaId + ")");
         }
     }

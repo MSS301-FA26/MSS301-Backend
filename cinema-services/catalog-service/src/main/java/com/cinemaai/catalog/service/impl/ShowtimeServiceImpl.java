@@ -52,6 +52,26 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class ShowtimeServiceImpl implements ShowtimeService {
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse> getReportingShowtimes(
+            LocalDate from, LocalDate to, Long cinemaId) {
+        if (from == null || to == null || from.isAfter(to) || java.time.temporal.ChronoUnit.DAYS.between(from, to) >= 366) {
+            throw new BadRequestException("Khoảng báo cáo phải từ 1 đến 366 ngày");
+        }
+        List<Showtime> shows = showtimeRepository.searchAdmin(null, null, cinemaId, null,
+                from.atStartOfDay(), to.plusDays(1).atStartOfDay(), Pageable.unpaged()).getContent().stream()
+                .filter(s -> s.getStatus() != ShowtimeStatus.CANCELLED).toList();
+        List<Room> rooms = shows.stream().map(Showtime::getRoom).distinct().toList();
+        Map<Long, Long> capacities = rooms.isEmpty() ? Map.of() : seatRepository
+                .findByRoomInAndStatus(rooms, SeatStatus.AVAILABLE).stream()
+                .collect(Collectors.groupingBy(s -> s.getRoom().getId(), Collectors.counting()));
+        return shows.stream().map(s -> new com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse(
+                s.getId(), s.getMovie().getId(), s.getMovie().getTitle(), s.getRoom().getCinema().getId(),
+                s.getRoom().getCinema().getName(), s.getRoom().getId(), s.getRoom().getName(),
+                s.getStartTime(), s.getEndTime(), capacities.getOrDefault(s.getRoom().getId(), 0L))).toList();
+    }
+
     private static final int CLEANUP_MINUTES = 15;
     // Giờ hoạt động của rạp (một rạp duy nhất) dùng cho gợi ý khung giờ trống
     private static final LocalTime OPERATING_START = LocalTime.of(8, 0);
@@ -68,6 +88,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     private final AuditLogService auditLogService;
     private final com.cinemaai.catalog.client.BookingClient bookingClient;
     private final CinemaAudiencePriceRepository audiencePriceRepository;
+    private final com.cinemaai.catalog.service.CinemaService cinemaService;
 
 
 
@@ -259,6 +280,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             if (room.getStatus() != RoomStatus.ACTIVE) {
                 throw new BadRequestException(slotLabel + ": room " + room.getName() + " is not active");
             }
+            validateRoomPricingConfigured(room);
             if (!slot.startTime().isAfter(LocalDateTime.now())) {
                 throw new BadRequestException(slotLabel + ": start time must be in the future");
             }
@@ -330,6 +352,14 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     public ShowtimeResponse cancelShowtime(Long id, String reason) {
         Showtime showtime = findById(id);
         validateStatusTransition(showtime, ShowtimeStatus.CANCELLED);
+        
+        // Coordinately refund all bookings in booking-service
+        try {
+            bookingClient.cancelAndRefundShowtime(id, reason, "ADMIN", null);
+        } catch (Exception ex) {
+            log.warn("Notice: booking client refund coordination returned: {}", ex.getMessage());
+        }
+
         applyShowtimeCancellation(showtime, reason);
         showtime.setStatus(ShowtimeStatus.CANCELLED);
         auditLogService.record(AuditActionType.DELETE, "SHOWTIME", showtime.getId(),
@@ -429,6 +459,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         if (room.getStatus() != RoomStatus.ACTIVE) {
             throw new BadRequestException("Cannot schedule showtime in room " + room.getName() + " because it is not active");
         }
+        validateRoomPricingConfigured(room);
         if (!startTime.isAfter(LocalDateTime.now())) {
             throw new BadRequestException("Showtime start time must be in the future");
         }
@@ -446,6 +477,34 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
     }
 
+    private void validateRoomPricingConfigured(Room room) {
+        if (room == null) {
+            throw new BadRequestException("Phòng chiếu không tồn tại");
+        }
+        // 1. Kiểm tra giá vé cơ bản của phòng chiếu (Standard, VIP, Couple)
+        if (room.getStandardPrice() == null || room.getStandardPrice().compareTo(java.math.BigDecimal.ZERO) <= 0
+                || room.getVipPrice() == null || room.getVipPrice().compareTo(java.math.BigDecimal.ZERO) <= 0
+                || room.getCouplePrice() == null || room.getCouplePrice().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Phòng " + room.getName()
+                    + " chưa hoàn thành thiết lập Giá vé phòng chiếu (Ghế thường, VIP, Ghế đôi). Vui lòng hoàn thành bảng giá trước khi tạo suất chiếu.");
+        }
+
+        // 2. Kiểm tra Bảng giá vé theo lứa tuổi của Cụm rạp (Trẻ em, HSSV, Người lớn)
+        Long cinemaId = room.getCinema() != null ? room.getCinema().getId() : null;
+        if (cinemaId != null && audiencePriceRepository != null) {
+            var audList = audiencePriceRepository.findByCinemaId(cinemaId);
+            boolean hasChild = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.CHILD && a.getAdditionalPrice() != null);
+            boolean hasStudent = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.STUDENT && a.getAdditionalPrice() != null);
+            boolean hasAdult = audList.stream().anyMatch(a -> a.getAudienceType() == AudienceType.ADULT && a.getAdditionalPrice() != null);
+
+            if (audList.size() < 3 || !hasChild || !hasStudent || !hasAdult) {
+                String cinemaName = room.getCinema() != null ? room.getCinema().getName() : "Chi nhánh";
+                throw new BadRequestException("Cụm rạp " + cinemaName
+                        + " chưa hoàn thành Bảng giá vé theo lứa tuổi (Trẻ em, Sinh viên, Người lớn). Vui lòng cấu hình và lưu bảng giá trước khi tạo suất chiếu ở phòng này.");
+            }
+        }
+    }
+
     private void validateShowtimeWithinMovieReleaseWindow(Movie movie, LocalDateTime startTime, String label) {
         if (startTime == null) {
             return;
@@ -457,7 +516,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         }
         LocalDate showtimeDate = startTime.toLocalDate();
         if (showtimeDate.isBefore(releaseDate) || showtimeDate.isAfter(endDate)) {
-            throw new BadRequestException(label + "showtime date must be within movie release window");
+            throw new BadRequestException(label + "Ngay chieu (" + showtimeDate + ") phai nam trong thoi gian chieu cua phim (" + releaseDate + " den " + endDate + ")");
         }
     }
 
@@ -503,9 +562,8 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             throw new BadRequestException("Showtime status is required");
         }
         ShowtimeStatus currentStatus = showtime.getStatus();
-        if (requestedStatus == ShowtimeStatus.CANCELLED && currentStatus == ShowtimeStatus.OPEN) {
-            throw new ConflictException("Published showtime cancellation requires Booking refund coordination");
-        }
+        // Cancellation is now coordinated with Booking service
+
         if (currentStatus == requestedStatus) {
             return; // no-op
         }
@@ -636,9 +694,9 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         java.math.BigDecimal adultVip = defaultMoney(adultVipPrice, baseVip.add(surAdult));
         java.math.BigDecimal childVip = defaultMoney(childVipPrice, baseVip.add(surChild));
         java.math.BigDecimal studentVip = defaultMoney(studentVipPrice, baseVip.add(surStudent));
-        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, baseCpl.add(surAdult.multiply(java.math.BigDecimal.valueOf(2))));
-        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, baseCpl.add(surChild.multiply(java.math.BigDecimal.valueOf(2))));
-        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, baseCpl.add(surStudent.multiply(java.math.BigDecimal.valueOf(2))));
+        java.math.BigDecimal adultCouple = defaultMoney(adultCouplePrice, baseCpl.add(surAdult));
+        java.math.BigDecimal childCouple = defaultMoney(childCouplePrice, baseCpl.add(surChild));
+        java.math.BigDecimal studentCouple = defaultMoney(studentCouplePrice, baseCpl.add(surStudent));
 
         showtime.setAdultStandardPrice(adultStandard);
         showtime.setChildStandardPrice(childStandard);
@@ -649,8 +707,25 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         showtime.setAdultCouplePrice(adultCouple);
         showtime.setChildCouplePrice(childCouple);
         showtime.setStudentCouplePrice(studentCouple);
-        showtime.setWeekendSurcharge(weekendSurcharge);
+
+        boolean isAutoWeekend = weekendSurcharge || (showtime.getStartTime() != null
+                && (showtime.getStartTime().getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || showtime.getStartTime().getDayOfWeek() == java.time.DayOfWeek.SUNDAY));
+        showtime.setWeekendSurcharge(isAutoWeekend);
         showtime.setHolidaySurcharge(holidaySurcharge);
+
+        if (cinemaId != null && cinemaService != null) {
+            try {
+                var ds = cinemaService.getDaySurcharges(cinemaId);
+                if (ds != null) {
+                    if (ds.weekendSurcharge() != null) showtime.setWeekendSurchargeAmount(ds.weekendSurcharge());
+                    if (ds.holidaySurcharge() != null) showtime.setHolidaySurchargeAmount(ds.holidaySurcharge());
+                    if (ds.nightSurcharge() != null && lateNightSurchargeAmount == null) {
+                        lateNightSurchargeAmount = ds.nightSurcharge();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
         showtime.setLateNightSurchargeAmount(defaultMoney(lateNightSurchargeAmount, java.math.BigDecimal.valueOf(20_000)));
         showtime.setBasePrice(adultStandard);
         showtime.setVipPrice(adultVip);
@@ -936,30 +1011,80 @@ public class ShowtimeServiceImpl implements ShowtimeService {
             java.math.BigDecimal roomVip    = room.getVipPrice()      != null ? room.getVipPrice()      : java.math.BigDecimal.ZERO;
             java.math.BigDecimal roomCouple = room.getCouplePrice()   != null ? room.getCouplePrice()   : java.math.BigDecimal.ZERO;
 
-            // Standard seat prices
-            java.math.BigDecimal childStd   = roomStd.add(childAdd);
-            java.math.BigDecimal studentStd = roomStd.add(studentAdd);
-            java.math.BigDecimal adultStd   = roomStd.add(adultAdd);
+            // Day Surcharges (Weekend / Holiday)
+            boolean isWeekend = (slot.startTime().getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                    || slot.startTime().getDayOfWeek() == java.time.DayOfWeek.SUNDAY
+                    || Boolean.TRUE.equals(slot.weekendSurcharge()));
+            boolean isHoliday = Boolean.TRUE.equals(slot.holidaySurcharge());
 
-            // VIP seat prices
-            java.math.BigDecimal childVip   = roomVip.add(childAdd);
-            java.math.BigDecimal studentVip = roomVip.add(studentAdd);
-            java.math.BigDecimal adultVip   = roomVip.add(adultAdd);
+            // Giờ đêm: 22h đến 3h sáng hôm sau
+            int hour = slot.startTime().getHour();
+            boolean isNight = (hour >= 22 || hour < 3);
 
-            // Couple seat prices (all combinations: price per seat-pair = room base + surcharge1 + surcharge2)
-            java.math.BigDecimal ccCouple  = roomCouple.add(childAdd).add(childAdd);
-            java.math.BigDecimal csCouple  = roomCouple.add(childAdd).add(studentAdd);
-            java.math.BigDecimal caCouple  = roomCouple.add(childAdd).add(adultAdd);
-            java.math.BigDecimal ssCouple  = roomCouple.add(studentAdd).add(studentAdd);
-            java.math.BigDecimal saCouple  = roomCouple.add(studentAdd).add(adultAdd);
-            java.math.BigDecimal aaCouple  = roomCouple.add(adultAdd).add(adultAdd);
+            com.cinemaai.catalog.dto.response.cinema.DaySurchargeResponse daySurcharges = null;
+            if (cinemaService != null) {
+                try {
+                    daySurcharges = cinemaService.getDaySurcharges(cinemaId);
+                } catch (Exception ignored) {}
+            }
+
+            java.math.BigDecimal baseDaySurcharge = java.math.BigDecimal.ZERO;
+            List<String> labelParts = new ArrayList<>();
+            if (isWeekend) {
+                java.math.BigDecimal weekendAmount = daySurcharges != null && daySurcharges.weekendSurcharge() != null
+                        ? daySurcharges.weekendSurcharge() : java.math.BigDecimal.valueOf(10_000);
+                baseDaySurcharge = baseDaySurcharge.add(weekendAmount);
+                labelParts.add(slot.startTime().getDayOfWeek() == java.time.DayOfWeek.SUNDAY ? "Chủ Nhật" : "Cuối tuần");
+            }
+            if (isHoliday) {
+                java.math.BigDecimal holidayAmount = daySurcharges != null && daySurcharges.holidaySurcharge() != null
+                        ? daySurcharges.holidaySurcharge() : java.math.BigDecimal.valueOf(20_000);
+                baseDaySurcharge = baseDaySurcharge.add(holidayAmount);
+                labelParts.add("Ngày lễ");
+            }
+            if (labelParts.isEmpty()) {
+                labelParts.add("Ngày thường");
+            }
+
+            java.math.BigDecimal nightSurchargeAmount = java.math.BigDecimal.ZERO;
+            if (isNight) {
+                if (slot.lateNightSurchargeAmount() != null) {
+                    nightSurchargeAmount = slot.lateNightSurchargeAmount();
+                } else if (daySurcharges != null && daySurcharges.nightSurcharge() != null) {
+                    nightSurchargeAmount = daySurcharges.nightSurcharge();
+                } else {
+                    nightSurchargeAmount = java.math.BigDecimal.valueOf(20_000);
+                }
+                labelParts.add("Suất đêm (22h-3h)");
+            }
+
+            String dayTypeLabel = String.join(" + ", labelParts);
+            java.math.BigDecimal daySurcharge = baseDaySurcharge.add(nightSurchargeAmount);
+
+            // Standard seat prices (Room base + Audience surcharge + Day surcharge)
+            java.math.BigDecimal childStd   = roomStd.add(childAdd).add(daySurcharge);
+            java.math.BigDecimal studentStd = roomStd.add(studentAdd).add(daySurcharge);
+            java.math.BigDecimal adultStd   = roomStd.add(adultAdd).add(daySurcharge);
+
+            // VIP seat prices (Room base + Audience surcharge + Day surcharge)
+            java.math.BigDecimal childVip   = roomVip.add(childAdd).add(daySurcharge);
+            java.math.BigDecimal studentVip = roomVip.add(studentAdd).add(daySurcharge);
+            java.math.BigDecimal adultVip   = roomVip.add(adultAdd).add(daySurcharge);
+
+            // Couple seat prices: GHẾ ĐÔI KHÔNG NHÂN 2 (Room base + Audience surcharge + Day surcharge)
+            java.math.BigDecimal ccCouple  = roomCouple.add(childAdd).add(daySurcharge);
+            java.math.BigDecimal csCouple  = roomCouple.add(childAdd.add(studentAdd).divide(java.math.BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)).add(daySurcharge);
+            java.math.BigDecimal caCouple  = roomCouple.add(childAdd.add(adultAdd).divide(java.math.BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)).add(daySurcharge);
+            java.math.BigDecimal ssCouple  = roomCouple.add(studentAdd).add(daySurcharge);
+            java.math.BigDecimal saCouple  = roomCouple.add(studentAdd.add(adultAdd).divide(java.math.BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)).add(daySurcharge);
+            java.math.BigDecimal aaCouple  = roomCouple.add(adultAdd).add(daySurcharge);
 
             // Calculate end time
             LocalDateTime endTime = calculateEndTime(movie, slot.startTime());
 
             List<String> warnings = new ArrayList<>();
             if (audiencePriceMissing) {
-                warnings.add("Rạp chưa cấu hình đủ giá vé theo đối tượng (CHILD/STUDENT/ADULT). Cần thiết lập trước khi lưu.");
+                warnings.add("Rạp chưa cấu hình đầy đủ giá vé theo đối tượng (CHILD/STUDENT/ADULT). Cần thiết lập trước khi lưu.");
             }
             if (slot.startTime().isBefore(LocalDateTime.now())) {
                 warnings.add("Thời gian bắt đầu đã qua hiện tại.");
@@ -994,7 +1119,11 @@ public class ShowtimeServiceImpl implements ShowtimeService {
                     saCouple,
                     aaCouple,
                     audiencePriceMissing,
-                    warnings
+                    warnings,
+                    isWeekend,
+                    isHoliday,
+                    daySurcharge,
+                    dayTypeLabel
             ));
         }
         return results;

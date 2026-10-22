@@ -26,7 +26,7 @@ public class WalletController {
     @GetMapping
     @Operation(summary = "Lấy thông tin và số dư ví của người dùng")
     public ApiResponse<WalletResponse> getWallet(@AuthenticationPrincipal AuthenticatedUser user) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(walletService.getWallet(userId), "Lấy thông tin ví thành công");
     }
 
@@ -37,7 +37,7 @@ public class WalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(walletService.getTransactions(userId, page, size), "Lấy lịch sử giao dịch ví thành công");
     }
 
@@ -47,7 +47,7 @@ public class WalletController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody WithdrawalCreateRequest request
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(
                 walletService.createWithdrawalRequest(userId, request),
                 "Yêu cầu rút tiền đã được tạo thành công"
@@ -61,7 +61,7 @@ public class WalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        Long userId = user != null ? user.id() : 1L;
+        Long userId = user.id();
         return ApiResponse.success(walletService.getMyWithdrawals(userId, page, size), "Lấy danh sách yêu cầu rút tiền thành công");
     }
 }

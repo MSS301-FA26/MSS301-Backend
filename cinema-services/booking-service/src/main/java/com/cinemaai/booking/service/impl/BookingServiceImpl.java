@@ -1,5 +1,7 @@
 package com.cinemaai.booking.service.impl;
 
+import com.cinemaai.booking.client.PaymentClient;
+
 import com.cinemaai.booking.client.CatalogClient;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
 import com.cinemaai.booking.dto.request.CheckoutBookingRequest;
@@ -7,7 +9,7 @@ import com.cinemaai.booking.dto.request.HoldSeatsRequest;
 import com.cinemaai.booking.dto.request.UpdateHoldingBookingRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.BookingFoodItem;
+import com.cinemaai.booking.entity.BookingProductItem;
 import com.cinemaai.booking.entity.BookingSeat;
 import com.cinemaai.booking.entity.BookingTicket;
 import com.cinemaai.booking.enums.BookingSeatStatus;
@@ -15,10 +17,11 @@ import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.enums.SeatType;
 import com.cinemaai.booking.enums.TicketType;
 import com.cinemaai.booking.exception.BadRequestException;
+import com.cinemaai.booking.exception.BookingExpiredException;
 import com.cinemaai.booking.exception.ConflictException;
 import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.mapper.BookingMapper;
-import com.cinemaai.booking.repository.BookingFoodItemRepository;
+import com.cinemaai.booking.repository.BookingProductItemRepository;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
 import com.cinemaai.booking.repository.BookingTicketRepository;
@@ -31,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,46 +43,63 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
 
+    private static final String LOYALTY_REDEMPTION_DISABLED =
+            "Chức năng sử dụng điểm thưởng để giảm giá hiện tạm thời không khả dụng. Vui lòng tiếp tục thanh toán không sử dụng điểm.";
+
+    private BigDecimal calculateLoyaltyDiscount(int points, Long cinemaId, BigDecimal subtotal) {
+        if (points <= 0 || subtotal == null || subtotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        PaymentClient.InternalLoyaltyConfigDto cfg = paymentClient.getLoyaltyConfiguration(cinemaId);
+        BigDecimal pointValueVnd = BigDecimal.ONE;
+        BigDecimal maxPercent = BigDecimal.valueOf(100);
+
+        if (cfg != null) {
+            BigDecimal redPoints = cfg.redemptionPoints() != null && cfg.redemptionPoints() > 0
+                    ? BigDecimal.valueOf(cfg.redemptionPoints()) : BigDecimal.valueOf(1000);
+            BigDecimal redValue = cfg.redemptionValueVnd() != null ? cfg.redemptionValueVnd() : BigDecimal.valueOf(1000);
+            BigDecimal redRate = cfg.redemptionRatePercent() != null ? cfg.redemptionRatePercent() : BigDecimal.valueOf(100);
+            pointValueVnd = redValue.divide(redPoints, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(redRate).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP);
+            if (cfg.maxRedemptionPercent() != null) {
+                maxPercent = cfg.maxRedemptionPercent();
+            }
+        }
+
+        BigDecimal discount = BigDecimal.valueOf(points).multiply(pointValueVnd).setScale(0, java.math.RoundingMode.DOWN);
+        BigDecimal maxDiscount = subtotal.multiply(maxPercent).divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.DOWN);
+        if (discount.compareTo(maxDiscount) > 0) {
+            discount = maxDiscount;
+        }
+        if (discount.compareTo(subtotal) > 0) {
+            discount = subtotal;
+        }
+        return discount;
+    }
+
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
     private final BookingTicketRepository bookingTicketRepository;
-    private final BookingFoodItemRepository bookingFoodItemRepository;
+    private final BookingProductItemRepository bookingProductItemRepository;
     private final CatalogClient catalogClient;
+    private final com.cinemaai.booking.client.PaymentClient paymentClient;
+    private final BookingMapper bookingMapper;
 
     @Override
     @Transactional
     public BookingResponse holdSeats(Long userId, HoldSeatsRequest request) {
+        validateBookingInput(request, request == null ? null : request.seatIds());
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Race Condition check: Pessimistic Row Locking on requested seats
-        List<Long> conflicts = bookingSeatRepository.findConflictedSeatIds(
-                request.showtimeId(), request.seatIds(), now);
-
-        if (!conflicts.isEmpty()) {
-            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
-        }
-
-        // 2. Release any previous active HOLDING booking for this user & showtime
-        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusIn(
-                userId, request.showtimeId(), List.of(BookingStatus.HOLDING));
-        for (Booking oldHold : existingHolds) {
-            oldHold.setStatus(BookingStatus.CANCELLED);
-            oldHold.setCancelledAt(now);
-            for (BookingSeat seat : oldHold.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
-            bookingRepository.save(oldHold);
-        }
-
-        // 3. Prepare quote request to fetch Authoritative metadata & pricing from Catalog
+        // Validate authoritative seat metadata and pricing before changing any existing hold.
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
         if (request.tickets() != null && !request.tickets().isEmpty()) {
             for (HoldSeatsRequest.TicketSelection t : request.tickets()) {
                 quoteTickets.add(new CatalogQuoteDto.Request.Ticket(
                         t.seatId(),
-                        t.ticketType() == null ? "ADULT" : t.ticketType().toUpperCase(),
-                        t.viewerAge() == null ? 20 : t.viewerAge(),
-                        t.quantity() == null ? 1 : t.quantity()
+                        t.ticketType().toUpperCase(),
+                        t.viewerAge(),
+                        t.quantity()
                 ));
             }
         } else {
@@ -88,16 +109,7 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
-        if (request.foods() != null) {
-            for (HoldSeatsRequest.FoodSelection f : request.foods()) {
-                quoteFoods.add(new CatalogQuoteDto.Request.Food(
-                        f.productId(),
-                        Boolean.TRUE.equals(f.isCombo()),
-                        f.quantity() == null ? 1 : f.quantity()
-                ));
-            }
-        }
+        List<CatalogQuoteDto.Request.Food> quoteFoods = mapQuoteFoods(request.foods());
 
         CatalogQuoteDto.Request quoteReq = new CatalogQuoteDto.Request(
                 request.showtimeId(),
@@ -107,10 +119,27 @@ public class BookingServiceImpl implements BookingService {
         );
 
         CatalogQuoteDto.Response quote = catalogClient.getQuote(quoteReq);
+        validateQuote(quote, request.showtimeId(), request.seatIds());
 
-        // 4. Create new Booking Entity with Snapshots
+        expireStaleHolds(request.showtimeId(), request.seatIds(), now);
+
+        // A retry replaces only this user's unfinished hold for the same showtime.
+        releaseExistingHolds(userId, request.showtimeId(), now);
+
+        // Existing active rows are locked here. V5 also protects the empty-row race at the database level.
+        List<Long> conflicts = bookingSeatRepository.findConflictedSeatIds(
+                request.showtimeId(), request.seatIds(), now);
+
+        if (!conflicts.isEmpty()) {
+            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
+        }
+
+        // 3. Create new Booking Entity with Snapshots
         String bookingCode = "BK" + now.format(DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", new Random().nextInt(10000));
+
+        int holdPoints = 0;
+        BigDecimal holdDiscount = BigDecimal.ZERO;
 
         Booking booking = Booking.builder()
                 .bookingCode(bookingCode)
@@ -124,16 +153,16 @@ public class BookingServiceImpl implements BookingService {
                 .roomNameSnapshot(quote.showtime().roomName())
                 .showtimeStartSnapshot(quote.showtime().startTime())
                 .subtotal(quote.subtotal())
-                .discountAmount(BigDecimal.ZERO)
-                .loyaltyPointsRedeemed(request.loyaltyPointsToRedeem() != null ? request.loyaltyPointsToRedeem() : 0)
-                .totalAmount(quote.subtotal())
+                .discountAmount(holdDiscount)
+                .loyaltyPointsRedeemed(holdPoints)
+                .totalAmount(quote.subtotal().subtract(holdDiscount).max(BigDecimal.ZERO))
                 .status(BookingStatus.HOLDING)
                 .holdExpiresAt(now.plusMinutes(3))
                 .build();
 
         booking = bookingRepository.save(booking);
 
-        // 5. Save BookingSeats
+        // 4. Save BookingSeats
         List<BookingSeat> seats = new ArrayList<>();
         Map<Long, CatalogQuoteDto.Response.SeatSnapshot> seatMap = new HashMap<>();
         for (CatalogQuoteDto.Response.SeatSnapshot s : quote.seats()) {
@@ -179,22 +208,63 @@ public class BookingServiceImpl implements BookingService {
         }
         booking.getSeats().addAll(seats);
 
-        // 6. Save Tickets & Foods if provided
+        // 5. Save Tickets & Foods if provided
         populateTicketsAndFoods(booking, quote);
-        booking = bookingRepository.save(booking);
+        try {
+            booking = bookingRepository.saveAndFlush(booking);
+        } catch (DataIntegrityViolationException exception) {
+            throw new ConflictException("Một hoặc nhiều ghế đã có người giữ hoặc đã được bán. Vui lòng chọn ghế khác.");
+        }
 
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
+    }
+
+    private void expireStaleHolds(Long showtimeId, Collection<Long> seatIds, LocalDateTime now) {
+        List<Booking> expiredBookings = bookingRepository.findExpiredHoldsForSeatsForUpdate(
+                showtimeId,
+                seatIds,
+                List.of(BookingStatus.HOLDING, BookingStatus.PENDING_PAYMENT),
+                now);
+        for (Booking expiredBooking : expiredBookings) {
+            expiredBooking.setStatus(BookingStatus.EXPIRED);
+            expiredBooking.setCancelledAt(now);
+            expiredBooking.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+        }
+        if (!expiredBookings.isEmpty()) {
+            bookingRepository.saveAll(expiredBookings);
+            bookingRepository.flush();
+        }
+    }
+
+    private void releaseExistingHolds(Long userId, Long showtimeId, LocalDateTime now) {
+        List<Booking> existingHolds = bookingRepository.findByUserIdAndShowtimeIdAndStatusInForUpdate(
+                userId, showtimeId, List.of(BookingStatus.HOLDING));
+        for (Booking oldHold : existingHolds) {
+            oldHold.setStatus(BookingStatus.CANCELLED);
+            oldHold.setCancelledAt(now);
+            oldHold.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+            bookingRepository.save(oldHold);
+        }
+        if (!existingHolds.isEmpty()) {
+            bookingRepository.flush();
+        }
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse checkout(Long userId, Long bookingId, CheckoutBookingRequest request) {
+        if (request == null) throw new BadRequestException("Checkout payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), true);
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse updateHoldingItems(Long userId, Long bookingId, UpdateHoldingBookingRequest request) {
+        if (request == null) throw new BadRequestException("Update payload is required");
         return processCheckoutOrUpdate(userId, bookingId, request.tickets(), request.foods(), request.loyaltyPointsToRedeem(), false);
     }
 
@@ -207,23 +277,29 @@ public class BookingServiceImpl implements BookingService {
             boolean isCheckoutFinal
     ) {
         LocalDateTime now = LocalDateTime.now();
-        Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
+        Booking booking = bookingRepository.findByIdAndUserIdForUpdate(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
 
         if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             throw new BadRequestException("Đơn đặt vé không ở trạng thái hợp lệ để cập nhật.");
         }
-
-        if (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now)) {
-            booking.setStatus(BookingStatus.EXPIRED);
-            for (BookingSeat seat : booking.getSeats()) {
-                seat.setStatus(BookingSeatStatus.RELEASED);
-            }
+        if (isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
             bookingRepository.save(booking);
-            throw new BadRequestException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
+        }
+
+        boolean legacyLoyaltyDiscount = booking.getLoyaltyPointsRedeemed() > 0;
+        if (legacyLoyaltyDiscount && loyaltyPointsToRedeem == null) {
+            throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
+        }
+        if (legacyLoyaltyDiscount && Integer.valueOf(0).equals(loyaltyPointsToRedeem)
+                && paymentClient.hasActiveBookingPayment(bookingId)) {
+            throw new BadRequestException("Đơn đặt vé đã có giao dịch thanh toán đang xử lý. Không thể tự động cập nhật lại giá; vui lòng tạo đơn mới.");
         }
 
         List<Long> seatIds = booking.getSeats().stream().map(BookingSeat::getSeatId).toList();
+        validateSelections(seatIds, tickets, foods, loyaltyPointsToRedeem);
 
         // Prepare quote request
         List<CatalogQuoteDto.Request.Ticket> quoteTickets = new ArrayList<>();
@@ -231,9 +307,9 @@ public class BookingServiceImpl implements BookingService {
             for (HoldSeatsRequest.TicketSelection t : tickets) {
                 quoteTickets.add(new CatalogQuoteDto.Request.Ticket(
                         t.seatId(),
-                        t.ticketType() == null ? "ADULT" : t.ticketType().toUpperCase(),
-                        t.viewerAge() == null ? 20 : t.viewerAge(),
-                        t.quantity() == null ? 1 : t.quantity()
+                        t.ticketType().toUpperCase(),
+                        t.viewerAge(),
+                        t.quantity()
                 ));
             }
         } else {
@@ -242,16 +318,7 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
-        if (foods != null) {
-            for (HoldSeatsRequest.FoodSelection f : foods) {
-                quoteFoods.add(new CatalogQuoteDto.Request.Food(
-                        f.productId(),
-                        Boolean.TRUE.equals(f.isCombo()),
-                        f.quantity() == null ? 1 : f.quantity()
-                ));
-            }
-        }
+        List<CatalogQuoteDto.Request.Food> quoteFoods = mapQuoteFoods(foods);
 
         CatalogQuoteDto.Request quoteReq = new CatalogQuoteDto.Request(
                 booking.getShowtimeId(),
@@ -261,6 +328,7 @@ public class BookingServiceImpl implements BookingService {
         );
 
         CatalogQuoteDto.Response quote = catalogClient.getQuote(quoteReq);
+        validateQuote(quote, booking.getShowtimeId(), seatIds);
 
         // Update snapshot fields from quote
         booking.setMovieTitleSnapshot(quote.showtime().movieTitle());
@@ -270,12 +338,9 @@ public class BookingServiceImpl implements BookingService {
         booking.setShowtimeStartSnapshot(quote.showtime().startTime());
         booking.setSubtotal(quote.subtotal());
 
-        // Calculate discount if loyalty points redeemed (1 point = 1,000 VND example or configurable)
-        int points = loyaltyPointsToRedeem != null ? loyaltyPointsToRedeem : booking.getLoyaltyPointsRedeemed();
-        BigDecimal discount = BigDecimal.valueOf(points).multiply(BigDecimal.valueOf(1000));
-        if (discount.compareTo(quote.subtotal()) > 0) {
-            discount = quote.subtotal();
-        }
+        // Calculate discount if loyalty points redeemed according to branch-specific configuration
+        int points = 0;
+        BigDecimal discount = BigDecimal.ZERO;
         booking.setDiscountAmount(discount);
         booking.setLoyaltyPointsRedeemed(points);
         booking.setTotalAmount(quote.subtotal().subtract(discount).max(BigDecimal.ZERO));
@@ -287,7 +352,134 @@ public class BookingServiceImpl implements BookingService {
         populateTicketsAndFoods(booking, quote);
 
         bookingRepository.save(booking);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
+    }
+
+    
+    private List<CatalogQuoteDto.Request.Food> mapQuoteFoods(List<HoldSeatsRequest.FoodSelection> foods) {
+        List<CatalogQuoteDto.Request.Food> quoteFoods = new ArrayList<>();
+        if (foods != null) {
+            for (HoldSeatsRequest.FoodSelection f : foods) {
+                Long pId = f.productId();
+                Boolean combo = f.isCombo();
+                if (pId == null) {
+                    if (f.foodComboId() != null) {
+                        pId = f.foodComboId();
+                        combo = true;
+                    } else if (f.foodItemId() != null) {
+                        pId = f.foodItemId();
+                        combo = false;
+                    }
+                }
+                if (pId != null) {
+                    boolean isCombo = Boolean.TRUE.equals(combo);
+                    int qty = f.quantity();
+                    quoteFoods.add(new CatalogQuoteDto.Request.Food(
+                            pId,
+                            isCombo,
+                            qty,
+                            isCombo ? null : pId,
+                            isCombo ? pId : null
+                    ));
+                }
+            }
+        }
+        return quoteFoods;
+    }
+
+    private void validateBookingInput(HoldSeatsRequest request, List<Long> seatIds) {
+        if (request == null || request.showtimeId() == null || request.showtimeId() <= 0)
+            throw new BadRequestException("Showtime ID must be positive");
+        validateSelections(seatIds, request.tickets(), request.foods(), request.loyaltyPointsToRedeem());
+    }
+
+    private void validateSelections(List<Long> seatIds, List<HoldSeatsRequest.TicketSelection> tickets,
+                                    List<HoldSeatsRequest.FoodSelection> foods, Integer loyaltyPoints) {
+        if (seatIds == null || seatIds.isEmpty()) throw new BadRequestException("At least one seat is required");
+        if (seatIds.stream().anyMatch(id -> id == null || id <= 0)) throw new BadRequestException("Seat IDs must be positive");
+        if (new HashSet<>(seatIds).size() != seatIds.size()) throw new BadRequestException("Duplicate seat IDs");
+        if (loyaltyPoints != null && loyaltyPoints < 0) throw new BadRequestException("Loyalty points cannot be negative");
+        if (loyaltyPoints != null && loyaltyPoints > 0) throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
+
+        if (tickets != null && !tickets.isEmpty()) {
+            long total = 0;
+            Set<Long> assigned = new HashSet<>();
+            for (var ticket : tickets) {
+                if (ticket == null || ticket.ticketType() == null || ticket.ticketType().isBlank()
+                        || ticket.viewerAge() == null || ticket.viewerAge() < 0
+                        || ticket.quantity() == null || ticket.quantity() <= 0)
+                    throw new BadRequestException("Invalid ticket selection");
+                try { TicketType.valueOf(ticket.ticketType().toUpperCase()); }
+                catch (IllegalArgumentException ex) { throw new BadRequestException("Invalid ticket type"); }
+                if (ticket.seatId() != null && (ticket.seatId() <= 0 || !seatIds.contains(ticket.seatId()) || !assigned.add(ticket.seatId()) || ticket.quantity() != 1))
+                    throw new BadRequestException("Invalid or duplicate ticket seat assignment");
+                try { total = Math.addExact(total, ticket.quantity().longValue()); }
+                catch (ArithmeticException ex) { throw new BadRequestException("Ticket quantity is too large"); }
+            }
+            if (total != seatIds.size()) throw new BadRequestException("Ticket quantity must match selected seats");
+        }
+
+        Set<String> foodKeys = new HashSet<>();
+        if (foods != null) for (var food : foods) {
+            validateFoodIdentifiers(food.productId(), food.isCombo(), food.foodItemId(), food.foodComboId(), food.quantity());
+            Long id = food.productId() != null ? food.productId() : food.foodComboId() != null ? food.foodComboId() : food.foodItemId();
+            boolean combo = food.foodComboId() != null || Boolean.TRUE.equals(food.isCombo());
+            if (!foodKeys.add(combo + ":" + id)) throw new BadRequestException("Duplicate food selection");
+        }
+    }
+
+    private void validateFoodIdentifiers(Long productId, Boolean isCombo, Long itemId, Long comboId, Integer quantity) {
+        if (quantity == null || quantity <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+        if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+        if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+        if (productId != null && productId <= 0 || itemId != null && itemId <= 0 || comboId != null && comboId <= 0)
+            throw new BadRequestException("Food product ID must be positive");
+        if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(isCombo)))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && itemId == null && comboId == null && isCombo == null)
+            throw new BadRequestException("Food product type is required");
+    }
+
+    private void validateQuote(CatalogQuoteDto.Response quote, Long showtimeId, List<Long> seatIds) {
+        if (quote == null || quote.showtime() == null || !showtimeId.equals(quote.showtime().showtimeId())
+                || quote.seats() == null || quote.tickets() == null || quote.foods() == null
+                || quote.ticketSubtotal() == null || quote.foodSubtotal() == null || quote.subtotal() == null)
+            throw new BadRequestException("Catalog returned an invalid checkout quote");
+        Set<Long> quotedSeats = quote.seats().stream().map(CatalogQuoteDto.Response.SeatSnapshot::seatId).collect(java.util.stream.Collectors.toSet());
+        if (quotedSeats.size() != quote.seats().size() || !quotedSeats.equals(new HashSet<>(seatIds)))
+            throw new BadRequestException("Catalog quote seats do not match selected seats");
+        if (quote.ticketSubtotal().signum() < 0 || quote.foodSubtotal().signum() < 0 || quote.subtotal().signum() < 0
+                || quote.ticketSubtotal().add(quote.foodSubtotal()).compareTo(quote.subtotal()) != 0)
+            throw new BadRequestException("Catalog quote total is inconsistent");
+        BigDecimal quotedTicketTotal = BigDecimal.ZERO;
+        long quotedTicketQuantity = 0;
+        Set<Long> quotedTicketSeats = new HashSet<>();
+        for (var ticket : quote.tickets()) {
+            if (ticket == null || ticket.seatId() == null || !quotedSeats.contains(ticket.seatId())
+                    || ticket.quantity() != 1 || !quotedTicketSeats.add(ticket.seatId())
+                    || ticket.unitPrice() == null || ticket.unitPrice().signum() < 0
+                    || ticket.lineTotal() == null || ticket.lineTotal().signum() < 0
+                    || ticket.unitPrice().multiply(BigDecimal.valueOf(ticket.quantity())).compareTo(ticket.lineTotal()) != 0)
+                throw new BadRequestException("Catalog returned an invalid ticket quote");
+            quotedTicketTotal = quotedTicketTotal.add(ticket.lineTotal());
+            quotedTicketQuantity = Math.addExact(quotedTicketQuantity, (long) ticket.quantity());
+        }
+        if (!quotedTicketSeats.equals(quotedSeats) || quotedTicketQuantity != seatIds.size()
+                || quotedTicketTotal.compareTo(quote.ticketSubtotal()) != 0)
+            throw new BadRequestException("Catalog ticket total is inconsistent");
+        BigDecimal quotedFoodTotal = BigDecimal.ZERO;
+        for (var food : quote.foods()) {
+            if (food == null || food.productId() == null || food.productId() <= 0 || food.quantity() <= 0
+                    || food.unitPrice() == null || food.unitPrice().signum() < 0
+                    || food.lineTotal() == null || food.lineTotal().signum() < 0
+                    || food.unitPrice().multiply(BigDecimal.valueOf(food.quantity())).compareTo(food.lineTotal()) != 0)
+                throw new BadRequestException("Catalog returned an invalid food quote");
+            quotedFoodTotal = quotedFoodTotal.add(food.lineTotal());
+        }
+        if (quotedFoodTotal.compareTo(quote.foodSubtotal()) != 0)
+            throw new BadRequestException("Catalog food total is inconsistent");
     }
 
     private void populateTicketsAndFoods(Booking booking, CatalogQuoteDto.Response quote) {
@@ -324,7 +516,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (quote.foods() != null) {
             for (CatalogQuoteDto.Response.FoodSnapshot fs : quote.foods()) {
-                booking.getFoodItems().add(BookingFoodItem.builder()
+                booking.getFoodItems().add(BookingProductItem.builder()
                         .booking(booking)
                         .productId(fs.productId())
                         .isCombo(fs.isCombo())
@@ -338,29 +530,38 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BookingExpiredException.class)
     public BookingResponse cancelBooking(Long userId, Long bookingId) {
-        Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
+        Booking booking = bookingRepository.findByIdAndUserIdForUpdate(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
 
         if (booking.getStatus() != BookingStatus.HOLDING && booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
             throw new BadRequestException("Chỉ có thể hủy đơn đặt vé đang trong phiên giữ chỗ hoặc chờ thanh toán.");
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        if (isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
+            bookingRepository.save(booking);
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Vui lòng thực hiện đặt lại.");
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancelledAt(now);
         for (BookingSeat seat : booking.getSeats()) {
-            seat.setStatus(BookingSeatStatus.RELEASED);
+            if (seat.getStatus() == BookingSeatStatus.HOLDING) {
+                seat.setStatus(BookingSeatStatus.RELEASED);
+            }
         }
         bookingRepository.save(booking);
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<BookingResponse> getMyBookings(Long userId, Pageable pageable) {
         return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                .map(BookingMapper::toResponse);
+                .map(bookingMapper::toResponse);
     }
 
     @Override
@@ -368,23 +569,31 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingById(Long userId, Long bookingId) {
         Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public BookingResponse getBookingByIdInternal(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
-        return BookingMapper.toResponse(booking);
+
+        LocalDateTime now = LocalDateTime.now();
+        if ((booking.getStatus() == BookingStatus.HOLDING || booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                && isHoldExpired(booking, now)) {
+            expireBooking(booking, now);
+            bookingRepository.save(booking);
+        }
+
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public BookingResponse getBookingByCode(String bookingCode) {
-        Booking booking = bookingRepository.findByBookingCode(bookingCode)
+    public BookingResponse getBookingByCode(Long userId, String bookingCode) {
+        Booking booking = bookingRepository.findByBookingCodeAndUserId(bookingCode, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy mã đặt vé: " + bookingCode));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -425,7 +634,7 @@ public class BookingServiceImpl implements BookingService {
             bookingPage = bookingRepository.findAllByOrderByCreatedAtDesc(pageRequest);
         }
 
-        Page<BookingResponse> dtoPage = bookingPage.map(BookingMapper::toResponse);
+        Page<BookingResponse> dtoPage = bookingPage.map(bookingMapper::toResponse);
         return com.cinemaai.booking.dto.response.PageResponse.from(dtoPage);
     }
 
@@ -434,7 +643,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getAdminBooking(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
-        return BookingMapper.toResponse(booking);
+        return bookingMapper.toResponse(booking);
     }
 
     @Override
@@ -450,7 +659,7 @@ public class BookingServiceImpl implements BookingService {
         }
         Booking saved = bookingRepository.save(booking);
         log.info("Admin cancelled booking #{} reason: {}", bookingId, reason);
-        return BookingMapper.toResponse(saved);
+        return bookingMapper.toResponse(saved);
     }
 
     @Override
@@ -464,8 +673,14 @@ public class BookingServiceImpl implements BookingService {
 
         LocalDateTime now = LocalDateTime.now();
         Booking watchedBooking = bookings.stream()
-                .filter(b -> b.getStatus() == BookingStatus.USED ||
-                        (b.getShowtimeStartSnapshot() != null && b.getShowtimeStartSnapshot().isBefore(now)))
+                .filter(b -> {
+                    LocalDateTime endTime = b.getShowtimeEndSnapshot();
+                    if (endTime == null && b.getShowtimeStartSnapshot() != null) {
+                        endTime = b.getShowtimeStartSnapshot().plusMinutes(120);
+                    }
+                    boolean isEnded = endTime != null && !now.isBefore(endTime);
+                    return isEnded && (b.getStatus() == BookingStatus.USED || b.getStatus() == BookingStatus.PAID);
+                })
                 .findFirst()
                 .orElse(null);
 
@@ -489,5 +704,65 @@ public class BookingServiceImpl implements BookingService {
                 futureBooking.getCinemaNameSnapshot(),
                 futureBooking.getStatus().name()
         );
+    }
+
+    @Override
+    @Transactional(noRollbackFor = BookingExpiredException.class)
+    public BookingResponse markPaidInternal(Long bookingId, String transactionId) {
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new NotFoundException("Booking #" + bookingId + " not found"));
+
+        LocalDateTime now = LocalDateTime.now();
+        if (booking.getStatus() == BookingStatus.EXPIRED
+                || (booking.getStatus() == BookingStatus.PENDING_PAYMENT && isHoldExpired(booking, now))) {
+            expireBooking(booking, now);
+            bookingRepository.save(booking);
+            throw new BookingExpiredException("Thời gian giữ ghế đã hết hạn. Đơn đặt vé đã bị hủy.");
+        }
+        if (booking.getStatus() == BookingStatus.PAID) {
+            return bookingMapper.toResponse(booking);
+        }
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new BadRequestException("Booking is not awaiting payment");
+        }
+
+        if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
+            throw new BadRequestException("Booking contains unverified loyalty redemption and requires manual payment reconciliation");
+        }
+
+        booking.setStatus(BookingStatus.PAID);
+        if (booking.getPaidAt() == null) {
+            booking.setPaidAt(LocalDateTime.now());
+        }
+        String bookingQr = "CINEMA:" + booking.getBookingCode() + ":" + booking.getId();
+        booking.setQrCode(bookingQr);
+
+        if (booking.getSeats() != null) {
+            for (com.cinemaai.booking.entity.BookingSeat seat : booking.getSeats()) {
+                seat.setStatus(com.cinemaai.booking.enums.BookingSeatStatus.BOOKED);
+                String ticketCode = booking.getBookingCode() + "-" + seat.getRowLabel() + seat.getSeatNumber();
+                seat.setTicketCode(ticketCode);
+                seat.setQrCode("TICKET:" + ticketCode);
+            }
+        }
+
+        bookingRepository.save(booking);
+        log.info("Directly marked Booking {} as PAID via internal REST call (transactionId: {})", booking.getBookingCode(), transactionId);
+
+        return bookingMapper.toResponse(booking);
+    }
+
+    private boolean isHoldExpired(Booking booking, LocalDateTime now) {
+        return booking.getHoldExpiresAt() == null || !booking.getHoldExpiresAt().isAfter(now);
+    }
+
+    private void expireBooking(Booking booking, LocalDateTime now) {
+        booking.setStatus(BookingStatus.EXPIRED);
+        booking.setCancelledAt(now);
+        if (booking.getSeats() != null) {
+            booking.getSeats().stream()
+                    .filter(seat -> seat.getStatus() == BookingSeatStatus.HOLDING)
+                    .forEach(seat -> seat.setStatus(BookingSeatStatus.RELEASED));
+        }
     }
 }

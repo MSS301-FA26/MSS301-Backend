@@ -27,6 +27,17 @@ public interface BookingSeatRepository extends JpaRepository<BookingSeat, Long> 
             @Param("now") LocalDateTime now
     );
 
+    @Query("""
+        SELECT bs.showtimeId, COUNT(bs) FROM BookingSeat bs
+        WHERE bs.showtimeId IN (:showtimeIds)
+          AND bs.status IN (:statuses)
+        GROUP BY bs.showtimeId
+    """)
+    List<Object[]> countSeatsByShowtimeIdsAndStatusIn(
+            @Param("showtimeIds") Collection<Long> showtimeIds,
+            @Param("statuses") Collection<BookingSeatStatus> statuses
+    );
+
     List<BookingSeat> findByShowtimeIdAndStatusIn(
             Long showtimeId, Collection<BookingSeatStatus> statuses);
 

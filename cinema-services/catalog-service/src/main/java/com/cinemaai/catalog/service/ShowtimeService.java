@@ -14,6 +14,9 @@ import java.util.List;
 
 public interface ShowtimeService {
 
+    List<com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse> getReportingShowtimes(
+            LocalDate from, LocalDate to, Long cinemaId);
+
     PageResponse<ShowtimeResponse> searchPublic(Long movieId, Long roomId, Long cinemaId, LocalDate date, int page, int size);
 
     PageResponse<ShowtimeResponse> searchAdmin(Long movieId, Long roomId, Long cinemaId,

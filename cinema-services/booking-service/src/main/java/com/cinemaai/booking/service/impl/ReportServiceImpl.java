@@ -2,13 +2,13 @@ package com.cinemaai.booking.service.impl;
 
 import com.cinemaai.booking.dto.response.report.*;
 import com.cinemaai.booking.entity.Booking;
-import com.cinemaai.booking.entity.BookingFoodItem;
+import com.cinemaai.booking.entity.BookingProductItem;
 import com.cinemaai.booking.entity.BookingSeat;
 import com.cinemaai.booking.enums.BookingStatus;
-import com.cinemaai.booking.repository.BookingFoodItemRepository;
+import com.cinemaai.booking.repository.BookingProductItemRepository;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.BookingSeatRepository;
-import com.cinemaai.booking.repository.FoodOrderRepository;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.service.ReportService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -28,8 +28,8 @@ public class ReportServiceImpl implements ReportService {
 
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
-    private final BookingFoodItemRepository bookingFoodItemRepository;
-    private final FoodOrderRepository foodOrderRepository;
+    private final BookingProductItemRepository bookingProductItemRepository;
+    private final OrderRepository orderRepository;
 
     private List<Booking> getBookingsInRange(LocalDate from, LocalDate to) {
         LocalDate safeFrom = from != null ? from : LocalDate.now().minusMonths(1);
@@ -290,7 +290,7 @@ public class ReportServiceImpl implements ReportService {
         for (Booking b : paid) {
             if (b.getFoodItems() != null && !b.getFoodItems().isEmpty()) {
                 totalOrders++;
-                for (BookingFoodItem f : b.getFoodItems()) {
+                for (BookingProductItem f : b.getFoodItems()) {
                     String name = f.getProductNameSnapshot() != null ? f.getProductNameSnapshot() : "Món F&B";
                     int qty = f.getQuantity();
                     BigDecimal line = f.getLineTotal() != null ? f.getLineTotal() : BigDecimal.ZERO;
@@ -314,7 +314,7 @@ public class ReportServiceImpl implements ReportService {
 
         return new ConcessionSalesResponse(
                 safeFrom, safeTo, totalOrders, totalItems, totalRevenue, aov,
-                List.of(), lines, List.of(), 0, 0, totalRevenue.multiply(BigDecimal.valueOf(0.4)), 40.0
+                List.of(), lines, List.of(), null, null, null, null
         );
     }
 
@@ -343,9 +343,16 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional(readOnly = true)
     public ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to) {
+        return getShowtimeIncidents(from, to, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShowtimeIncidentReportResponse getShowtimeIncidents(LocalDate from, LocalDate to, Long cinemaId) {
         List<Booking> inRange = getBookingsInRange(from, to);
         List<Booking> cancelled = inRange.stream()
                 .filter(b -> b.getStatus() == BookingStatus.CANCELLED || b.getStatus() == BookingStatus.REFUNDED)
+                .filter(b -> cinemaId == null || (b.getCinemaId() != null && b.getCinemaId().equals(cinemaId)))
                 .toList();
 
         long totalIncidents = cancelled.stream().map(Booking::getShowtimeId).filter(Objects::nonNull).distinct().count();
@@ -374,19 +381,29 @@ public class ReportServiceImpl implements ReportService {
                                     b.getId(),
                                     b.getBookingCode(),
                                     b.getUserId(),
-                                    "Khách hàng #" + b.getUserId(),
-                                    "user" + b.getUserId() + "@example.com",
-                                    "0900000000",
+                                    b.getCustomerNameSnapshot() != null && !b.getCustomerNameSnapshot().isBlank() 
+                                            ? b.getCustomerNameSnapshot() : ("Khách hàng #" + (b.getUserId() != null ? b.getUserId() : b.getId())),
+                                    b.getCustomerEmailSnapshot() != null && !b.getCustomerEmailSnapshot().isBlank() 
+                                            ? b.getCustomerEmailSnapshot() : "—",
+                                    b.getCustomerPhoneSnapshot() != null && !b.getCustomerPhoneSnapshot().isBlank() 
+                                            ? b.getCustomerPhoneSnapshot() : "—",
                                     b.getTotalAmount() != null ? b.getTotalAmount() : BigDecimal.ZERO,
                                     "CINEWALLET",
-                                    b.getCancelledAt() != null ? b.getCancelledAt() : b.getCreatedAt(),
+                                    b.getRefundedAt() != null ? b.getRefundedAt() : (b.getCancelledAt() != null ? b.getCancelledAt() : b.getCreatedAt()),
                                     b.getSeats() != null ? b.getSeats().stream().map(s -> s.getRowLabel() + s.getSeatNumber()).collect(Collectors.joining(", ")) : ""
                             ))
                             .toList();
 
+                    String cancellationReason = list.stream()
+                            .map(Booking::getRefundReason)
+                            .filter(Objects::nonNull)
+                            .filter(s -> !s.isBlank())
+                            .findFirst()
+                            .orElse("Sự cố kỹ thuật / Hủy bởi Quản lý rạp");
+
                     return new ShowtimeIncidentItem(
                             showtimeId, movie, room, cinema, start,
-                            "Sự cố kỹ thuật / Hủy bởi Admin",
+                            cancellationReason,
                             list.stream().map(Booking::getCancelledAt).filter(Objects::nonNull).findFirst().orElse(LocalDateTime.now()),
                             users.size(), amt, users
                     );

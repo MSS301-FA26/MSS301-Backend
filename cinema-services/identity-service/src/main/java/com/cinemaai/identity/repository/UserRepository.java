@@ -13,7 +13,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByEmailOrUsername(String email, String username);
+
     boolean existsByEmail(String email);
+
+    boolean existsByUsername(String username);
+
+    boolean existsByIdentityNumber(String identityNumber);
 
     long countByCreatedAtBetween(LocalDateTime from, LocalDateTime to);
 

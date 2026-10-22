@@ -1,0 +1,142 @@
+@startuml
+
+title Cinema System - Conceptual Diagram
+left to right direction
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+hide methods
+hide stereotypes
+
+package "Identity Service" {
+    entity "Account" as ACCOUNT
+    entity "Customer" as CUSTOMER
+    entity "Customer Profile" as CUSTOMER_PROFILE
+    entity "Staff" as STAFF
+    entity "Admin" as ADMIN
+
+    ACCOUNT ||--o| CUSTOMER
+    ACCOUNT ||--o| STAFF
+    ACCOUNT ||--o| ADMIN
+
+    CUSTOMER ||--|| CUSTOMER_PROFILE
+}
+
+package "Catalog Service" {
+    entity "Cinema" as CINEMA
+    entity "Room" as ROOM
+    entity "Seat Row" as SEAT_ROW
+    entity "Seat" as SEAT
+
+    entity "Movie" as MOVIE
+    entity "Genre" as GENRE
+    entity "Performer" as PERFORMER
+    entity "Movie Cast" as MOVIE_CAST
+    entity "Showtime" as SHOWTIME
+
+    entity "Ticket Category" as TICKET_CATEGORY
+    entity "Ticket Pricing Rule" as PRICING_RULE
+    entity "Showtime Price" as SHOWTIME_PRICE
+    entity "Food Item" as FOOD_ITEM
+    entity "Food Combo" as FOOD_COMBO
+    entity "Food Combo Item" as FOOD_COMBO_ITEM
+
+    CINEMA ||--o{ ROOM
+    ROOM ||--|{ SEAT_ROW
+    SEAT_ROW ||--|{ SEAT
+
+    MOVIE }o--|{ GENRE
+    MOVIE ||--o{ MOVIE_CAST
+    PERFORMER ||--o{ MOVIE_CAST
+
+    MOVIE ||--o{ SHOWTIME
+    ROOM ||--o{ SHOWTIME
+
+    CINEMA ||--o{ PRICING_RULE
+    TICKET_CATEGORY ||--o{ PRICING_RULE
+
+    SHOWTIME ||--|{ SHOWTIME_PRICE
+    TICKET_CATEGORY ||--o{ SHOWTIME_PRICE
+    PRICING_RULE |o--o{ SHOWTIME_PRICE
+
+    FOOD_COMBO ||--|{ FOOD_COMBO_ITEM
+    FOOD_ITEM ||--o{ FOOD_COMBO_ITEM
+}
+
+package "Booking Service" {
+    entity "Booking" as BOOKING
+    entity "Ticket" as TICKET
+    entity "Ticket Check-in" as TICKET_CHECK_IN
+    entity "Concession Order Line" as CONCESSION_ORDER_LINE
+
+    BOOKING ||--|{ TICKET
+    BOOKING ||--o{ CONCESSION_ORDER_LINE
+
+    TICKET ||--o| TICKET_CHECK_IN
+}
+
+package "Payment Service" {
+    entity "Payment" as PAYMENT
+    entity "Payment Transaction" as PAYMENT_TRANSACTION
+    entity "Refund" as REFUND
+
+    PAYMENT ||--|{ PAYMENT_TRANSACTION
+    PAYMENT ||--o{ REFUND
+}
+
+package "Recommendation Service" {
+    entity "Movie Interaction" as MOVIE_INTERACTION
+    entity "Genre Preference" as GENRE_PREFERENCE
+    entity "Performer Preference" as PERFORMER_PREFERENCE
+    entity "Recommendation Set" as RECOMMENDATION_SET
+    entity "Recommendation" as RECOMMENDATION
+
+    RECOMMENDATION_SET ||--|{ RECOMMENDATION
+}
+
+' ===========================================
+' CROSS-SERVICE RELATIONSHIPS
+' ===========================================
+
+CINEMA |o..o{ STAFF
+
+CUSTOMER ||..o{ BOOKING
+
+SHOWTIME ||..o{ BOOKING
+
+SHOWTIME ||..o{ TICKET
+SEAT ||..o{ TICKET
+TICKET_CATEGORY ||..o{ TICKET
+
+FOOD_ITEM ||..o{ CONCESSION_ORDER_LINE
+FOOD_COMBO ||..o{ CONCESSION_ORDER_LINE
+
+STAFF ||..o{ TICKET_CHECK_IN
+
+BOOKING ||..o{ PAYMENT
+STAFF |o..o{ REFUND
+
+CUSTOMER ||..o{ MOVIE_INTERACTION
+MOVIE ||..o{ MOVIE_INTERACTION
+BOOKING |o..o| MOVIE_INTERACTION
+
+CUSTOMER ||..o{ GENRE_PREFERENCE
+GENRE ||..o{ GENRE_PREFERENCE
+
+CUSTOMER ||..o{ PERFORMER_PREFERENCE
+PERFORMER ||..o{ PERFORMER_PREFERENCE
+
+CUSTOMER ||..o{ RECOMMENDATION_SET
+MOVIE ||..o{ RECOMMENDATION
+
+legend bottom
+    |= mandatory
+    o= optional
+    {= many
+    -- = same microservice relationship
+    .. = cross-service logical relationship
+endlegend
+
+@enduml
