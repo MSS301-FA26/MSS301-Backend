@@ -2,10 +2,14 @@ package com.cinemaai.booking.client;
 
 import com.cinemaai.booking.client.dto.CatalogProductQuoteDto;
 import com.cinemaai.booking.client.dto.CatalogQuoteDto;
+import com.cinemaai.booking.client.dto.ReportingShowtimeDto;
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.ForbiddenException;
 import com.cinemaai.booking.exception.NotFoundException;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -38,6 +42,22 @@ public class CatalogClient {
     }
 
     public record ShowtimeScope(Long showtimeId, Long cinemaId) {}
+
+    public List<ReportingShowtimeDto> getReportingShowtimes(LocalDate from, LocalDate to, Long cinemaId) {
+        ApiResponse<List<ReportingShowtimeDto>> response = restClient.get()
+                .uri(uri -> uri.path("/internal/v1/catalog/showtimes/reporting")
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .queryParamIfPresent("cinemaId", Optional.ofNullable(cinemaId))
+                        .build())
+                .header("X-Internal-Service-Secret", internalSecret)
+                .retrieve()
+                .body(new ParameterizedTypeReference<ApiResponse<List<ReportingShowtimeDto>>>() {});
+        if (response == null || !response.success() || response.data() == null) {
+            throw new IllegalStateException("Catalog service returned invalid reporting showtimes");
+        }
+        return response.data();
+    }
 
     public ShowtimeScope getShowtimeScope(Long showtimeId) {
         try {
