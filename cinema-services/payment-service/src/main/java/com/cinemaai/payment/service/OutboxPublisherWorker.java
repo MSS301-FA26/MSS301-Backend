@@ -12,6 +12,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Slf4j
 @Component
@@ -22,7 +23,7 @@ public class OutboxPublisherWorker {
     private final RabbitTemplate rabbitTemplate;
 
     @Scheduled(fixedDelay = 2000)
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void publishPendingEvents() {
         List<OutboxEvent> pendingEvents = outboxEventRepository
                 .findTop50ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);

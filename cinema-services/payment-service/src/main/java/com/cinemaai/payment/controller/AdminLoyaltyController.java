@@ -17,6 +17,7 @@ import jakarta.validation.constraints.Min;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -66,11 +67,16 @@ public class AdminLoyaltyController {
         return ApiResponse.success(loyaltyService.getReport(from, to));
     }
 
-    @PostMapping("/expire-now")
-    @Operation(summary = "Reset/Hết hạn tất cả điểm thưởng")
-    public ApiResponse<Integer> expireNow() {
+    @PostMapping("/points/expire-all-active")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+            summary = "Cho hết hạn toàn bộ điểm thưởng hiện có",
+            description = "Cho hết hạn số dư điểm thưởng hiện có của tất cả tài khoản có điểm dương, "
+                    + "đồng thời ghi nhận giao dịch EXPIRE trong lịch sử điểm thưởng."
+    )
+    public ApiResponse<Integer> expireAllActivePoints() {
         int affected = loyaltyService.expireAllActivePoints("ADMIN");
-        return ApiResponse.success(affected, "Đã hết hạn điểm cho " + affected + " tài khoản");
+        return ApiResponse.success(affected, "Đã cho hết hạn điểm thưởng của " + affected + " tài khoản");
     }
 
     @PostMapping("/add")

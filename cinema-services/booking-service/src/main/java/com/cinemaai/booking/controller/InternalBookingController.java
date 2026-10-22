@@ -72,7 +72,7 @@ public class InternalBookingController {
         String role = request != null && request.actorRole() != null ? request.actorRole() : "ADMIN";
         Long userId = request != null ? request.actorUserId() : null;
         return ApiResponse.success(
-                adminBookingService.cancelAndRefundShowtime(showtimeId, reason, role, userId),
+                adminBookingService.cancelAndRefundShowtimeInternal(showtimeId, reason, role, userId),
                 "Da hoan tien va huy toan bo ve cua suat chieu"
         );
     }
@@ -82,7 +82,7 @@ public class InternalBookingController {
     public ApiResponse<Map<Long, Integer>> getSoldTicketCountsInternal(
             @RequestParam List<Long> showtimeIds
     ) {
-        return ApiResponse.success(adminBookingService.getSoldTicketCounts(showtimeIds));
+        return ApiResponse.success(adminBookingService.getSoldTicketCountsInternal(showtimeIds));
     }
 
     @Operation(summary = "L?y th?ng k? v? v? ti?n c?n ho?n cho su?t chi?u (Internal)")
@@ -90,6 +90,6 @@ public class InternalBookingController {
     public ApiResponse<ShowtimeBookingSummaryDto> getShowtimeBookingSummaryInternal(
             @PathVariable Long showtimeId
     ) {
-        return ApiResponse.success(adminBookingService.getShowtimeBookingSummary(showtimeId));
+        return ApiResponse.success(adminBookingService.getShowtimeBookingSummaryInternal(showtimeId));
     }
 }

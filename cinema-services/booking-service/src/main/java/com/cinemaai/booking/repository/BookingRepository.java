@@ -18,14 +18,47 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    @Query("""
+            select b from Booking b where (:cinemaId is null or b.cinemaId = :cinemaId)
+            and ((coalesce(b.paidAt, b.createdAt) >= :from and coalesce(b.paidAt, b.createdAt) < :to)
+              or (b.createdAt >= :from and b.createdAt < :to)
+              or (b.refundedAt >= :from and b.refundedAt < :to)
+              or (b.showtimeStartSnapshot >= :from and b.showtimeStartSnapshot < :to))
+            """)
+    List<Booking> findForAnalytics(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                   @Param("cinemaId") Long cinemaId);
+
     Optional<Booking> findByBookingCode(String bookingCode);
+
+    Optional<Booking> findByBookingCodeAndUserId(String bookingCode, Long userId);
 
     Page<Booking> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     Optional<Booking> findByIdAndUserId(Long id, Long userId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b WHERE b.id = :id AND b.userId = :userId")
+    Optional<Booking> findByIdAndUserIdForUpdate(@Param("id") Long id, @Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b WHERE b.id = :id")
+    Optional<Booking> findByIdForUpdate(@Param("id") Long id);
+
     List<Booking> findByUserIdAndShowtimeIdAndStatusIn(
             Long userId, Long showtimeId, Collection<BookingStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.userId = :userId
+              AND b.showtimeId = :showtimeId
+              AND b.status IN :statuses
+            ORDER BY b.id
+            """)
+    List<Booking> findByUserIdAndShowtimeIdAndStatusInForUpdate(
+            @Param("userId") Long userId,
+            @Param("showtimeId") Long showtimeId,
+            @Param("statuses") Collection<BookingStatus> statuses);
 
     List<Booking> findByUserIdAndMovieIdAndStatusIn(
             Long userId, Long movieId, Collection<BookingStatus> statuses);
@@ -36,8 +69,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             JOIN FETCH b.seats seat
             WHERE b.showtimeId = :showtimeId
               AND b.status IN :statuses
-              AND b.holdExpiresAt < :now
+              AND b.holdExpiresAt <= :now
               AND seat.seatId IN :seatIds
+            ORDER BY b.id
             """)
     List<Booking> findExpiredHoldsForSeatsForUpdate(
             @Param("showtimeId") Long showtimeId,
@@ -45,8 +79,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("statuses") Collection<BookingStatus> statuses,
             @Param("now") LocalDateTime now);
 
-    List<Booking> findByStatusInAndHoldExpiresAtBefore(
-            Collection<BookingStatus> statuses, LocalDateTime time);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.status IN :statuses
+              AND (b.holdExpiresAt IS NULL OR b.holdExpiresAt <= :now)
+            ORDER BY b.id
+            """)
+    List<Booking> findExpiredActiveBookingsForUpdate(
+            @Param("statuses") Collection<BookingStatus> statuses,
+            @Param("now") LocalDateTime now);
 
     @Query("""
             SELECT b FROM Booking b

@@ -25,9 +25,15 @@ public interface AdminBookingService {
 
     CinemaDashboardResponse getDashboardMetrics(AuthenticatedUser actor, Long requestedCinemaId);
 
-    ShowtimeCancelRefundResultDto cancelAndRefundShowtime(Long showtimeId, String reason, String actorRole, Long actorUserId);
+    ShowtimeCancelRefundResultDto cancelAndRefundShowtime(AuthenticatedUser actor, Long showtimeId, String reason);
 
-    Map<Long, Integer> getSoldTicketCounts(List<Long> showtimeIds);
+    ShowtimeCancelRefundResultDto cancelAndRefundShowtimeInternal(Long showtimeId, String reason, String actorRole, Long actorUserId);
 
-    ShowtimeBookingSummaryDto getShowtimeBookingSummary(Long showtimeId);
+    Map<Long, Integer> getSoldTicketCounts(AuthenticatedUser actor, List<Long> showtimeIds);
+
+    Map<Long, Integer> getSoldTicketCountsInternal(List<Long> showtimeIds);
+
+    ShowtimeBookingSummaryDto getShowtimeBookingSummary(AuthenticatedUser actor, Long showtimeId);
+
+    ShowtimeBookingSummaryDto getShowtimeBookingSummaryInternal(Long showtimeId);
 }

@@ -42,6 +42,7 @@ public class GatewaySecretFilter extends OncePerRequestFilter {
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/error")
+                || path.equals("/api/v1/payments/vnpay/ipn")
                 || path.equals("/api/v1/payments/vnpay/return")
                 || path.equals("/api/v1/payments/vnpay/null")) {
             filterChain.doFilter(request, response);

@@ -2,6 +2,7 @@ package com.cinemaai.payment.service;
 
 import com.cinemaai.payment.client.BookingClient;
 import com.cinemaai.payment.exception.BadRequestException;
+import com.cinemaai.payment.exception.NotFoundException;
 import com.cinemaai.payment.service.impl.PaymentServiceImpl;
 import com.cinemaai.payment.repository.PaymentRepository;
 import com.cinemaai.payment.repository.OutboxEventRepository;
@@ -29,8 +30,15 @@ class PaymentBookingValidationTest {
         assertThrows(BadRequestException.class, () -> service.createVnpayPayment(1L, 7L, null, "127.0.0.1"));
     }
 
-    @Test void rejectsAnotherUsersBooking() { rejects(2L, "PENDING_PAYMENT", LocalDateTime.now().plusMinutes(2)); }
+    @Test void rejectsAnotherUsersBookingWithoutRevealingOrderState() {
+        when(bookingClient.getBooking(7L)).thenReturn(new BookingClient.BookingInfo(
+                7L, "BK7", 2L, BigDecimal.valueOf(100000), "PENDING_PAYMENT",
+                LocalDateTime.now().plusMinutes(2), 0, 1L));
+        assertThrows(NotFoundException.class,
+                () -> service.createVnpayPayment(1L, 7L, null, "127.0.0.1"));
+    }
     @Test void rejectsExpiredHold() { rejects(1L, "PENDING_PAYMENT", LocalDateTime.now().minusSeconds(1)); }
     @Test void rejectsPaidBooking() { rejects(1L, "PAID", LocalDateTime.now().plusMinutes(2)); }
     @Test void rejectsCancelledBooking() { rejects(1L, "CANCELLED", LocalDateTime.now().plusMinutes(2)); }
+    @Test void rejectsMissingExpirationFailClosed() { rejects(1L, "PENDING_PAYMENT", null); }
 }

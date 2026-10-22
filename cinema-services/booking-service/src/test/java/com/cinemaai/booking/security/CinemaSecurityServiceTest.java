@@ -91,6 +91,17 @@ class CinemaSecurityServiceTest {
     }
 
     @Test
+    void testValidateCinemaAccess_StaffBlockedWhenResourceCinemaIsUnknown() {
+        AuthenticatedUser staff = new AuthenticatedUser(20L, "staff@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_STAFF")), 101L);
+        when(identityClient.getUserAccessScope(20L)).thenReturn(
+                new UserAccessScopeDto(20L, "staff@test.com", "ACTIVE", List.of("STAFF"), 101L));
+
+        assertThrows(ForbiddenException.class,
+                () -> cinemaSecurityService.validateCinemaAccess(staff, null, true));
+    }
+
+    @Test
     void testGetAuthoritativeScope_DisabledAccountBlocked() {
         AuthenticatedUser lockedUser = new AuthenticatedUser(99L, "locked@test.com", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
         // IdentityClient throws ForbiddenException when account status is not ACTIVE
