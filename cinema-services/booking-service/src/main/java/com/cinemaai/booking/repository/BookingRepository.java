@@ -18,6 +18,16 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    @Query("""
+            select b from Booking b where (:cinemaId is null or b.cinemaId = :cinemaId)
+            and ((coalesce(b.paidAt, b.createdAt) >= :from and coalesce(b.paidAt, b.createdAt) < :to)
+              or (b.createdAt >= :from and b.createdAt < :to)
+              or (b.refundedAt >= :from and b.refundedAt < :to)
+              or (b.showtimeStartSnapshot >= :from and b.showtimeStartSnapshot < :to))
+            """)
+    List<Booking> findForAnalytics(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                   @Param("cinemaId") Long cinemaId);
+
     Optional<Booking> findByBookingCode(String bookingCode);
 
     Optional<Booking> findByBookingCodeAndUserId(String bookingCode, Long userId);

@@ -14,8 +14,8 @@ public record ConcessionSalesResponse(
         List<DailyLine> daily,
         List<Line> lines,
         List<SourceLine> sources,
-        long lowStockCount,
-        long outOfStockCount,
+        Long lowStockCount,
+        Long outOfStockCount,
         BigDecimal grossProfit,
         Double profitMargin
 ) {
@@ -30,7 +30,7 @@ public record ConcessionSalesResponse(
             List<Line> lines,
             List<SourceLine> sources
     ) {
-        this(from, to, totalOrders, totalItemsSold, totalRevenue, averageOrderValue, daily, lines, sources, 0, 0, BigDecimal.ZERO, 0.0);
+        this(from, to, totalOrders, totalItemsSold, totalRevenue, averageOrderValue, daily, lines, sources, null, null, null, null);
     }
 
     public record Line(String name, long quantity, BigDecimal revenue) {

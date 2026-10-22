@@ -52,6 +52,26 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class ShowtimeServiceImpl implements ShowtimeService {
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse> getReportingShowtimes(
+            LocalDate from, LocalDate to, Long cinemaId) {
+        if (from == null || to == null || from.isAfter(to) || java.time.temporal.ChronoUnit.DAYS.between(from, to) >= 366) {
+            throw new BadRequestException("Khoảng báo cáo phải từ 1 đến 366 ngày");
+        }
+        List<Showtime> shows = showtimeRepository.searchAdmin(null, null, cinemaId, null,
+                from.atStartOfDay(), to.plusDays(1).atStartOfDay(), Pageable.unpaged()).getContent().stream()
+                .filter(s -> s.getStatus() != ShowtimeStatus.CANCELLED).toList();
+        List<Room> rooms = shows.stream().map(Showtime::getRoom).distinct().toList();
+        Map<Long, Long> capacities = rooms.isEmpty() ? Map.of() : seatRepository
+                .findByRoomInAndStatus(rooms, SeatStatus.AVAILABLE).stream()
+                .collect(Collectors.groupingBy(s -> s.getRoom().getId(), Collectors.counting()));
+        return shows.stream().map(s -> new com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse(
+                s.getId(), s.getMovie().getId(), s.getMovie().getTitle(), s.getRoom().getCinema().getId(),
+                s.getRoom().getCinema().getName(), s.getRoom().getId(), s.getRoom().getName(),
+                s.getStartTime(), s.getEndTime(), capacities.getOrDefault(s.getRoom().getId(), 0L))).toList();
+    }
+
     private static final int CLEANUP_MINUTES = 15;
     // Giờ hoạt động của rạp (một rạp duy nhất) dùng cho gợi ý khung giờ trống
     private static final LocalTime OPERATING_START = LocalTime.of(8, 0);

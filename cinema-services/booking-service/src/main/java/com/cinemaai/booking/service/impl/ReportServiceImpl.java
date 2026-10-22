@@ -314,7 +314,7 @@ public class ReportServiceImpl implements ReportService {
 
         return new ConcessionSalesResponse(
                 safeFrom, safeTo, totalOrders, totalItems, totalRevenue, aov,
-                List.of(), lines, List.of(), 0, 0, totalRevenue.multiply(BigDecimal.valueOf(0.4)), 40.0
+                List.of(), lines, List.of(), null, null, null, null
         );
     }
 
