@@ -37,7 +37,8 @@ class DirectorServiceTest {
 
     @BeforeEach
     void setUp() {
-        directorService = new DirectorServiceImpl(directorRepository, movieDirectorRepository);
+        com.cinemaai.catalog.mapper.MovieMapper movieMapper = org.mapstruct.factory.Mappers.getMapper(com.cinemaai.catalog.mapper.MovieMapper.class);
+        directorService = new DirectorServiceImpl(directorRepository, movieDirectorRepository, movieMapper);
     }
 
     @Test

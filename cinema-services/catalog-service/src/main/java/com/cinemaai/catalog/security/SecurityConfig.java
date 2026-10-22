@@ -62,6 +62,8 @@ public class SecurityConfig {
                     if ("OPTIONS".equalsIgnoreCase(request.getMethod())
                             || path.startsWith("/actuator/health")
                             || path.startsWith("/v3/api-docs")
+                            || path.startsWith("/swagger-ui")
+                            || path.equals("/swagger-ui.html")
                             || path.startsWith("/error")) {
                         chain.doFilter(request, response);
                         return;
@@ -153,6 +155,11 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Allow both ADMIN and MANAGER to read and update audience prices and day surcharges (with controller-level cinema scoping)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/cinemas/*/audience-prices", "/api/v1/admin/cinemas/*/audience-prices/**",
+                                "/api/v1/admin/cinemas/*/day-surcharges", "/api/v1/admin/cinemas/*/day-surcharges/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/cinemas/*/audience-prices", "/api/v1/admin/cinemas/*/audience-prices/**",
+                                "/api/v1/admin/cinemas/*/day-surcharges", "/api/v1/admin/cinemas/*/day-surcharges/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/cinemas", "/api/v1/admin/cinemas/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/cinemas/**", "/api/v1/admin/cinema/**").hasRole("ADMIN")
@@ -171,9 +178,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/directors/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/directors/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/system-settings", "/api/v1/admin/system-settings/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/admin/reviews", "/api/v1/admin/reviews/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/reviews", "/api/v1/admin/reviews/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/v1/reviews/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/reviews/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/reviews/**").authenticated()
+                        .requestMatchers("/api/v1/staff/foods", "/api/v1/staff/foods/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/foods/**", "/api/v1/staff/foods/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()

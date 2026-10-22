@@ -51,7 +51,7 @@ CREATE TABLE showtimes (
  adult_standard_price NUMERIC(12,2), child_standard_price NUMERIC(12,2), student_standard_price NUMERIC(12,2),
  adult_vip_price NUMERIC(12,2), child_vip_price NUMERIC(12,2), student_vip_price NUMERIC(12,2),
  adult_couple_price NUMERIC(12,2), child_couple_price NUMERIC(12,2), student_couple_price NUMERIC(12,2),
- weekend_surcharge BOOLEAN NOT NULL, holiday_surcharge BOOLEAN NOT NULL, late_night_surcharge_amount NUMERIC(12,2) NOT NULL,
+ weekend_surcharge BOOLEAN NOT NULL, weekend_surcharge_amount NUMERIC(12,2), holiday_surcharge BOOLEAN NOT NULL, holiday_surcharge_amount NUMERIC(12,2), late_night_surcharge_amount NUMERIC(12,2) NOT NULL,
  status VARCHAR(30) NOT NULL, cancellation_reason TEXT, cancelled_at TIMESTAMP,
  created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, CHECK(end_time > start_time)
 );

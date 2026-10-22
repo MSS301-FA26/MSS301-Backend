@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- BOOKING SERVICE SCHEMA (Flyway V1 Migration)
 -- Strict database isolation: Zero Foreign Keys across services.
--- Uses Logical IDs: user_id, showtime_id, movie_id, seat_id, product_id.
+-- References across services: user_id, showtime_id, movie_id, seat_id, product_id.
 -- ==============================================================================
 
 CREATE TABLE bookings (

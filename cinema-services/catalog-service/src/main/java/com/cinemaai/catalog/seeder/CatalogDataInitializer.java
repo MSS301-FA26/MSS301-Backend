@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Component
-@Profile("!test")
+@Profile("demo")
 @Order(Ordered.LOWEST_PRECEDENCE)
 @RequiredArgsConstructor
 public class CatalogDataInitializer implements CommandLineRunner {
@@ -49,21 +49,12 @@ public class CatalogDataInitializer implements CommandLineRunner {
     private final MovieGenreRepository movieGenreRepository;
     private final MovieActorRepository movieActorRepository;
     private final com.cinemaai.catalog.repository.CinemaRepository cinemaRepository;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional
     public void run(String... args) {
         log.info("Bắt đầu kiểm tra và khởi tạo dữ liệu mẫu Catalog Service...");
         try {
-            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS standard_price NUMERIC(12,2) DEFAULT 60000;");
-            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS vip_price NUMERIC(12,2) DEFAULT 90000;");
-            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS couple_price NUMERIC(12,2) DEFAULT 150000;");
-            jdbcTemplate.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS aisle_position INTEGER DEFAULT 0;");
-            jdbcTemplate.execute("UPDATE rooms SET standard_price = 60000 WHERE standard_price IS NULL;");
-            jdbcTemplate.execute("UPDATE rooms SET vip_price = 90000 WHERE vip_price IS NULL;");
-            jdbcTemplate.execute("UPDATE rooms SET couple_price = 150000 WHERE couple_price IS NULL;");
-            jdbcTemplate.execute("UPDATE rooms SET aisle_position = 0 WHERE aisle_position IS NULL;");
             log.info("Đã đồng bộ các cột giá vé và lối đi cho bảng rooms thành công.");
         } catch (Exception e) {
             log.warn("Lưu ý khi cập nhật bảng rooms: {}", e.getMessage());

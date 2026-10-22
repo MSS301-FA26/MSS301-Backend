@@ -1,5 +1,6 @@
 package com.cinemaai.payment.service;
 
+import com.cinemaai.payment.dto.request.CreditWalletInternalRequest;
 import com.cinemaai.payment.dto.request.WithdrawalCreateRequest;
 import com.cinemaai.payment.dto.request.WithdrawalProcessRequest;
 import com.cinemaai.payment.dto.response.PageResponse;
@@ -27,4 +28,7 @@ public interface WalletService {
     WithdrawalResponse rejectWithdrawal(Long withdrawalId, WithdrawalProcessRequest request);
 
     WalletDashboardResponse getDashboard();
+
+    // Internal endpoint for microservices
+    WalletResponse creditWalletInternal(CreditWalletInternalRequest request);
 }

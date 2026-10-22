@@ -1,8 +1,11 @@
 package com.cinemaai.booking.service;
 
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
-import com.cinemaai.booking.dto.request.AdminRefundTicketRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
+import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
+import java.util.Map;
+import java.util.List;
+import com.cinemaai.booking.dto.response.ShowtimeCancelRefundResultDto;
 import com.cinemaai.booking.dto.response.CinemaDashboardResponse;
 import com.cinemaai.booking.dto.response.TicketAuditLogResponse;
 import com.cinemaai.booking.enums.BookingStatus;
@@ -18,9 +21,19 @@ public interface AdminBookingService {
 
     BookingResponse cancelBooking(AuthenticatedUser actor, Long bookingId, AdminCancelTicketRequest request);
 
-    BookingResponse refundBooking(AuthenticatedUser actor, Long bookingId, AdminRefundTicketRequest request);
-
     Page<TicketAuditLogResponse> getAuditLogs(AuthenticatedUser actor, Long requestedCinemaId, Pageable pageable);
 
     CinemaDashboardResponse getDashboardMetrics(AuthenticatedUser actor, Long requestedCinemaId);
+
+    ShowtimeCancelRefundResultDto cancelAndRefundShowtime(AuthenticatedUser actor, Long showtimeId, String reason);
+
+    ShowtimeCancelRefundResultDto cancelAndRefundShowtimeInternal(Long showtimeId, String reason, String actorRole, Long actorUserId);
+
+    Map<Long, Integer> getSoldTicketCounts(AuthenticatedUser actor, List<Long> showtimeIds);
+
+    Map<Long, Integer> getSoldTicketCountsInternal(List<Long> showtimeIds);
+
+    ShowtimeBookingSummaryDto getShowtimeBookingSummary(AuthenticatedUser actor, Long showtimeId);
+
+    ShowtimeBookingSummaryDto getShowtimeBookingSummaryInternal(Long showtimeId);
 }

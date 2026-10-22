@@ -23,7 +23,7 @@ public interface BookingService {
 
     BookingResponse getBookingByIdInternal(Long bookingId);
 
-    BookingResponse getBookingByCode(String bookingCode);
+    BookingResponse getBookingByCode(Long userId, String bookingCode);
 
     java.util.List<com.cinemaai.booking.dto.response.OccupiedSeatDto> getOccupiedSeats(Long showtimeId);
 
@@ -35,4 +35,6 @@ public interface BookingService {
     BookingResponse cancelAdmin(Long bookingId, String reason);
 
     com.cinemaai.booking.dto.response.BookingEligibilityResponse checkReviewEligibility(Long userId, Long movieId);
+
+    BookingResponse markPaidInternal(Long bookingId, String transactionId);
 }

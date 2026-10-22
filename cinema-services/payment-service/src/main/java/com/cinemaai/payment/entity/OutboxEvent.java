@@ -3,6 +3,7 @@ package com.cinemaai.payment.entity;
 import com.cinemaai.payment.enums.OutboxStatus;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.*;
 
 @Getter
@@ -11,7 +12,8 @@ import lombok.*;
 @Table(
         name = "outbox_events",
         indexes = {
-                @Index(name = "idx_outbox_events_status_created", columnList = "status, created_at")
+                @Index(name = "idx_outbox_events_status_created", columnList = "status, created_at"),
+                @Index(name = "idx_outbox_events_dedup", columnList = "deduplication_key")
         }
 )
 @NoArgsConstructor
@@ -32,6 +34,9 @@ public class OutboxEvent {
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 
+    @Column(name = "deduplication_key", length = 255)
+    private String deduplicationKey;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String payload;
 
@@ -48,4 +53,14 @@ public class OutboxEvent {
 
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.deduplicationKey == null || this.deduplicationKey.isBlank()) {
+            this.deduplicationKey = UUID.randomUUID().toString();
+        }
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+    }
 }

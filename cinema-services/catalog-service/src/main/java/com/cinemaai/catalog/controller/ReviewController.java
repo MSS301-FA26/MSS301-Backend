@@ -92,6 +92,19 @@ public class ReviewController {
         return ApiResponse.success(created, "Đánh giá của bạn đã được xuất bản thành công!");
     }
 
+    @DeleteMapping("/{reviewId}")
+    @Operation(summary = "Xóa đánh giá của mình (trong vòng 24h)")
+    public ApiResponse<Void> deleteReview(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long reviewId
+    ) {
+        if (user == null) {
+            throw new BadRequestException("Vui lòng đăng nhập để xóa đánh giá.");
+        }
+        reviewService.deleteReview(user.id(), reviewId);
+        return ApiResponse.success(null, "Đã xóa đánh giá thành công.");
+    }
+
     @PutMapping("/{reviewId}")
     @Operation(summary = "Chỉnh sửa đánh giá của mình (trong vòng 24h)")
     public ApiResponse<ReviewResponse> updateReview(

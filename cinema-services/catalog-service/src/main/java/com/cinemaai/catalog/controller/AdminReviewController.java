@@ -1,6 +1,5 @@
 package com.cinemaai.catalog.controller;
 
-import com.cinemaai.catalog.dto.request.review.ModerateReviewRequest;
 import com.cinemaai.catalog.dto.response.AdminReviewStatsResponse;
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.dto.response.PageResponse;
@@ -10,6 +9,7 @@ import com.cinemaai.catalog.security.AuthenticatedUser;
 import com.cinemaai.catalog.service.ReviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,10 +19,15 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/reviews")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 @RequiredArgsConstructor
 @Tag(name = "Admin - Reviews", description = "Quản lý và kiểm duyệt đánh giá phim cho Admin")
 public class AdminReviewController {
+
+    public record ModerateReviewRequest(
+            @Size(max = 500, message = "Lý do kiểm duyệt tối đa 500 ký tự")
+            String reason
+    ) {}
 
     private final ReviewService reviewService;
 
@@ -68,17 +73,6 @@ public class AdminReviewController {
         return ApiResponse.success(reviewService.hideReview(reviewId, reason, adminEmail, adminId), "Đã ẩn đánh giá");
     }
 
-    @PostMapping("/{reviewId}/restore")
-    @Operation(summary = "Khôi phục hiển thị đánh giá")
-    public ApiResponse<ReviewResponse> restore(
-            @PathVariable Long reviewId,
-            @AuthenticationPrincipal AuthenticatedUser admin
-    ) {
-        String adminEmail = admin != null ? admin.email() : "admin@cinepremier.vn";
-        Long adminId = admin != null ? admin.id() : null;
-        return ApiResponse.success(reviewService.restoreReview(reviewId, adminEmail, adminId), "Đã khôi phục đánh giá");
-    }
-
     @PostMapping("/{reviewId}/reject")
     @Operation(summary = "Từ chối đánh giá")
     public ApiResponse<ReviewResponse> reject(
@@ -90,6 +84,29 @@ public class AdminReviewController {
         Long adminId = admin != null ? admin.id() : null;
         String reason = request != null ? request.reason() : "Đánh giá bị từ chối do vi phạm quy định";
         return ApiResponse.success(reviewService.rejectReview(reviewId, reason, adminEmail, adminId), "Đã từ chối đánh giá");
+    }
+
+    @DeleteMapping("/{reviewId}")
+    @Operation(summary = "Xóa đánh giá (Admin/Manager)")
+    public ApiResponse<Void> deleteReview(
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedUser admin
+    ) {
+        String adminEmail = admin != null ? admin.email() : "admin@cinepremier.vn";
+        Long adminId = admin != null ? admin.id() : null;
+        reviewService.deleteReviewByAdmin(reviewId, adminEmail, adminId);
+        return ApiResponse.success(null, "Đã xóa đánh giá thành công");
+    }
+
+    @PostMapping("/{reviewId}/restore")
+    @Operation(summary = "Khôi phục hiển thị đánh giá")
+    public ApiResponse<ReviewResponse> restore(
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal AuthenticatedUser admin
+    ) {
+        String adminEmail = admin != null ? admin.email() : "admin@cinepremier.vn";
+        Long adminId = admin != null ? admin.id() : null;
+        return ApiResponse.success(reviewService.restoreReview(reviewId, adminEmail, adminId), "Đã khôi phục đánh giá");
     }
 
     @GetMapping("/{reviewId}/reports")

@@ -18,6 +18,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <gateway.test.build.directory>${project.basedir}/target</gateway.test.build.directory>
     </properties>
 
     <dependencies>
@@ -46,6 +47,7 @@
     </dependencies>
 
     <build>
+        <directory>${gateway.test.build.directory}</directory>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

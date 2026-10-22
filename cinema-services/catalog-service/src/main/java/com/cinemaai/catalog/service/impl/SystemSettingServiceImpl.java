@@ -5,6 +5,7 @@ import com.cinemaai.catalog.dto.response.setting.SystemSettingResponse;
 import com.cinemaai.catalog.entity.SystemSetting;
 import com.cinemaai.catalog.exception.ConflictException;
 import com.cinemaai.catalog.exception.NotFoundException;
+import com.cinemaai.catalog.mapper.SystemSettingMapper;
 import com.cinemaai.catalog.repository.SystemSettingRepository;
 import com.cinemaai.catalog.service.SystemSettingService;
 import java.util.List;
@@ -19,12 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class SystemSettingServiceImpl implements SystemSettingService {
 
     private final SystemSettingRepository systemSettingRepository;
+    private final SystemSettingMapper systemSettingMapper;
 
     @Override
     @Transactional(readOnly = true)
     public List<SystemSettingResponse> getAllSettings() {
         return systemSettingRepository.findAll().stream()
-                .map(SystemSettingResponse::fromEntity)
+                .map(systemSettingMapper::toResponse)
                 .toList();
     }
 
@@ -32,7 +34,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
     @Transactional(readOnly = true)
     public SystemSettingResponse getByKey(String key) {
         return systemSettingRepository.findByConfigKey(key)
-                .map(SystemSettingResponse::fromEntity)
+                .map(systemSettingMapper::toResponse)
                 .orElseThrow(() -> new NotFoundException("Cấu hình hệ thống '" + key + "' không tồn tại"));
     }
 
@@ -46,7 +48,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         SystemSetting setting = new SystemSetting(key, request.configValue(), request.description(), actor);
         SystemSetting saved = systemSettingRepository.save(setting);
         log.info("Created system setting key='{}' by {}", saved.getConfigKey(), actor);
-        return SystemSettingResponse.fromEntity(saved);
+        return systemSettingMapper.toResponse(saved);
     }
 
     @Override
@@ -64,7 +66,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         setting.setUpdatedBy(actor);
         SystemSetting updated = systemSettingRepository.save(setting);
         log.info("Updated system setting key='{}' by {}", updated.getConfigKey(), actor);
-        return SystemSettingResponse.fromEntity(updated);
+        return systemSettingMapper.toResponse(updated);
     }
 
     @Override

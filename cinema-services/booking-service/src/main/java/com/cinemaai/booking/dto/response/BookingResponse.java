@@ -4,7 +4,9 @@ import com.cinemaai.booking.enums.BookingStatus;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Builder;
 
+@Builder
 public record BookingResponse(
         Long id,
         String bookingCode,
@@ -35,8 +37,13 @@ public record BookingResponse(
         String qrCode,
         List<BookingSeatResponse> seats,
         List<BookingTicketResponse> tickets,
-        List<BookingFoodResponse> foods,
-        LocalDateTime createdAt
+        List<BookingProductResponse> foods,
+        LocalDateTime createdAt,
+        String customerName,
+        String customerPhone,
+        String userEmail,
+        LocalDateTime showtimeEnd,
+        String refundReason
 ) {
     public BookingResponse(
             Long id,
@@ -67,12 +74,51 @@ public record BookingResponse(
             String qrCode,
             List<BookingSeatResponse> seats,
             List<BookingTicketResponse> tickets,
-            List<BookingFoodResponse> foods,
+            List<BookingProductResponse> foods,
             LocalDateTime createdAt
     ) {
         this(id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot, posterUrl, moviePosterSnapshot,
                 cinemaName, cinemaNameSnapshot, null, roomName, roomNameSnapshot, showtimeStart, showtimeStartSnapshot,
                 subtotal, discountAmount, loyaltyPointsRedeemed, totalAmount, status, holdExpiresAt, paidAt, checkedInAt,
-                cancelledAt, refundedAt, qrCode, seats, tickets, foods, createdAt);
+                cancelledAt, refundedAt, qrCode, seats, tickets, foods, createdAt, null, null, null, null, null);
+    }
+
+    public BookingResponse(
+            Long id,
+            String bookingCode,
+            Long userId,
+            Long showtimeId,
+            Long movieId,
+            String movieTitle,
+            String movieTitleSnapshot,
+            String posterUrl,
+            String moviePosterSnapshot,
+            String cinemaName,
+            String cinemaNameSnapshot,
+            Long cinemaId,
+            String roomName,
+            String roomNameSnapshot,
+            LocalDateTime showtimeStart,
+            LocalDateTime showtimeStartSnapshot,
+            BigDecimal subtotal,
+            BigDecimal discountAmount,
+            int loyaltyPointsRedeemed,
+            BigDecimal totalAmount,
+            BookingStatus status,
+            LocalDateTime holdExpiresAt,
+            LocalDateTime paidAt,
+            LocalDateTime checkedInAt,
+            LocalDateTime cancelledAt,
+            LocalDateTime refundedAt,
+            String qrCode,
+            List<BookingSeatResponse> seats,
+            List<BookingTicketResponse> tickets,
+            List<BookingProductResponse> foods,
+            LocalDateTime createdAt
+    ) {
+        this(id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot, posterUrl, moviePosterSnapshot,
+                cinemaName, cinemaNameSnapshot, cinemaId, roomName, roomNameSnapshot, showtimeStart, showtimeStartSnapshot,
+                subtotal, discountAmount, loyaltyPointsRedeemed, totalAmount, status, holdExpiresAt, paidAt, checkedInAt,
+                cancelledAt, refundedAt, qrCode, seats, tickets, foods, createdAt, null, null, null, null, null);
     }
 }

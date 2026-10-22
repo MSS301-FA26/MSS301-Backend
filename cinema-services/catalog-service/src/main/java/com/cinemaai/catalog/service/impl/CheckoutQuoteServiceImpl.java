@@ -30,17 +30,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
     private final ShowtimeRepository showtimes;
     private final SeatRepository seats;
-    private final FoodItemRepository items;
-    private final FoodComboRepository combos;
+    private final ProductRepository items;
+    private final ProductBundleRepository combos;
     private final TicketPricingRuleRepository pricingRules;
     private final CinemaAudiencePriceRepository audiencePrices;
     @Value("${app.quote.ttl-seconds}") private long ttlSeconds;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CheckoutQuoteResponse quote(CheckoutQuoteRequest request) {
+        validateRequestStructure(request);
         var showtime = showtimes.findWithDetailsById(request.showtimeId())
                 .orElseThrow(() -> new BadRequestException("Showtime does not exist"));
-        if ((showtime.getStatus() != ShowtimeStatus.OPEN && showtime.getStatus() != ShowtimeStatus.SCHEDULED)
+        if (showtime.getStatus() != ShowtimeStatus.OPEN
                 || !showtime.getStartTime().isAfter(LocalDateTime.now()))
             throw new BadRequestException("Showtime is not open for booking");
         if (showtime.getMovie().getStatus() == MovieStatus.INACTIVE || showtime.getRoom().getStatus() != RoomStatus.ACTIVE
@@ -62,7 +63,9 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                     .toList();
         }
 
-        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() == null || ticket.quantity() < 0))
+        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() == null || ticket.quantity() == 0))
+            throw new BadRequestException("Ticket quantity must be greater than zero");
+        if (effectiveTickets.stream().anyMatch(ticket -> ticket.quantity() < 0))
             throw new BadRequestException("Số lượng vé không được âm");
         if (effectiveTickets.stream().mapToLong(CheckoutQuoteRequest.Ticket::quantity).sum() != requested.size())
             throw new BadRequestException("Số lượng vé phải bằng số lượng ghế đã chọn.");
@@ -89,11 +92,12 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 ticketTotal = ticketTotal.add(price);
             }
         }
-        List<FoodSnapshot> foodLines = new ArrayList<>();
+        List<ProductSnapshot> foodLines = new ArrayList<>();
         Set<String> foodKeys = new HashSet<>();
         BigDecimal foodTotal = BigDecimal.ZERO;
         if (request.foods() != null) {
             for (var food : request.foods()) {
+                validateFoodIdentifiers(food);
                 Long resolvedId = food.productId();
                 if (resolvedId == null) {
                     if (food.foodComboId() != null) resolvedId = food.foodComboId();
@@ -103,12 +107,13 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 final Long productId = resolvedId;
 
                 boolean isCombo = Boolean.TRUE.equals(food.isCombo()) || food.foodComboId() != null;
-                int qty = food.quantity() != null && food.quantity() > 0 ? food.quantity() : 1;
+                if (food.quantity() == null || food.quantity() <= 0) throw new BadRequestException("Food quantity must be greater than zero");
+                int qty = food.quantity();
 
-                if (!foodKeys.add(isCombo + ":" + productId)) continue;
+                if (!foodKeys.add(isCombo + ":" + productId)) throw new BadRequestException("Duplicate food selection");
                 String name;
                 BigDecimal price;
-                FoodItemStatus status;
+                ProductStatus status;
                 if (isCombo) {
                     var combo = combos.findById(productId)
                             .orElseThrow(() -> new BadRequestException("Food combo does not exist: " + productId));
@@ -122,9 +127,9 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                     price = item.getPrice();
                     status = item.getStatus();
                 }
-                if (status != FoodItemStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
+                if (status != ProductStatus.ACTIVE) throw new BadRequestException("Food product is unavailable: " + productId);
                 BigDecimal total = price.multiply(BigDecimal.valueOf(qty));
-                foodLines.add(new FoodSnapshot(productId, isCombo, name, price, qty, total));
+                foodLines.add(new ProductSnapshot(productId, isCombo, name, price, qty, total));
                 foodTotal = foodTotal.add(total);
             }
         }
@@ -132,7 +137,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         BigDecimal discount = BigDecimal.ZERO;
         BigDecimal cinePointsDiscount = BigDecimal.ZERO;
         if (request.cinePointsToUse() != null && request.cinePointsToUse() > 0) {
-            cinePointsDiscount = BigDecimal.valueOf(request.cinePointsToUse()).multiply(BigDecimal.valueOf(1000));
+            cinePointsDiscount = BigDecimal.valueOf(request.cinePointsToUse());
         }
         BigDecimal subtotal = ticketTotal.add(foodTotal);
         BigDecimal total = subtotal.subtract(discount).subtract(cinePointsDiscount);
@@ -189,6 +194,48 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         );
     }
 
+    private void validateRequestStructure(CheckoutQuoteRequest request) {
+        if (request == null || request.showtimeId() == null || request.showtimeId() <= 0)
+            throw new BadRequestException("Showtime ID must be positive");
+        if (request.seatIds() == null || request.seatIds().isEmpty()) throw new BadRequestException("At least one seat is required");
+        if (request.seatIds().size() > 100) throw new BadRequestException("Too many seats");
+        if (request.seatIds().stream().anyMatch(id -> id == null || id <= 0)) throw new BadRequestException("Seat IDs must be positive");
+        if (request.tickets() != null && request.tickets().size() > 100) throw new BadRequestException("Too many ticket lines");
+        if (request.foods() != null && request.foods().size() > 100) throw new BadRequestException("Too many food lines");
+        if (request.tickets() != null) for (var ticket : request.tickets()) {
+            if (ticket == null || ticket.ticketType() == null || ticket.viewerAge() == null || ticket.viewerAge() < 0
+                    || ticket.quantity() == null)
+                throw new BadRequestException("Invalid ticket selection");
+            if (ticket.quantity() < 0) throw new BadRequestException("Số lượng vé không được âm");
+            if (ticket.quantity() == 0) throw new BadRequestException("Ticket quantity must be greater than zero");
+            if (ticket.seatId() != null && ticket.seatId() <= 0) throw new BadRequestException("Ticket seat ID must be positive");
+        }
+        Set<String> foodKeys = new HashSet<>();
+        if (request.foods() != null) for (var food : request.foods()) {
+            validateFoodIdentifiers(food);
+            Long id = food.productId() != null ? food.productId() : food.foodComboId() != null ? food.foodComboId() : food.foodItemId();
+            boolean combo = food.foodComboId() != null || Boolean.TRUE.equals(food.isCombo());
+            if (!foodKeys.add(combo + ":" + id)) throw new BadRequestException("Duplicate food selection");
+        }
+    }
+
+    private void validateFoodIdentifiers(CheckoutQuoteRequest.ProductSelection food) {
+        if (food == null) throw new BadRequestException("Food selection is required");
+        Long productId = food.productId();
+        Long itemId = food.foodItemId();
+        Long comboId = food.foodComboId();
+        if (itemId != null && comboId != null) throw new BadRequestException("Food item and combo identifiers conflict");
+        if (productId == null && itemId == null && comboId == null) throw new BadRequestException("Food product identifier is required");
+        if (productId != null && productId <= 0 || itemId != null && itemId <= 0 || comboId != null && comboId <= 0)
+            throw new BadRequestException("Food product ID must be positive");
+        if (productId != null && itemId != null && (!productId.equals(itemId) || Boolean.TRUE.equals(food.isCombo())))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && comboId != null && (!productId.equals(comboId) || !Boolean.TRUE.equals(food.isCombo())))
+            throw new BadRequestException("Food product identifiers conflict");
+        if (productId != null && itemId == null && comboId == null && food.isCombo() == null)
+            throw new BadRequestException("Food product type is required");
+    }
+
     private BigDecimal resolveTicketPrice(Showtime showtime, Seat seat, TicketType ticketType) {
         Long cinemaId = showtime.getRoom().getCinema().getId();
         RoomType roomType = showtime.getRoom().getRoomType();
@@ -213,7 +260,7 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
                 };
                 if (base != null) {
                     BigDecimal calculated = seatType == SeatType.COUPLE
-                            ? base.add(surcharge.multiply(BigDecimal.valueOf(2)))
+                            ? base.add(surcharge).divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP)
                             : base.add(surcharge);
                     return calculated.add(showtime.getSurchargeAmount());
                 }
@@ -221,22 +268,28 @@ public class CheckoutQuoteServiceImpl implements CheckoutQuoteService {
         } catch (Exception ignored) {}
 
         // 2. Priority 2: Cinema-specific local override rule
+        BigDecimal resolved = null;
         Optional<com.cinemaai.catalog.entity.TicketPricingRule> cinemaRule = pricingRules
                 .findFirstByCinemaIdAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
                         cinemaId, ticketType, roomType, seatType, weekend, holiday);
         if (cinemaRule.isPresent()) {
-            return cinemaRule.get().getPrice();
+            resolved = cinemaRule.get().getPrice();
+        } else {
+            // 3. Priority 3: Global default rule
+            Optional<com.cinemaai.catalog.entity.TicketPricingRule> globalRule = pricingRules
+                    .findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
+                            ticketType, roomType, seatType, weekend, holiday);
+            if (globalRule.isPresent()) {
+                resolved = globalRule.get().getPrice();
+            } else {
+                // 4. Priority 4: Fallback to showtime/room configured price
+                resolved = showtime.getPriceForTicketAndSeatType(ticketType, seatType);
+            }
         }
 
-        // 3. Priority 3: Global default rule
-        Optional<com.cinemaai.catalog.entity.TicketPricingRule> globalRule = pricingRules
-                .findFirstByCinemaIdIsNullAndTicketTypeAndRoomTypeAndSeatTypeAndWeekendAndHolidayAndActiveTrueOrderByUpdatedAtDesc(
-                        ticketType, roomType, seatType, weekend, holiday);
-        if (globalRule.isPresent()) {
-            return globalRule.get().getPrice();
+        if (resolved != null && seatType == SeatType.COUPLE) {
+            return resolved.divide(BigDecimal.valueOf(2), java.math.RoundingMode.HALF_UP);
         }
-
-        // 4. Priority 4: Fallback to showtime/room configured price
-        return showtime.getPriceForTicketAndSeatType(ticketType, seatType);
+        return resolved;
     }
 }

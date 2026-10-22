@@ -2,7 +2,6 @@ package com.cinemaai.booking.service;
 
 import com.cinemaai.booking.client.dto.UserAccessScopeDto;
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
-import com.cinemaai.booking.dto.request.AdminRefundTicketRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
 import com.cinemaai.booking.dto.response.CinemaDashboardResponse;
 import com.cinemaai.booking.entity.Booking;
@@ -13,10 +12,14 @@ import com.cinemaai.booking.enums.BookingStatus;
 import com.cinemaai.booking.exception.BadRequestException;
 import com.cinemaai.booking.exception.ConflictException;
 import com.cinemaai.booking.exception.ForbiddenException;
+import com.cinemaai.booking.exception.NotFoundException;
 import com.cinemaai.booking.repository.BookingRepository;
 import com.cinemaai.booking.repository.TicketAuditLogRepository;
 import com.cinemaai.booking.security.AuthenticatedUser;
 import com.cinemaai.booking.security.CinemaSecurityService;
+import com.cinemaai.booking.client.IdentityClient;
+import com.cinemaai.booking.client.CatalogClient;
+import com.cinemaai.booking.client.PaymentClient;
 import com.cinemaai.booking.service.impl.AdminBookingServiceImpl;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,6 +48,14 @@ class AdminBookingServiceTest {
     private TicketAuditLogRepository ticketAuditLogRepository;
     @Mock
     private CinemaSecurityService cinemaSecurityService;
+    @Mock
+    private PaymentClient paymentClient;
+    @Mock
+    private com.cinemaai.booking.repository.BookingSeatRepository bookingSeatRepository;
+    @Mock
+    private IdentityClient identityClient;
+    @Mock
+    private CatalogClient catalogClient;
 
     private AdminBookingServiceImpl adminBookingService;
 
@@ -53,7 +64,12 @@ class AdminBookingServiceTest {
         adminBookingService = new AdminBookingServiceImpl(
                 bookingRepository,
                 ticketAuditLogRepository,
-                cinemaSecurityService
+                cinemaSecurityService,
+                paymentClient,
+                org.mapstruct.factory.Mappers.getMapper(com.cinemaai.booking.mapper.BookingMapper.class),
+                bookingSeatRepository,
+                identityClient,
+                catalogClient
         );
     }
 
@@ -150,93 +166,6 @@ class AdminBookingServiceTest {
     }
 
     @Test
-    void testRefundBooking_Success() {
-        Long managerId = 10L;
-        Long cinemaAId = 101L;
-        Long bookingId = 503L;
-
-        AuthenticatedUser manager = new AuthenticatedUser(managerId, "mgr@test.com", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), cinemaAId);
-
-        BookingSeat seat = BookingSeat.builder().seatNumber(1).rowLabel("B").status(BookingSeatStatus.BOOKED).build();
-        Booking booking = Booking.builder()
-                .id(bookingId)
-                .bookingCode("BK789012")
-                .cinemaId(cinemaAId)
-                .userId(99L)
-                .showtimeId(1L)
-                .movieId(1L)
-                .cinemaNameSnapshot("Cinema A")
-                .roomNameSnapshot("Room 1")
-                .showtimeStartSnapshot(LocalDateTime.now().plusHours(2))
-                .status(BookingStatus.PAID)
-                .totalAmount(new BigDecimal("100000.00"))
-                .seats(new ArrayList<>(List.of(seat)))
-                .build();
-
-        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
-        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
-                new UserAccessScopeDto(managerId, "mgr@test.com", "ACTIVE", List.of("MANAGER"), cinemaAId)
-        );
-
-        AdminRefundTicketRequest req = new AdminRefundTicketRequest("Hoàn tiền qua cổng VNPay");
-        BookingResponse resp = adminBookingService.refundBooking(manager, bookingId, req);
-
-        assertNotNull(resp);
-        assertEquals(BookingStatus.REFUNDED, booking.getStatus());
-        assertNotNull(booking.getRefundedAt());
-        assertEquals("Hoàn tiền qua cổng VNPay", booking.getRefundReason());
-        assertEquals(BookingSeatStatus.RELEASED, seat.getStatus());
-
-        ArgumentCaptor<TicketAuditLog> auditCaptor = ArgumentCaptor.forClass(TicketAuditLog.class);
-        verify(ticketAuditLogRepository).save(auditCaptor.capture());
-        TicketAuditLog savedLog = auditCaptor.getValue();
-
-        assertEquals("REFUND", savedLog.getAction());
-        assertEquals("SUCCESS", savedLog.getStatus());
-        assertEquals(new BigDecimal("100000.00"), savedLog.getAmount());
-    }
-
-    @Test
-    void testRefundBooking_DoubleRefundBlocked() {
-        Long managerId = 10L;
-        Long cinemaAId = 101L;
-        Long bookingId = 504L;
-
-        AuthenticatedUser manager = new AuthenticatedUser(managerId, "mgr@test.com", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), cinemaAId);
-
-        Booking booking = Booking.builder()
-                .id(bookingId)
-                .cinemaId(cinemaAId)
-                .status(BookingStatus.REFUNDED) // Already refunded
-                .build();
-
-        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
-
-        AdminRefundTicketRequest req = new AdminRefundTicketRequest("Thử hoàn lại lần 2");
-        assertThrows(ConflictException.class, () -> adminBookingService.refundBooking(manager, bookingId, req));
-    }
-
-    @Test
-    void testRefundBooking_UnpaidTicketBlocked() {
-        Long managerId = 10L;
-        Long cinemaAId = 101L;
-        Long bookingId = 505L;
-
-        AuthenticatedUser manager = new AuthenticatedUser(managerId, "mgr@test.com", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), cinemaAId);
-
-        Booking booking = Booking.builder()
-                .id(bookingId)
-                .cinemaId(cinemaAId)
-                .status(BookingStatus.HOLDING) // Unpaid
-                .build();
-
-        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
-
-        AdminRefundTicketRequest req = new AdminRefundTicketRequest("Hoàn tiền cho vé chưa trả tiền");
-        assertThrows(BadRequestException.class, () -> adminBookingService.refundBooking(manager, bookingId, req));
-    }
-
-    @Test
     void testDashboardMetrics_StrictlyScopesManagerToAssignedCinema() {
         Long managerId = 10L;
         Long cinemaAId = 101L;
@@ -268,4 +197,145 @@ class AdminBookingServiceTest {
         assertEquals(1L, metrics.totalRefundedTickets());
         assertEquals(new BigDecimal("100000.00"), metrics.totalRefundedAmount());
     }
+
+    @Test
+    void cancelShowtimeRejectsManagerFromAnotherCinemaBeforeAnyMutation() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        Booking booking = Booking.builder().id(77L).showtimeId(9L).cinemaId(202L)
+                .status(BookingStatus.PAID).build();
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, 202L));
+        doThrow(new ForbiddenException("wrong cinema"))
+                .when(cinemaSecurityService).validateCinemaAccess(manager, 202L, false);
+
+        assertThrows(ForbiddenException.class,
+                () -> adminBookingService.cancelAndRefundShowtime(manager, 9L, "incident"));
+
+        assertEquals(BookingStatus.PAID, booking.getStatus());
+        verify(bookingRepository, never()).save(any());
+        verifyNoInteractions(paymentClient);
+        verify(ticketAuditLogRepository, never()).save(any());
+    }
+
+    @Test
+    void managerCannotReadSummaryForAnotherCinema() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, 202L));
+        doThrow(new ForbiddenException("wrong cinema"))
+                .when(cinemaSecurityService).validateCinemaAccess(manager, 202L, false);
+
+        assertThrows(ForbiddenException.class,
+                () -> adminBookingService.getShowtimeBookingSummary(manager, 9L));
+    }
+
+    @Test
+    void managerCannotReadCountsContainingAnotherCinema() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, 202L));
+        doThrow(new ForbiddenException("wrong cinema"))
+                .when(cinemaSecurityService).validateCinemaAccess(manager, 202L, false);
+
+        assertThrows(ForbiddenException.class,
+                () -> adminBookingService.getSoldTicketCounts(manager, List.of(9L)));
+        verifyNoInteractions(bookingSeatRepository);
+    }
+
+    @Test
+    void managerCanOperateOnSameCinemaShowtimeWithoutBookings() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(bookingRepository.findByShowtimeId(9L)).thenReturn(List.of());
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, 101L));
+
+        assertEquals(0, adminBookingService.cancelAndRefundShowtime(manager, 9L, "incident").totalBookingsProcessed());
+        assertEquals(0, adminBookingService.getShowtimeBookingSummary(manager, 9L).soldTicketsCount());
+        assertTrue(adminBookingService.getSoldTicketCounts(manager, List.of(9L)).isEmpty());
+
+        verify(bookingRepository, never()).save(any());
+        verifyNoInteractions(paymentClient, ticketAuditLogRepository);
+    }
+
+    @Test
+    void managerCanReadSameCinemaShowtimeWithBookings() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        Booking booking = Booking.builder().id(77L).showtimeId(9L).cinemaId(101L)
+                .status(BookingStatus.PAID).totalAmount(BigDecimal.TEN).build();
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, 101L));
+        when(bookingRepository.findByShowtimeId(9L)).thenReturn(List.of(booking));
+
+        assertEquals(1, adminBookingService.getShowtimeBookingSummary(manager, 9L).paidBookingsCount());
+        verify(cinemaSecurityService).validateCinemaAccess(manager, 101L, false);
+    }
+
+    @Test
+    void nullCatalogCinemaFailsClosedBeforeBookingQuery() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenReturn(new CatalogClient.ShowtimeScope(9L, null));
+
+        assertThrows(ForbiddenException.class,
+                () -> adminBookingService.getShowtimeBookingSummary(manager, 9L));
+        verify(bookingRepository, never()).findByShowtimeId(anyLong());
+        verify(cinemaSecurityService, never()).validateCinemaAccess(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void adminCanReadShowtimeWithoutBookings() {
+        AuthenticatedUser admin = new AuthenticatedUser(1L, "admin@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")), null);
+        when(bookingRepository.findByShowtimeId(9L)).thenReturn(List.of());
+        when(cinemaSecurityService.getAuthoritativeScope(admin)).thenReturn(
+                new UserAccessScopeDto(1L, "admin@test.com", "ACTIVE", List.of("ADMIN"), null));
+
+        var summary = adminBookingService.getShowtimeBookingSummary(admin, 9L);
+
+        assertEquals(9L, summary.showtimeId());
+        assertEquals(0, summary.soldTicketsCount());
+        verifyNoInteractions(catalogClient);
+    }
+
+    @Test
+    void catalogFailureAndInvalidScopeFailClosedBeforeBookingQueryOrMutation() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(9L)).thenThrow(new ForbiddenException("catalog unavailable"));
+
+        assertThrows(ForbiddenException.class,
+                () -> adminBookingService.cancelAndRefundShowtime(manager, 9L, "incident"));
+
+        verify(bookingRepository, never()).findByShowtimeId(anyLong());
+        verify(bookingRepository, never()).save(any());
+        verifyNoInteractions(paymentClient, ticketAuditLogRepository);
+    }
+
+    @Test
+    void nonexistentShowtimePropagatesNotFoundBeforeBookingQuery() {
+        AuthenticatedUser manager = new AuthenticatedUser(10L, "manager@test.com",
+                List.of(new SimpleGrantedAuthority("ROLE_MANAGER")), 101L);
+        when(cinemaSecurityService.getAuthoritativeScope(manager)).thenReturn(
+                new UserAccessScopeDto(10L, "manager@test.com", "ACTIVE", List.of("MANAGER"), 101L));
+        when(catalogClient.getShowtimeScope(404L)).thenThrow(new NotFoundException("Showtime not found"));
+
+        assertThrows(NotFoundException.class,
+                () -> adminBookingService.getShowtimeBookingSummary(manager, 404L));
+        verify(bookingRepository, never()).findByShowtimeId(anyLong());
+    }
+
 }

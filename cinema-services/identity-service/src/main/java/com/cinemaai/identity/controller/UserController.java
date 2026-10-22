@@ -4,6 +4,7 @@ import com.cinemaai.identity.dto.request.user.ChangePasswordRequest;
 import com.cinemaai.identity.dto.request.user.UserProfileUpdateRequest;
 import com.cinemaai.identity.dto.response.ApiResponse;
 import com.cinemaai.identity.dto.response.user.UserProfileResponse;
+import com.cinemaai.identity.exception.BadRequestException;
 import com.cinemaai.identity.security.AuthenticatedUser;
 import com.cinemaai.identity.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -59,5 +60,17 @@ public class UserController {
                 ? avatarUrl
                 : (file != null ? "/uploads/avatars/" + user.id() + "_" + file.getOriginalFilename() : null);
         return ApiResponse.success(userService.updateAvatar(user.email(), effectiveUrl), "Avatar updated successfully");
+    }
+
+    @PutMapping("/me/cinema")
+    public ApiResponse<UserProfileResponse> updateMyCinema(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody java.util.Map<String, Long> payload
+    ) {
+        Long cinemaId = payload.get("cinemaId");
+        if (cinemaId == null) {
+            throw new BadRequestException("cinemaId is required");
+        }
+        return ApiResponse.success(userService.assignCinema(user.id(), cinemaId, user.email()), "Cinema reassigned successfully");
     }
 }

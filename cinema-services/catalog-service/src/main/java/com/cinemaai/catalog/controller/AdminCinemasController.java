@@ -2,6 +2,8 @@ package com.cinemaai.catalog.controller;
 
 import com.cinemaai.catalog.dto.request.cinema.CinemaRequest;
 import com.cinemaai.catalog.dto.response.cinema.CinemaResponse;
+import com.cinemaai.catalog.dto.request.cinema.DaySurchargeRequest;
+import com.cinemaai.catalog.dto.response.cinema.DaySurchargeResponse;
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import com.cinemaai.catalog.enums.CinemaStatus;
 import com.cinemaai.catalog.exception.ForbiddenException;
@@ -173,5 +175,36 @@ public class AdminCinemasController {
     ) {
         cinemaSecurityService.validateCinemaAccess(user, cinemaId);
         return ApiResponse.success(cinemaService.upsertAudiencePrice(cinemaId, request), "Audience price updated successfully");
+    }
+
+    // -------------------------------------------------------------------------
+    // DAY SURCHARGES MANAGEMENT (Weekend & Holiday)
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/{cinemaId}/day-surcharges")
+    @Operation(
+            summary = "Get weekend & holiday surcharges for a cinema (Admin / Manager)",
+            description = "Returns the weekend and holiday surcharge amounts configured for this cinema."
+    )
+    public ApiResponse<DaySurchargeResponse> getDaySurcharges(
+            @PathVariable Long cinemaId,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        cinemaSecurityService.validateCinemaAccess(user, cinemaId);
+        return ApiResponse.success(cinemaService.getDaySurcharges(cinemaId));
+    }
+
+    @PutMapping("/{cinemaId}/day-surcharges")
+    @Operation(
+            summary = "Update weekend & holiday surcharges for a cinema (Admin / Manager)",
+            description = "Updates the weekend and holiday surcharge amounts configured for this cinema."
+    )
+    public ApiResponse<DaySurchargeResponse> updateDaySurcharges(
+            @PathVariable Long cinemaId,
+            @Valid @RequestBody DaySurchargeRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        cinemaSecurityService.validateCinemaAccess(user, cinemaId);
+        return ApiResponse.success(cinemaService.updateDaySurcharges(cinemaId, request), "Day surcharges updated successfully");
     }
 }

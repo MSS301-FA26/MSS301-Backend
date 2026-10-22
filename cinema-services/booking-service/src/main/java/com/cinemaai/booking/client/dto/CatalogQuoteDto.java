@@ -14,7 +14,17 @@ public class CatalogQuoteDto {
             List<Food> foods
     ) {
         public record Ticket(Long seatId, String ticketType, Integer viewerAge, int quantity) {}
-        public record Food(Long productId, Boolean isCombo, int quantity) {}
+        public record Food(
+                Long productId,
+                Boolean isCombo,
+                int quantity,
+                Long foodItemId,
+                Long foodComboId
+        ) {
+            public Food(Long productId, Boolean isCombo, int quantity) {
+                this(productId, isCombo, quantity, null, null);
+            }
+        }
     }
 
     public record Response(

@@ -1,5 +1,34 @@
 # CinemaAI Progress
 
+## Session update - 2026-10-21 Task 04 booking expiration hardening
+
+Scope:
+
+- Standardized the booking hold boundary so `holdExpiresAt <= now` is expired and a missing deadline fails closed; the three-minute TTL is unchanged.
+- Added pessimistic booking-row locking to checkout/update/cancel, replacement-hold cancellation, lazy internal lookup, scheduler cleanup, internal mark-paid, and payment-event fulfillment.
+- Made expiration cleanup release only `HOLDING` seats, preserving `BOOKED` and `CHECKED_IN` seat history.
+- Added a dedicated expiration exception with transaction metadata that commits the atomic Booking/BookingSeat expiration cleanup while returning the existing 4xx error.
+- Restricted mark-paid and payment events to valid `PENDING_PAYMENT` bookings; terminal states cannot be revived and duplicate paid events do not award loyalty again.
+- Preserved late VNPay capture as `Payment.SUCCESS` with transaction ID, paid time, amount, and callback payload while suppressing tickets, loyalty, and outbox fulfillment for manual reconciliation.
+- Added `TASK04_BOOKING_LIFECYCLE_MATRIX.md` and database-free lifecycle regression tests.
+
+Verification:
+
+- Booking wide selected regression: 69 tests passed before one new boundary assertion type error; after correcting that test, all 13 Task 04 booking tests passed. The final focused transaction/locking run passed 23 tests (0 failed, 0 skipped). No production failure occurred in the wide run.
+- Payment selected regression: 40 tests passed, 0 failed, 0 skipped.
+- `mvnw.cmd -pl booking-service,payment-service,catalog-service -DskipTests compile`: `BUILD SUCCESS` for all three modules.
+- PostgreSQL concurrency, transaction-commit integration, Flyway, Docker, and the full suite were not run.
+
+Remaining blockers:
+
+- PostgreSQL must still verify the pessimistic-lock query behavior, transaction commit after `BookingExpiredException`, and cleanup-versus-payment/new-hold races.
+- The current schema has no dedicated captured-but-unfulfilled settlement state or reconciliation queue/table. Late capture evidence is preserved in `Payment.SUCCESS`, but operations need an approved reconciliation/refund workflow before deployment.
+- Existing admin/manager single-ticket cancellation can move a paid booking directly to `CANCELLED` and release booked seats without provider refund; this pre-existing policy is documented in the lifecycle matrix and was not redesigned in Task 04.
+
+Next action:
+
+- Run the isolated PostgreSQL concurrency/transaction tests after approval, then design and approve the captured-payment reconciliation state/workflow before deployment.
+
 ## Session update - 2026-07-23 recoverable standalone concession checkout
 
 Scope:
