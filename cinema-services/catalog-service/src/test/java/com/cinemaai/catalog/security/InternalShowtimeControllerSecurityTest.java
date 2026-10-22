@@ -1,11 +1,14 @@
 package com.cinemaai.catalog.security;
 
 import com.cinemaai.catalog.controller.InternalShowtimeController;
+import com.cinemaai.catalog.dto.response.cinema.ReportingShowtimeResponse;
 import com.cinemaai.catalog.entity.Cinema;
 import com.cinemaai.catalog.entity.Room;
 import com.cinemaai.catalog.entity.Showtime;
 import com.cinemaai.catalog.exception.NotFoundException;
 import com.cinemaai.catalog.service.ShowtimeService;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -59,6 +62,22 @@ class InternalShowtimeControllerSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.showtimeId").value(9))
                 .andExpect(jsonPath("$.data.cinemaId").value(101));
+    }
+
+    @Test
+    void reportingBindsDatesAndCinemaAndReturnsCapacity() throws Exception {
+        LocalDate day = LocalDate.of(2026, 1, 15);
+        when(showtimeService.getReportingShowtimes(day, day, 7L)).thenReturn(List.of(
+                new ReportingShowtimeResponse(9L, 5L, "Movie", 7L, "Cinema", 3L, "Room",
+                        day.atTime(10, 0), day.atTime(12, 0), 80)));
+
+        mvc.perform(get("/internal/v1/catalog/showtimes/reporting")
+                        .param("from", "2026-01-15").param("to", "2026-01-15").param("cinemaId", "7")
+                        .header("X-Internal-Service-Secret", "internal-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].showtimeId").value(9))
+                .andExpect(jsonPath("$.data[0].cinemaId").value(7))
+                .andExpect(jsonPath("$.data[0].capacity").value(80));
     }
 
     @Test
