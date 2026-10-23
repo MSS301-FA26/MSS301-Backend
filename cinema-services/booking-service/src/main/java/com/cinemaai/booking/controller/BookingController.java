@@ -77,8 +77,10 @@ public class BookingController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId
     ) {
-        Long userId = user.id();
-        return ApiResponse.success(bookingService.getBookingById(userId, bookingId));
+        BookingResponse booking = user.isAdmin()
+                ? bookingService.getBookingByIdInternal(bookingId)
+                : bookingService.getBookingById(user.id(), bookingId);
+        return ApiResponse.success(booking);
     }
 
     @Operation(summary = "Hủy giữ chỗ / giải phóng ghế ngay lập tức")
