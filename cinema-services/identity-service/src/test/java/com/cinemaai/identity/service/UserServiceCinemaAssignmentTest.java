@@ -69,6 +69,44 @@ class UserServiceCinemaAssignmentTest {
     }
 
     @Test
+    void administratorAssignmentPreservesTargetAndRejectsInvalidCinema() {
+        User admin = new User("admin@test.com", "hash", "Admin", "0900000000");
+        User target = new User("staff@test.com", "hash", "Staff", "0900000001");
+        org.springframework.test.util.ReflectionTestUtils.setField(admin,"id",1L);
+        org.springframework.test.util.ReflectionTestUtils.setField(target,"id",2L);
+        when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(admin));
+        when(userRoleService.getRoleNames(1L)).thenReturn(List.of("ADMIN"));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(target));
+        userService.assignCinema(2L,101L,"admin@test.com");
+        verify(userCinemaAssignmentService).assignCinema(target,101L,admin);
+        assertThrows(BadRequestException.class,()->userService.assignCinema(2L,null,"admin@test.com"));
+        doThrow(new NotFoundException("missing")).when(catalogClient).validateActiveCinema(999L);
+        assertThrows(NotFoundException.class,()->userService.assignCinema(2L,999L,"admin@test.com"));
+        doThrow(new BadRequestException("inactive")).when(catalogClient).validateActiveCinema(202L);
+        assertThrows(BadRequestException.class,()->userService.assignCinema(2L,202L,"admin@test.com"));
+        verify(userCinemaAssignmentService,never()).assignCinema(any(),eq(999L),any());
+        verify(userCinemaAssignmentService,never()).assignCinema(any(),eq(202L),any());
+    }
+
+    @Test
+    void assignmentRejectsMissingActor() {
+        assertThrows(ForbiddenException.class, () -> userService.assignCinema(1L, 101L, null));
+        verifyNoInteractions(catalogClient, userCinemaAssignmentService);
+    }
+
+    @Test
+    void assignmentRejectsNonAdministrators() {
+        User actor = new User("actor@test.com", "hash", "Actor", "0900000000");
+        org.springframework.test.util.ReflectionTestUtils.setField(actor, "id", 10L);
+        when(userRepository.findByEmail("actor@test.com")).thenReturn(Optional.of(actor));
+        for (String role : List.of("USER", "CUSTOMER", "STAFF", "MANAGER")) {
+            when(userRoleService.getRoleNames(10L)).thenReturn(List.of(role));
+            assertThrows(ForbiddenException.class, () -> userService.assignCinema(10L, 999L, "actor@test.com"));
+        }
+        verifyNoInteractions(catalogClient, userCinemaAssignmentService);
+    }
+
+    @Test
     void testAdminCreateManager_AssignsSpecifiedCinema() {
         String adminEmail = "admin@cinemaai.com";
         Long cinemaAId = 101L;
