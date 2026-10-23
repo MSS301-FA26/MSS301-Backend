@@ -66,7 +66,10 @@ public class OrderController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        return ApiResponse.success(orderService.getByIdAndUser(user.id(), foodOrderId));
+        OrderResponse order = user.isAdmin()
+                ? orderService.getById(foodOrderId)
+                : orderService.getByIdAndUser(user.id(), foodOrderId);
+        return ApiResponse.success(order);
     }
 
     @PostMapping("/api/v1/food-orders/{foodOrderId}/sync")

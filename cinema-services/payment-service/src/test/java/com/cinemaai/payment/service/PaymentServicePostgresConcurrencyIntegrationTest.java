@@ -8,6 +8,7 @@ import com.cinemaai.payment.mapper.PaymentMapper;
 import com.cinemaai.payment.repository.OutboxEventRepository;
 import com.cinemaai.payment.repository.PaymentRepository;
 import com.cinemaai.payment.service.impl.PaymentServiceImpl;
+import com.cinemaai.payment.util.VNPayUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -28,6 +29,7 @@ import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -53,7 +55,40 @@ class PaymentServicePostgresConcurrencyIntegrationTest {
         service = context.getBean(PaymentService.class);
     }
     @AfterAll void stop() { if (context != null) context.close(); }
-    @BeforeEach void clear() { jdbc.execute("TRUNCATE payments, outbox_events CASCADE"); }
+    @BeforeEach void clear() {
+        jdbc.execute("TRUNCATE payments, outbox_events CASCADE");
+        ((FakeBookingClient) bookingClient).markBookingPaidCalls.set(0);
+    }
+
+    @Test void validIpnIsIdempotentAtDatabaseAndSideEffectBoundaries() {
+        stubBooking(50L, 1L, "PENDING_PAYMENT", 100000, "BK50");
+        Payment payment = payments.saveAndFlush(Payment.builder()
+                .bookingId(50L).userId(1L).provider(PaymentProvider.VNPAY)
+                .amount(BigDecimal.valueOf(100000)).status(PaymentStatus.PENDING).build());
+        Map<String, String> params = signedIpn(payment.getId(), "10000000");
+
+        service.processVnpayIpn(params);
+        service.processVnpayIpn(params);
+        service.processVnpayIpn(params);
+
+        assertEquals(PaymentStatus.SUCCESS, payments.findById(payment.getId()).orElseThrow().getStatus());
+        assertEquals(1, jdbc.queryForObject("select count(*) from outbox_events", Integer.class));
+        assertEquals(1, ((FakeBookingClient) bookingClient).markBookingPaidCalls.get());
+    }
+
+    @Test void invalidIpnSignatureDoesNotMutateDatabase() {
+        Payment payment = payments.saveAndFlush(Payment.builder()
+                .bookingId(51L).userId(1L).provider(PaymentProvider.VNPAY)
+                .amount(BigDecimal.valueOf(100000)).status(PaymentStatus.PENDING).build());
+        Map<String, String> params = signedIpn(payment.getId(), "10000000");
+        params.put("vnp_SecureHash", "invalid");
+
+        assertEquals("97", service.processVnpayIpn(params).get("RspCode"));
+
+        assertEquals(PaymentStatus.PENDING, payments.findById(payment.getId()).orElseThrow().getStatus());
+        assertEquals(0, jdbc.queryForObject("select count(*) from outbox_events", Integer.class));
+        assertEquals(0, ((FakeBookingClient) bookingClient).markBookingPaidCalls.get());
+    }
 
     @Test void t01NormalCreate() {
         stubBooking(10L, 1L, "PENDING_PAYMENT", 100000, "BK10");
@@ -112,6 +147,16 @@ void t11FailedThenSuccessRejectsAnotherPayment() {
     int concurrent(Callable<?> call,int n) throws Exception { ExecutorService e=Executors.newFixedThreadPool(n); CountDownLatch gate=new CountDownLatch(1); List<Future<?>> fs=new ArrayList<>(); for(int i=0;i<n;i++)fs.add(e.submit(()->{gate.await(); try{call.call();return true;}catch(Exception x){return x;}})); gate.countDown(); int ok=0; for(Future<?> f:fs){Object result=f.get(15,TimeUnit.SECONDS); if(Boolean.TRUE.equals(result))ok++; else if(result instanceof Exception x) System.out.println("concurrent business result: "+x.getClass().getSimpleName()+" "+x.getMessage());} e.shutdownNow(); return jdbc.queryForObject("select count(*) from payments where status='PENDING'",Integer.class)==1?1:0; }
     void stubBooking(long id,long user,String status,int amount,String code){ ((FakeBookingClient)bookingClient).booking=new BookingClient.BookingInfo(id,code,user,BigDecimal.valueOf(amount),status,LocalDateTime.now().plusMinutes(2),0,1L); }
     void stubFood(long id,long user,int amount,String code){ ((FakeBookingClient)bookingClient).food=new BookingClient.FoodOrderInfo(id,code,user,BigDecimal.valueOf(amount),"PENDING"); }
+    Map<String, String> signedIpn(Long paymentId, String amount) {
+        Map<String, String> params = new HashMap<>();
+        params.put("vnp_TxnRef", paymentId + "-TEST");
+        params.put("vnp_Amount", amount);
+        params.put("vnp_ResponseCode", "00");
+        params.put("vnp_TransactionNo", "TX-" + paymentId);
+        params.put("vnp_BankCode", "TEST");
+        params.put("vnp_SecureHash", VNPayUtil.hashAllFields(params, "TEST"));
+        return params;
+    }
 
     @Configuration @EnableTransactionManagement(proxyTargetClass=true) @EnableJpaRepositories(basePackageClasses=PaymentRepository.class)
     static class TestConfig {
@@ -128,8 +173,10 @@ void t11FailedThenSuccessRejectsAnotherPayment() {
     }
     static class FakeBookingClient extends BookingClient {
         volatile BookingInfo booking; volatile FoodOrderInfo food;
+        final AtomicInteger markBookingPaidCalls = new AtomicInteger();
         FakeBookingClient(){super("http://127.0.0.1:1","TEST");}
         @Override public BookingInfo getBooking(Long id){return booking;}
         @Override public FoodOrderInfo getFoodOrder(Long id){return food;}
+        @Override public void markBookingPaid(Long id, String transactionId, LocalDateTime paidAt){markBookingPaidCalls.incrementAndGet();}
     }
 }
