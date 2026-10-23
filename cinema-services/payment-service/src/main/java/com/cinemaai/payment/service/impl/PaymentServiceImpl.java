@@ -310,23 +310,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Idempotency check: Already processed
         if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            if (payment.getBookingId() != null) {
-                try {
-                    BookingClient.BookingInfo booking = bookingClient.getBooking(payment.getBookingId());
-                    if (!hasUnverifiedLoyaltyRedemption(booking)
-                            && isBookingAwaitingValidPayment(booking, LocalDateTime.now())) {
-                        schedulePostCommitSideEffects(payment, payment.getPaidAt(), false);
-                    } else {
-                        log.error("Captured payment {} requires manual reconciliation: booking {} is not safely fulfilable",
-                                payment.getId(), payment.getBookingId());
-                    }
-                } catch (Exception ex) {
-                    log.error("Captured payment {} requires manual reconciliation because booking {} could not be validated: {}",
-                            payment.getId(), payment.getBookingId(), ex.getMessage());
-                }
-            } else if (payment.getFoodOrderId() != null) {
-                schedulePostCommitSideEffects(payment, payment.getPaidAt(), false);
-            }
             return Map.of("RspCode", "00", "Message", "Order already confirmed");
         }
 
