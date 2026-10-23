@@ -24,20 +24,24 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/admin/loyalty")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 @Tag(name = "Admin - Loyalty", description = "Quản lý điểm thưởng loyalty cho Admin và Manager")
 public class AdminLoyaltyController {
 
     private final LoyaltyService loyaltyService;
 
     @GetMapping("/config")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @Operation(summary = "Xem cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
     public ApiResponse<LoyaltyConfigurationResponse> getConfiguration(
-            @RequestParam(required = false) Long cinemaId
+            @RequestParam(required = false) Long cinemaId,
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return ApiResponse.success(loyaltyService.getConfiguration(cinemaId));
+        return ApiResponse.success(loyaltyService.getAdminConfiguration(cinemaId, user));
     }
 
     @PutMapping("/config")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @Operation(summary = "Cập nhật cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
     public ApiResponse<LoyaltyConfigurationResponse> updateConfiguration(
             @Valid @RequestBody LoyaltyConfigurationRequest request,

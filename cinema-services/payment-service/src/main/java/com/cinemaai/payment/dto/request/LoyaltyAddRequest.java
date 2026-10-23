@@ -10,6 +10,7 @@ import lombok.Setter;
 public class LoyaltyAddRequest {
 
     @NotNull(message = "User ID is required")
+    @jakarta.validation.constraints.Positive(message = "User ID must be positive")
     private Long userId;
 
     @NotNull(message = "Points are required")
