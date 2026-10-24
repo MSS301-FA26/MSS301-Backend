@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -71,12 +72,15 @@ public class BookingController {
 
     @Operation(summary = "Xem chi tiết một đơn đặt vé")
     @GetMapping("/{bookingId}")
+    @PreAuthorize("hasRole('ADMIN') or @bookingSecurity.isOwner(#bookingId, principal.id())")
     public ApiResponse<BookingResponse> getBookingDetail(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long bookingId
     ) {
-        Long userId = user.id();
-        return ApiResponse.success(bookingService.getBookingById(userId, bookingId));
+        BookingResponse booking = user.isAdmin()
+                ? bookingService.getBookingByIdInternal(bookingId)
+                : bookingService.getBookingById(user.id(), bookingId);
+        return ApiResponse.success(booking);
     }
 
     @Operation(summary = "Hủy giữ chỗ / giải phóng ghế ngay lập tức")

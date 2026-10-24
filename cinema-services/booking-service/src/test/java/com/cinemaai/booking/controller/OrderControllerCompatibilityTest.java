@@ -1,6 +1,7 @@
 package com.cinemaai.booking.controller;
 
 import com.cinemaai.booking.security.SecurityConfig;
+import com.cinemaai.booking.security.OrderSecurity;
 import com.cinemaai.booking.service.OrderService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -43,11 +44,13 @@ class OrderControllerCompatibilityTest {
 
     @Autowired MockMvc mvc;
     @MockBean OrderService orderService;
+    @MockBean(name = "orderSecurity") OrderSecurity orderSecurity;
 
     @Test
     void allCustomerRoutesKeepTheirMethodsStatusesAndAuthenticatedIdentity() throws Exception {
         when(orderService.listMine(7L)).thenReturn(List.of());
         when(orderService.listByBooking(7L, 31L)).thenReturn(List.of());
+        when(orderSecurity.isOwner(41L, 7L)).thenReturn(true);
 
         mvc.perform(post("/api/v1/food-orders")
                         .headers(customerHeaders())

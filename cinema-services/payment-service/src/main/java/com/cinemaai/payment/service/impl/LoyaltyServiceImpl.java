@@ -112,6 +112,29 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     }
 
     @Override
+    public LoyaltyConfigurationResponse getAdminConfiguration(Long cinemaId, AuthenticatedUser user) {
+        return getConfiguration(authorizeConfiguration(cinemaId, user, false));
+    }
+
+    private Long authorizeConfiguration(Long cinemaId, AuthenticatedUser user, boolean writing) {
+        if (user == null || user.id() == null || user.id() <= 0 || user.getAuthorities() == null)
+            throw new ForbiddenException("Authenticated administrator or manager required");
+        if (user.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()))) return cinemaId;
+        if (user.getAuthorities().stream().noneMatch(a -> "ROLE_MANAGER".equals(a.getAuthority())))
+            throw new ForbiddenException("Configuration access denied");
+        IdentityClient.UserAccessScope scope;
+        try { scope = identityClient.getUserAccessScope(user.id()); }
+        catch (RuntimeException ex) { throw new ForbiddenException("Cinema scope unavailable"); }
+        if (scope == null || !user.id().equals(scope.userId()) || !"ACTIVE".equals(scope.status())
+                || scope.roles() == null || !scope.roles().contains("MANAGER")
+                || scope.cinemaId() == null || scope.cinemaId() <= 0
+                || (writing && cinemaId == null)
+                || (cinemaId != null && !cinemaId.equals(scope.cinemaId())))
+            throw new ForbiddenException("Cinema scope access denied");
+        return scope.cinemaId();
+    }
+
+    @Override
     @Transactional
     public LoyaltyResponse redeemMyPoints(Long userId, String email, int points) {
         if (userId == null) {
@@ -157,6 +180,7 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     @Override
     @Transactional
     public LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request, AuthenticatedUser user) {
+        authorizeConfiguration(request == null ? null : request.cinemaId(), user, true);
         if (request == null) {
             throw new BadRequestException("Cấu hình không hợp lệ");
         }
@@ -371,6 +395,13 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     @Override
     @Transactional
     public LoyaltyResponse addPoints(LoyaltyAddRequest request) {
+        if (request == null || request.getUserId() == null || request.getUserId() <= 0) {
+            throw new BadRequestException("Valid target user required");
+        }
+        var target = identityClient.getUserProfile(request.getUserId());
+        if (target == null || !request.getUserId().equals(target.id())) {
+            throw new NotFoundException("Target user could not be verified");
+        }
         LoyaltyPoint point = loyaltyPointRepository.findByUserId(request.getUserId())
                 .orElseGet(() -> loyaltyPointRepository.save(LoyaltyPoint.builder()
                         .userId(request.getUserId())

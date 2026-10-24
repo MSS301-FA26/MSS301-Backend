@@ -18,6 +18,12 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(SeatAvailabilityUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleSeatAvailabilityUnavailable(
+            SeatAvailabilityUnavailableException exception, HttpServletRequest request) {
+        return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(
             MethodArgumentNotValidException exception,

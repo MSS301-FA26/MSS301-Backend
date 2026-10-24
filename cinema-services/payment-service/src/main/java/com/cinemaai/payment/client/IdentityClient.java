@@ -16,6 +16,23 @@ public class IdentityClient {
     private final String internalSecret;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UserAccessScope(Long userId, String status, java.util.List<String> roles, Long cinemaId) {}
+
+    public UserAccessScope getUserAccessScope(Long userId) {
+        if (userId == null || userId <= 0) return null;
+        try {
+            ApiResponse<UserAccessScope> response = restClient.get()
+                    .uri("/internal/v1/users/{userId}/scope", userId)
+                    .header("X-Internal-Service-Secret", internalSecret).retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<UserAccessScope>>() {});
+            return response != null && response.success() ? response.data() : null;
+        } catch (Exception ex) {
+            log.warn("Identity scope verification unavailable");
+            return null;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record UserProfileDto(
             Long id,
             String email,
@@ -28,7 +45,10 @@ public class IdentityClient {
             @Value("${app.internal.secret}") String internalSecret
     ) {
         this.internalSecret = internalSecret;
-        this.restClient = RestClient.builder().baseUrl(identityServiceUrl).build();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);
+        factory.setReadTimeout(3000);
+        this.restClient = RestClient.builder().baseUrl(identityServiceUrl).requestFactory(factory).build();
     }
 
     public UserProfileDto getUserProfile(Long userId) {

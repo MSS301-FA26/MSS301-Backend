@@ -18,6 +18,7 @@ public interface LoyaltyService {
     LoyaltyResponse getMyPoints(Long userId, String email);
     LoyaltyConfigurationResponse getConfiguration();
     LoyaltyConfigurationResponse getConfiguration(Long cinemaId);
+    LoyaltyConfigurationResponse getAdminConfiguration(Long cinemaId, AuthenticatedUser user);
     LoyaltyResponse redeemMyPoints(Long userId, String email, int points);
 
     LoyaltyConfigurationResponse updateConfiguration(LoyaltyConfigurationRequest request);
