@@ -33,6 +33,16 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 class CatalogApplicationSmokeTest {
     @Autowired MockMvc mvc;
+    @org.springframework.boot.test.mock.mockito.MockBean
+    com.cinemaai.catalog.client.BookingClient bookingClient;
+
+    @org.junit.jupiter.api.BeforeEach
+    void healthyBookingDependency() {
+        // This H2 component smoke test is not a live Booking integration test.
+        // A verified empty response replaces the former accidental outage fallback.
+        org.mockito.Mockito.when(bookingClient.getOccupiedSeats(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(java.util.List.of());
+    }
 
     @Test
     void publicCatalogIsAvailableOnlyThroughTrustedGateway() throws Exception {
