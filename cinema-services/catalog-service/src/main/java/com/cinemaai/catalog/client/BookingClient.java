@@ -2,7 +2,7 @@ package com.cinemaai.catalog.client;
 
 import com.cinemaai.catalog.dto.response.ApiResponse;
 import java.time.LocalDateTime;
-import java.util.Collections;
+import com.cinemaai.catalog.exception.SeatAvailabilityUnavailableException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +37,10 @@ public class BookingClient {
             @Value("${app.internal.secret}") String internalSecret
     ) {
         this.internalSecret = internalSecret;
-        this.restClient = RestClient.builder().baseUrl(bookingServiceUrl).build();
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);
+        factory.setReadTimeout(3000);
+        this.restClient = RestClient.builder().baseUrl(bookingServiceUrl).requestFactory(factory).build();
     }
 
     public List<OccupiedSeat> getOccupiedSeats(Long showtimeId) {
@@ -48,14 +51,22 @@ public class BookingClient {
                     .retrieve()
                     .body(new ParameterizedTypeReference<ApiResponse<List<OccupiedSeat>>>() {});
 
-            if (response != null && response.data() != null) {
+            if (response != null && response.success() && response.data() != null) {
+                var seen = new java.util.HashSet<Long>();
+                for (OccupiedSeat seat : response.data()) {
+                    if (seat == null || seat.seatId() == null || seat.seatId() <= 0
+                            || !seen.add(seat.seatId()) || seat.runtimeStatus() == null
+                            || !java.util.Set.of("HOLDING", "BOOKED", "UNAVAILABLE").contains(seat.runtimeStatus())) {
+                        throw new SeatAvailabilityUnavailableException();
+                    }
+                }
                 return response.data();
             }
         } catch (Exception ex) {
-            log.warn("Failed to fetch occupied seats for showtimeId={} from booking-service: {}",
-                    showtimeId, ex.getMessage());
+            log.warn("Occupancy verification failed for showtimeId={} ({})", showtimeId, ex.getClass().getSimpleName());
+            throw new SeatAvailabilityUnavailableException();
         }
-        return Collections.emptyList();
+        throw new SeatAvailabilityUnavailableException();
     }
 
     public java.util.Optional<BookingEligibilityDto> checkBookingEligibility(Long userId, Long movieId) {
