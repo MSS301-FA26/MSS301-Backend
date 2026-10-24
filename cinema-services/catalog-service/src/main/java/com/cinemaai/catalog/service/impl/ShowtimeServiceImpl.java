@@ -947,16 +947,7 @@ public class ShowtimeServiceImpl implements ShowtimeService {
         Map<Long, Integer> result = new HashMap<>();
         for (Showtime st : showtimes) {
             int totalSeats = seatRepository.findByRoom(st.getRoom()).size();
-            int occupiedSeats = 0;
-            try {
-                List<com.cinemaai.catalog.client.BookingClient.OccupiedSeat> occupied =
-                        bookingClient.getOccupiedSeats(st.getId());
-                if (occupied != null) {
-                    occupiedSeats = occupied.size();
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to fetch occupied seats for showtime {}: {}", st.getId(), ex.getMessage());
-            }
+            int occupiedSeats = bookingClient.getOccupiedSeats(st.getId()).size();
             result.put(st.getId(), Math.max(0, totalSeats - occupiedSeats));
         }
         return result;

@@ -42,7 +42,7 @@ public class WalletServiceImpl implements WalletService {
     private final WalletMapper walletMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public WalletResponse getWallet(Long userId) {
         CineWallet wallet = getOrCreateWallet(userId);
         return walletMapper.toResponse(wallet);
@@ -278,9 +278,10 @@ public class WalletServiceImpl implements WalletService {
 
     private CineWallet getOrCreateWallet(Long userId) {
         return cineWalletRepository.findByUserId(userId)
-                .orElseGet(() -> cineWalletRepository.save(CineWallet.builder()
-                        .userId(userId)
-                        .balance(BigDecimal.ZERO)
-                        .build()));
+                .orElseGet(() -> {
+                    cineWalletRepository.initializeIfAbsent(userId);
+                    return cineWalletRepository.findByUserId(userId)
+                            .orElseThrow(() -> new IllegalStateException("Wallet initialization was not confirmed"));
+                });
     }
 }
