@@ -2,19 +2,32 @@ package com.cinemaai.booking.controller;
 
 import com.cinemaai.booking.dto.response.ApiResponse;
 import com.cinemaai.booking.dto.response.CinemaDashboardResponse;
+import com.cinemaai.booking.dto.response.report.AbandonedRateResponse;
+import com.cinemaai.booking.dto.response.report.AdminAnalyticsResponse;
+import com.cinemaai.booking.dto.response.report.ConcessionSalesResponse;
+import com.cinemaai.booking.dto.response.report.DailyOccupancyResponse;
+import com.cinemaai.booking.dto.response.report.NoShowReportResponse;
+import com.cinemaai.booking.dto.response.report.PeakHourResponse;
+import com.cinemaai.booking.dto.response.report.RevenueReportResponse;
+import com.cinemaai.booking.dto.response.report.RoomOccupancyResponse;
+import com.cinemaai.booking.dto.response.report.ShowtimeFillResponse;
 import com.cinemaai.booking.dto.response.report.ShowtimeIncidentReportResponse;
+import com.cinemaai.booking.dto.response.report.TopMovieResponse;
 import com.cinemaai.booking.security.AuthenticatedUser;
 import com.cinemaai.booking.security.CinemaSecurityService;
+import com.cinemaai.booking.service.AdminAnalyticsService;
 import com.cinemaai.booking.service.AdminBookingService;
 import com.cinemaai.booking.service.ReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/reports")
