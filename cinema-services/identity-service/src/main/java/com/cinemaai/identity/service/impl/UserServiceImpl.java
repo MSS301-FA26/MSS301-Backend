@@ -287,13 +287,18 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserProfileResponse assignCinema(Long userId, Long cinemaId, String actorEmail) {
+        if (actorEmail == null || actorEmail.isBlank()) {
+            throw new ForbiddenException("Authenticated administrator required");
+        }
+        User actor = getByEmail(actorEmail);
+        if (!userRoleService.getRoleNames(actor.getId()).contains(RoleName.ADMIN.name())) {
+            throw new ForbiddenException("Only administrators may assign cinemas");
+        }
         if (cinemaId == null) {
             throw new BadRequestException("Cinema ID is required.");
         }
         catalogClient.validateActiveCinema(cinemaId);
         User user = findById(userId);
-        User actor = actorEmail != null ? getByEmail(actorEmail) : null;
-
         userCinemaAssignmentService.assignCinema(user, cinemaId, actor);
         return toProfile(user);
     }

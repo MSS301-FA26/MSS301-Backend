@@ -36,14 +36,14 @@ class BookingSeatConcurrencyIntegrationTest {
     @BeforeAll
     static void startPostgresAndMigrateSchema() throws Exception {
         runDocker(
-                "run", "--rm", "--detach", "--publish-all", "--name", CONTAINER_NAME,
+                "run", "--rm", "--detach", "--publish", "127.0.0.1::5432", "--name", CONTAINER_NAME,
                 "--env", "POSTGRES_DB=" + DATABASE,
                 "--env", "POSTGRES_USER=" + USERNAME,
                 "--env", "POSTGRES_PASSWORD=" + PASSWORD,
                 "postgres:16-alpine"
         );
         waitForPostgres();
-        jdbcUrl = "jdbc:postgresql://localhost:" + postgresPort() + "/" + DATABASE;
+        jdbcUrl = "jdbc:postgresql://127.0.0.1:" + postgresPort() + "/" + DATABASE;
         Flyway.configure()
                 .dataSource(jdbcUrl, USERNAME, PASSWORD)
                 .locations("classpath:db/migration")
@@ -176,7 +176,7 @@ class BookingSeatConcurrencyIntegrationTest {
 
     private static void waitForPostgres() throws Exception {
         for (int attempt = 0; attempt < 30; attempt++) {
-            if (runDockerAllowFailure("exec", CONTAINER_NAME, "pg_isready", "-U", USERNAME, "-d", DATABASE) == 0) {
+            if (runDockerAllowFailure("exec", CONTAINER_NAME, "pg_isready", "-h", "127.0.0.1", "-U", USERNAME, "-d", DATABASE) == 0) {
                 return;
             }
             Thread.sleep(500);
