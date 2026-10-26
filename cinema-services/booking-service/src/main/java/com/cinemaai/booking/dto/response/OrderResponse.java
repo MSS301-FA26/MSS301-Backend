@@ -8,6 +8,7 @@ public record OrderResponse(
         Long id,
         String orderCode,
         String foodOrderCode,
+        Long userId,
         Long bookingId,
         String bookingCode,
         String status,
@@ -37,9 +38,31 @@ public record OrderResponse(
             LocalDateTime cancelledAt,
             LocalDateTime createdAt,
             String qrCode,
+            Long cinemaId,
+            String cinemaName,
+            String cinemaAddress,
             List<OrderItemResponse> items
     ) {
-        this(id, orderCode, foodOrderCode, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, qrCode, null, null, null, items);
+        this(id, orderCode, foodOrderCode, null, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, qrCode, cinemaId, cinemaName, cinemaAddress, items);
+    }
+
+    public OrderResponse(
+            Long id,
+            String orderCode,
+            String foodOrderCode,
+            Long bookingId,
+            String bookingCode,
+            String status,
+            BigDecimal subtotal,
+            BigDecimal totalAmount,
+            LocalDateTime paidAt,
+            LocalDateTime expiresAt,
+            LocalDateTime cancelledAt,
+            LocalDateTime createdAt,
+            String qrCode,
+            List<OrderItemResponse> items
+    ) {
+        this(id, orderCode, foodOrderCode, null, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, qrCode, null, null, null, items);
     }
 
     public OrderResponse(
@@ -57,6 +80,6 @@ public record OrderResponse(
             LocalDateTime createdAt,
             List<OrderItemResponse> items
     ) {
-        this(id, orderCode, foodOrderCode, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, null, null, null, null, items);
+        this(id, orderCode, foodOrderCode, null, bookingId, bookingCode, status, subtotal, totalAmount, paidAt, expiresAt, cancelledAt, createdAt, null, null, null, null, items);
     }
 }

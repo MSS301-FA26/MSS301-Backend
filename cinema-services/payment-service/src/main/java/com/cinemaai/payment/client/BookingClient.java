@@ -45,7 +45,16 @@ public class BookingClient {
             @Value("${app.internal.secret}") String internalSecret
     ) {
         this.internalSecret = internalSecret;
-        this.restClient = RestClient.builder().baseUrl(bookingServiceUrl).build();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .findAndRegisterModules()
+                .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        this.restClient = RestClient.builder()
+                .baseUrl(bookingServiceUrl)
+                .messageConverters(converters -> {
+                    converters.removeIf(c -> c instanceof org.springframework.http.converter.json.MappingJackson2HttpMessageConverter);
+                    converters.add(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(mapper));
+                })
+                .build();
     }
 
     public BookingInfo getBooking(Long bookingId) {
