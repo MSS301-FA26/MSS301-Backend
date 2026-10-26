@@ -613,10 +613,8 @@ public class LoyaltyServiceImpl implements LoyaltyService {
     @Transactional
     public LoyaltyResponse awardPointsForFoodOrder(Long userId, Long foodOrderId, String orderCode, BigDecimal amount) {
         if (userId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) return null;
-        int earned = amount.multiply(earningRatePercent.get())
-                .divide(BigDecimal.valueOf(100), 0, RoundingMode.DOWN)
-                .intValue();
-        if (earned <= 0) return null;
+
+        String finalOrderCode = (orderCode != null && !orderCode.isBlank()) ? orderCode : ("FO-" + foodOrderId);
 
         LoyaltyPoint lp = loyaltyPointRepository.findByUserId(userId)
                 .orElseGet(() -> loyaltyPointRepository.save(LoyaltyPoint.builder()
@@ -626,22 +624,50 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                         .status(LoyaltyStatus.ACTIVE)
                         .build()));
 
+        // Idempotency: avoid duplicate points award for the same food order
+        boolean alreadyAwarded = loyaltyPointTransactionRepository.existsByBookingCodeAndType(finalOrderCode, LoyaltyPointType.EARN);
+        if (alreadyAwarded) {
+            log.info("Loyalty points already awarded for food order {}: skipping duplicate award", finalOrderCode);
+            return LoyaltyResponse.builder()
+                    .userId(lp.getUserId())
+                    .userEmail(lp.getUserEmail())
+                    .points(lp.getPoints())
+                    .totalPoints(lp.getTotalPoints())
+                    .status(lp.getStatus())
+                    .build();
+        }
+
+        BigDecimal rate = earningRatePercent.get();
+        int earned = amount.multiply(rate)
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.DOWN)
+                .intValue();
+        if (earned <= 0) {
+            return LoyaltyResponse.builder()
+                    .userId(lp.getUserId())
+                    .userEmail(lp.getUserEmail())
+                    .points(lp.getPoints())
+                    .totalPoints(lp.getTotalPoints())
+                    .status(lp.getStatus())
+                    .build();
+        }
+
         lp.setPoints(lp.getPoints() + earned);
         lp.setTotalPoints(lp.getTotalPoints() + earned);
         loyaltyPointRepository.save(lp);
 
         loyaltyPointTransactionRepository.save(LoyaltyPointTransaction.builder()
                 .userId(userId)
-                .bookingId(foodOrderId)
-                .bookingCode(orderCode != null ? orderCode : ("FO-" + foodOrderId))
+                .bookingId(null)
+                .bookingCode(finalOrderCode)
                 .type(LoyaltyPointType.EARN)
                 .pointsDelta(earned)
                 .balanceAfter(lp.getPoints())
-                .note("Tích điểm từ đơn bắp nước " + orderCode + " (1% trên " + amount + "đ)")
+                .note(String.format("Tích điểm từ đơn bắp nước %s (%.2f%% trên %.2fđ)",
+                        finalOrderCode, rate.doubleValue(), amount.doubleValue()))
                 .occurredAt(LocalDateTime.now())
                 .build());
 
-        log.info("Awarded {} loyalty points for food order {} to userId {}", earned, orderCode, userId);
+        log.info("Awarded {} loyalty points for food order {} to userId {}", earned, finalOrderCode, userId);
         return LoyaltyResponse.builder()
                 .userId(lp.getUserId())
                 .userEmail(lp.getUserEmail())

@@ -4,6 +4,8 @@ import java.util.Map;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -65,5 +67,28 @@ class BookingSchemaMigrationPostgresTest {
         assertEquals(1,jdbc.queryForObject("select count(*) from bookings where customer_name_snapshot is null and customer_phone_snapshot is null and customer_email_snapshot is null",Integer.class));
         jdbc.update("update bookings set customer_name_snapshot='Test Customer',customer_phone_snapshot='0900',customer_email_snapshot='test@example.invalid' where booking_code='UPGRADE-PRESERVED'");
         assertEquals("Test Customer",jdbc.queryForObject("select customer_name_snapshot from bookings where booking_code='UPGRADE-PRESERVED'",String.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void upgradingV5WithExistingSnapshotColumnsPreservesData(boolean allColumnsExist) {
+        String schema="booking_existing_it_"+Long.toUnsignedString(System.nanoTime());
+        flyway(schema,"5").migrate(); var jdbc=new JdbcTemplate(datasource(schema));
+        jdbc.execute("alter table bookings add column customer_name_snapshot varchar(255), add column showtime_end_snapshot timestamp");
+        jdbc.execute("alter table food_orders add column cinema_id bigint");
+        if(allColumnsExist) {
+            jdbc.execute("alter table bookings add column customer_phone_snapshot varchar(50), add column customer_email_snapshot varchar(255)");
+            jdbc.execute("alter table food_orders add column cinema_name varchar(255), add column cinema_address varchar(500)");
+        }
+        jdbc.update("insert into bookings(booking_code,user_id,showtime_id,movie_id,movie_title_snapshot,cinema_name_snapshot,room_name_snapshot,showtime_start_snapshot,showtime_end_snapshot,customer_name_snapshot,total_amount,status,created_at,updated_at) values ('EXISTING-SNAPSHOTS',7,10,20,'Movie','Cinema','Room',current_timestamp,current_timestamp + interval '2 hours','Existing Customer',123456.78,'PAID',current_timestamp,current_timestamp)");
+        jdbc.update("insert into food_orders(food_order_code,user_id,cinema_id,total_amount,status,created_at,updated_at) values ('EXISTING-FOOD',7,42,50000,'PAID',current_timestamp,current_timestamp)");
+        var before=jdbc.queryForMap("select booking_code,customer_name_snapshot,showtime_end_snapshot,total_amount from bookings where booking_code='EXISTING-SNAPSHOTS'");
+        var foodBefore=jdbc.queryForMap("select food_order_code,cinema_id,total_amount from food_orders where food_order_code='EXISTING-FOOD'");
+
+        assertDoesNotThrow(() -> flyway(schema,"latest").migrate());
+
+        verifyColumns(schema); validateSchema(schema);
+        assertEquals(before,jdbc.queryForMap("select booking_code,customer_name_snapshot,showtime_end_snapshot,total_amount from bookings where booking_code='EXISTING-SNAPSHOTS'"));
+        assertEquals(foodBefore,jdbc.queryForMap("select food_order_code,cinema_id,total_amount from food_orders where food_order_code='EXISTING-FOOD'"));
     }
 }

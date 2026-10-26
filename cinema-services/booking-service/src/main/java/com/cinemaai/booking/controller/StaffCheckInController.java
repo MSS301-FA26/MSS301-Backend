@@ -39,6 +39,8 @@ public class StaffCheckInController {
     private final OrderRepository orderRepository;
     private final com.cinemaai.booking.security.CinemaSecurityService cinemaSecurityService;
     private final BookingMapper bookingMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.cinemaai.booking.client.IdentityClient identityClient;
 
     @Operation(summary = "Tra cứu thông tin vé để soát vé qua GET")
     @GetMapping("/lookup")
@@ -336,15 +338,7 @@ public class StaffCheckInController {
         map.put("cinemaName", order.getCinemaName());
         map.put("cinemaAddress", order.getCinemaAddress());
 
-        if (order.getBookingId() != null) {
-            bookingRepository.findById(order.getBookingId()).ifPresent(b -> {
-                map.put("bookingCode", b.getBookingCode());
-                map.put("customerName", b.getCustomerNameSnapshot());
-                map.put("customerPhone", b.getCustomerPhoneSnapshot());
-                if (map.get("cinemaName") == null) map.put("cinemaName", b.getCinemaNameSnapshot());
-                if (map.get("cinemaId") == null) map.put("cinemaId", b.getCinemaId());
-            });
-        }
+        enrichFoodOrderCustomerInfo(map, order, null);
 
         List<Map<String, Object>> itemsList = order.getItems() != null ? order.getItems().stream().map(item -> {
             Map<String, Object> itemMap = new HashMap<>();
@@ -355,6 +349,7 @@ public class StaffCheckInController {
             itemMap.put("quantity", item.getQuantity());
             itemMap.put("unitPrice", item.getUnitPrice());
             itemMap.put("totalPrice", item.getLineTotal());
+            itemMap.put("pickedUp", item.isPickedUp());
             return itemMap;
         }).toList() : List.of();
         map.put("items", itemsList);
@@ -367,10 +362,10 @@ public class StaffCheckInController {
     @Transactional
     public ApiResponse<Map<String, Object>> pickUpFoodOrder(
             @org.springframework.security.core.annotation.AuthenticationPrincipal com.cinemaai.booking.security.AuthenticatedUser user,
-            @RequestBody Map<String, String> body) {
-        String code = body.get("code");
-        if (code == null || code.isBlank()) code = body.get("foodOrderCode");
-        if (code == null || code.isBlank()) {
+            @RequestBody(required = false) Map<String, Object> body) {
+        Object codeObj = body != null ? (body.get("code") != null ? body.get("code") : body.get("foodOrderCode")) : null;
+        String code = codeObj != null ? String.valueOf(codeObj).trim() : null;
+        if (code == null || code.isBlank() || "null".equalsIgnoreCase(code)) {
             throw new BadRequestException("Ma don bap nuoc khong duoc de trong.");
         }
 
@@ -400,19 +395,84 @@ public class StaffCheckInController {
         Order order = orderOpt.orElseThrow(() -> new NotFoundException("Khong tim thay don bap nuoc: " + cleanCode));
         cinemaSecurityService.validateCinemaAccess(user, resolveFoodOrderCinemaId(order), true);
 
-        if ("PICKED_UP".equalsIgnoreCase(order.getStatus())) {
-            throw new ConflictException("Don bap nuoc nay da duoc giao cho khach truoc do.");
+        // Parse target item IDs and Indexes from request body
+        List<Long> targetItemIds = new ArrayList<>();
+        if (body != null && body.get("itemIds") instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Number n) {
+                    targetItemIds.add(n.longValue());
+                } else if (o != null) {
+                    try {
+                        targetItemIds.add(Long.parseLong(String.valueOf(o).trim()));
+                    } catch (Exception ignored) {}
+                }
+            }
         }
 
-        order.setStatus("PICKED_UP");
+        List<Integer> targetIndexes = new ArrayList<>();
+        if (body != null && body.get("itemIndexes") instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Number n) {
+                    targetIndexes.add(n.intValue());
+                } else if (o != null) {
+                    try {
+                        targetIndexes.add(Integer.parseInt(String.valueOf(o).trim()));
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        if (order.getItems() != null && !order.getItems().isEmpty()) {
+            boolean hasTargetIds = !targetItemIds.isEmpty();
+            boolean hasTargetIndexes = !targetIndexes.isEmpty();
+
+            for (int i = 0; i < order.getItems().size(); i++) {
+                com.cinemaai.booking.entity.OrderItem it = order.getItems().get(i);
+                if (hasTargetIds) {
+                    if (targetItemIds.contains(it.getId())) {
+                        it.setPickedUp(true);
+                    }
+                } else if (hasTargetIndexes) {
+                    if (targetIndexes.contains(i)) {
+                        it.setPickedUp(true);
+                    }
+                } else {
+                    it.setPickedUp(true);
+                }
+            }
+        }
+
+        boolean allPickedUp = order.getItems() != null && !order.getItems().isEmpty() &&
+                order.getItems().stream().allMatch(com.cinemaai.booking.entity.OrderItem::isPickedUp);
+        boolean anyPickedUp = order.getItems() != null &&
+                order.getItems().stream().anyMatch(com.cinemaai.booking.entity.OrderItem::isPickedUp);
+
+        String newStatus = allPickedUp ? "PICKED_UP" : (anyPickedUp ? "PARTIALLY_PICKED_UP" : order.getStatus());
+        order.setStatus(newStatus);
         orderRepository.save(order);
 
         Map<String, Object> map = new HashMap<>();
         map.put("id", order.getId());
         map.put("orderCode", order.getFoodOrderCode());
         map.put("foodOrderCode", order.getFoodOrderCode());
-        map.put("status", "PICKED_UP");
-        return ApiResponse.success(map, "Xac nhan giao mon thanh cong");
+        map.put("status", order.getStatus());
+        map.put("pickedUpAt", allPickedUp ? java.time.LocalDateTime.now() : order.getUpdatedAt());
+        List<Map<String, Object>> itemsList = order.getItems() != null ? order.getItems().stream().map(item -> {
+            Map<String, Object> itemMap = new HashMap<>();
+            itemMap.put("id", item.getId());
+            itemMap.put("productId", item.getProductId());
+            itemMap.put("isCombo", item.isCombo());
+            itemMap.put("name", item.getProductNameSnapshot());
+            itemMap.put("quantity", item.getQuantity());
+            itemMap.put("unitPrice", item.getUnitPrice());
+            itemMap.put("totalPrice", item.getLineTotal());
+            itemMap.put("pickedUp", item.isPickedUp());
+            return itemMap;
+        }).toList() : List.of();
+        map.put("items", itemsList);
+
+        String msg = allPickedUp ? "Xac nhan giao du mon thanh cong" : "Xac nhan giao mot phan mon thanh cong";
+        return ApiResponse.success(map, msg);
     }
 
     private Long resolveFoodOrderCinemaId(Order order) {
@@ -443,6 +503,7 @@ public class StaffCheckInController {
         if (orders.size() > limit) {
             orders = orders.subList(0, limit);
         }
+        Map<Long, com.cinemaai.booking.client.dto.UserProfileDto> userCache = new HashMap<>();
         List<Map<String, Object>> responses = orders.stream().map(order -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", order.getId());
@@ -458,15 +519,7 @@ public class StaffCheckInController {
             map.put("cinemaName", order.getCinemaName());
             map.put("cinemaAddress", order.getCinemaAddress());
 
-            if (order.getBookingId() != null) {
-                bookingRepository.findById(order.getBookingId()).ifPresent(b -> {
-                    map.put("bookingCode", b.getBookingCode());
-                    map.put("customerName", b.getCustomerNameSnapshot());
-                    map.put("customerPhone", b.getCustomerPhoneSnapshot());
-                    if (map.get("cinemaName") == null) map.put("cinemaName", b.getCinemaNameSnapshot());
-                    if (map.get("cinemaId") == null) map.put("cinemaId", b.getCinemaId());
-                });
-            }
+            enrichFoodOrderCustomerInfo(map, order, userCache);
 
             List<Map<String, Object>> itemsList = order.getItems() != null ? order.getItems().stream().map(item -> {
                 Map<String, Object> itemMap = new HashMap<>();
@@ -484,6 +537,47 @@ public class StaffCheckInController {
         }).toList();
         return ApiResponse.success(responses, "Lay danh sach don bap nuoc thanh cong");
     }
+    private void enrichFoodOrderCustomerInfo(Map<String, Object> map, Order order, Map<Long, com.cinemaai.booking.client.dto.UserProfileDto> userCache) {
+        map.put("userId", order.getUserId());
+        if (order.getBookingId() != null) {
+            bookingRepository.findById(order.getBookingId()).ifPresent(b -> {
+                map.put("bookingCode", b.getBookingCode());
+                if (b.getCustomerNameSnapshot() != null && !b.getCustomerNameSnapshot().isBlank()) {
+                    map.put("customerName", b.getCustomerNameSnapshot());
+                }
+                if (b.getCustomerPhoneSnapshot() != null && !b.getCustomerPhoneSnapshot().isBlank()) {
+                    map.put("customerPhone", b.getCustomerPhoneSnapshot());
+                }
+                if (map.get("cinemaName") == null) map.put("cinemaName", b.getCinemaNameSnapshot());
+                if (map.get("cinemaId") == null) map.put("cinemaId", b.getCinemaId());
+            });
+        }
+
+        if ((map.get("customerName") == null || map.get("customerPhone") == null) && order.getUserId() != null) {
+            try {
+                com.cinemaai.booking.client.dto.UserProfileDto profile;
+                if (userCache != null && userCache.containsKey(order.getUserId())) {
+                    profile = userCache.get(order.getUserId());
+                } else {
+                    profile = identityClient.getUserProfile(order.getUserId());
+                    if (userCache != null) {
+                        userCache.put(order.getUserId(), profile);
+                    }
+                }
+                if (profile != null) {
+                    if (map.get("customerName") == null && profile.fullName() != null && !profile.fullName().isBlank()) {
+                        map.put("customerName", profile.fullName());
+                    }
+                    if (map.get("customerPhone") == null && profile.phone() != null && !profile.phone().isBlank()) {
+                        map.put("customerPhone", profile.phone());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Cannot enrich customer profile for order {}: {}", order.getId(), e.getMessage());
+            }
+        }
+    }
+
     private void ensureSeatTicketCodes(Booking booking) {
         if (booking.getQrCode() == null || booking.getQrCode().isBlank()) {
             booking.setQrCode("CINEMA:" + booking.getBookingCode() + ":" + booking.getId());

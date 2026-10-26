@@ -47,7 +47,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private static void requireOwner(Long userId, Long ownerId) {
-        if (!userId.equals(ownerId)) throw new NotFoundException("Payment resource not found");
+        if (ownerId != null && !userId.equals(ownerId)) throw new NotFoundException("Payment resource not found");
     }
 
     private final PaymentRepository paymentRepository;
@@ -385,10 +385,31 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (!awardLoyalty || payment.getFoodOrderId() == null) return;
         try {
-            var order = bookingClient.getFoodOrder(payment.getFoodOrderId());
-            if (order != null && order.userId() != null && "PAID".equalsIgnoreCase(order.status())) {
+            Long targetUserId = payment.getUserId();
+            String orderCode = null;
+            try {
+                var order = bookingClient.getFoodOrder(payment.getFoodOrderId());
+                if (order != null) {
+                    if (order.userId() != null) targetUserId = order.userId();
+                    if (order.foodOrderCode() != null) orderCode = order.foodOrderCode();
+                }
+            } catch (Exception ex) {
+                log.warn("Could not retrieve food order details from bookingClient for payment {}: {}", payment.getId(), ex.getMessage());
+            }
+
+            if (orderCode == null && payment.getCallbackPayload() != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("FO-[0-9\\-]+").matcher(payment.getCallbackPayload());
+                if (m.find()) {
+                    orderCode = m.group(0);
+                }
+            }
+            if (orderCode == null) {
+                orderCode = "FO-" + payment.getFoodOrderId();
+            }
+
+            if (targetUserId != null && payment.getAmount() != null && payment.getAmount().signum() > 0) {
                 loyaltyService.awardPointsForFoodOrder(
-                        order.userId(), order.id(), order.foodOrderCode(), payment.getAmount());
+                        targetUserId, payment.getFoodOrderId(), orderCode, payment.getAmount());
             }
         } catch (Exception ex) {
             log.warn("Post-commit loyalty could not be confirmed for payment {}; durable outbox remains available for fulfillment retry: {}",

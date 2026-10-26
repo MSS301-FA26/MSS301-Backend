@@ -52,13 +52,13 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse createForBooking(Long userId, Long bookingId, OrderRequest request) {
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy thông tin vé #" + bookingId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin vÃ© #" + bookingId));
 
         if (!booking.getUserId().equals(userId)) {
-            throw new NotFoundException("Đơn đặt vé không thuộc về người dùng hiện tại");
+            throw new NotFoundException("ÄÆ¡n Ä‘áº·t vÃ© khÃ´ng thuá»™c vá» ngÆ°á»i dÃ¹ng hiá»‡n táº¡i");
         }
         if (booking.getStatus() != BookingStatus.PAID && booking.getStatus() != BookingStatus.USED) {
-            throw new BadRequestException("Chỉ có thể đặt thêm bắp nước cho vé đã thanh toán");
+            throw new BadRequestException("Chá»‰ cÃ³ thá»ƒ Ä‘áº·t thÃªm báº¯p nÆ°á»›c cho vÃ© Ä‘Ã£ thanh toÃ¡n");
         }
 
         return toResponse(createOrder(booking, userId, request));
@@ -108,7 +108,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse cancel(Long userId, Long foodOrderId) {
         Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n báº¯p nÆ°á»›c #" + foodOrderId));
 
         if ("PENDING_PAYMENT".equalsIgnoreCase(order.getStatus())) {
             LocalDateTime expiresAt = getExpiresAt(order);
@@ -121,14 +121,14 @@ public class OrderServiceImpl implements OrderService {
             return toResponse(order);
         }
 
-        throw new BadRequestException("Chỉ có thể hủy đơn bắp nước đang chờ thanh toán");
+        throw new BadRequestException("Chá»‰ cÃ³ thá»ƒ há»§y Ä‘Æ¡n báº¯p nÆ°á»›c Ä‘ang chá» thanh toÃ¡n");
     }
 
     @Override
     @Transactional(readOnly = true)
     public OrderResponse getById(Long foodOrderId) {
         Order order = orderRepository.findById(foodOrderId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n báº¯p nÆ°á»›c #" + foodOrderId));
         return toResponse(order);
     }
 
@@ -136,7 +136,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getByIdAndUser(Long userId, Long foodOrderId) {
         Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n báº¯p nÆ°á»›c #" + foodOrderId));
         return toResponse(order);
     }
 
@@ -144,7 +144,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse markPaid(Long foodOrderId, String transactionId) {
         Order order = orderRepository.findById(foodOrderId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n báº¯p nÆ°á»›c #" + foodOrderId));
 
         order.setStatus("PAID");
         if (order.getPaidAt() == null) {
@@ -152,6 +152,11 @@ public class OrderServiceImpl implements OrderService {
         }
         Order saved = orderRepository.save(order);
         log.info("Successfully marked Order {} as PAID (transactionId: {})", saved.getFoodOrderCode(), transactionId);
+        if (saved.getUserId() != null && saved.getTotalAmount() != null && saved.getTotalAmount().signum() > 0) {
+            paymentClient.awardFoodOrderLoyaltyPoints(
+                    saved.getUserId(), saved.getId(), saved.getFoodOrderCode(),
+                    saved.getTotalAmount(), saved.getCinemaId());
+        }
         return toResponse(saved);
     }
 
@@ -159,7 +164,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse syncPaymentStatus(Long userId, Long foodOrderId) {
         Order order = orderRepository.findByIdAndUserId(foodOrderId, userId)
-                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn bắp nước #" + foodOrderId));
+                .orElseThrow(() -> new NotFoundException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n báº¯p nÆ°á»›c #" + foodOrderId));
 
         if ("PAID".equalsIgnoreCase(order.getStatus())) {
             return toResponse(order);
@@ -174,6 +179,11 @@ public class OrderServiceImpl implements OrderService {
                 }
                 orderRepository.save(order);
                 log.info("Synced Order {} status to PAID via PaymentClient", order.getFoodOrderCode());
+                if (order.getUserId() != null && order.getTotalAmount() != null && order.getTotalAmount().signum() > 0) {
+                    paymentClient.awardFoodOrderLoyaltyPoints(
+                            order.getUserId(), order.getId(), order.getFoodOrderCode(),
+                            order.getTotalAmount(), order.getCinemaId());
+                }
             }
         } catch (Exception ex) {
             log.warn("Failed to check payment status from Payment Service for food order {}: {}", foodOrderId, ex.getMessage());
@@ -184,7 +194,7 @@ public class OrderServiceImpl implements OrderService {
 
     private Order createOrder(Booking booking, Long userId, OrderRequest request) {
         if (request == null || request.foods() == null || request.foods().isEmpty()) {
-            throw new BadRequestException("Vui lòng chọn ít nhất một món bắp nước");
+            throw new BadRequestException("Vui lÃ²ng chá»n Ã­t nháº¥t má»™t mÃ³n báº¯p nÆ°á»›c");
         }
         validateFoodSelections(request.foods());
 
@@ -196,7 +206,7 @@ public class OrderServiceImpl implements OrderService {
                 .bookingId(booking != null ? booking.getId() : null)
                 .cinemaId(request != null ? request.cinemaId() : null)
                 .cinemaName(request != null && request.cinemaName() != null ? request.cinemaName() : "CinemaAI Dragon City")
-                .cinemaAddress(request != null && request.cinemaAddress() != null ? request.cinemaAddress() : "Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà, Đà Nẵng")
+                .cinemaAddress(request != null && request.cinemaAddress() != null ? request.cinemaAddress() : "Táº§ng 5, Vincom Plaza NgÃ´ Quyá»n, 910A NgÃ´ Quyá»n, Q. SÆ¡n TrÃ , ÄÃ  Náºµng")
                 .status("PENDING_PAYMENT")
                 .items(new ArrayList<>())
                 .subtotal(BigDecimal.ZERO)
@@ -313,3 +323,4 @@ public class OrderServiceImpl implements OrderService {
         return orderMapper.toResponse(order, bookingCode, expiresAt, qrCode, items);
     }
 }
+
