@@ -87,4 +87,25 @@ public class IdentityClient {
             log.error("Failed to send wallet refund email notice to {} for booking {}: {}", to, bookingCode, ex.getMessage());
         }
     }
+
+    public com.cinemaai.booking.client.dto.UserProfileDto getUserProfile(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            ApiResponse<com.cinemaai.booking.client.dto.UserProfileDto> response = restClient.get()
+                    .uri("/internal/v1/users/{userId}", userId)
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<ApiResponse<com.cinemaai.booking.client.dto.UserProfileDto>>() {});
+
+            if (response != null && response.data() != null) {
+                return response.data();
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to fetch user profile from Identity Service for userId {}: {}", userId, ex.getMessage());
+        }
+        return null;
+    }
 }

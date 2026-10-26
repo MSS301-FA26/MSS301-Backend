@@ -1,5 +1,5 @@
 -- Optional cinema snapshots already mapped by Order; preserve historical rows.
 ALTER TABLE food_orders
-    ADD COLUMN cinema_id BIGINT,
-    ADD COLUMN cinema_name VARCHAR(255),
-    ADD COLUMN cinema_address VARCHAR(500);
+    ADD COLUMN IF NOT EXISTS cinema_id BIGINT,
+    ADD COLUMN IF NOT EXISTS cinema_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS cinema_address VARCHAR(500);

@@ -129,6 +129,7 @@ public class PaymentEventListener {
                 order.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());
                 orderRepository.save(order);
                 log.info("Successfully marked Order {} as PAID.", order.getFoodOrderCode());
+                awardFoodOrderLoyalty(order);
             });
         }
 
@@ -145,6 +146,14 @@ public class PaymentEventListener {
             paymentClient.awardLoyaltyPoints(
                     booking.getUserId(), booking.getId(), booking.getBookingCode(),
                     booking.getTotalAmount(), booking.getLoyaltyPointsRedeemed(), booking.getCinemaId());
+        }
+    }
+
+    private void awardFoodOrderLoyalty(com.cinemaai.booking.entity.Order order) {
+        if (order.getUserId() != null && order.getTotalAmount() != null && order.getTotalAmount().signum() > 0) {
+            paymentClient.awardFoodOrderLoyaltyPoints(
+                    order.getUserId(), order.getId(), order.getFoodOrderCode(),
+                    order.getTotalAmount(), order.getCinemaId());
         }
     }
 }
