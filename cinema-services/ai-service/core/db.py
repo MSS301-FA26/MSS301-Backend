@@ -25,6 +25,7 @@ def init_db_pool():
                 dbname=settings.DB_NAME,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD,
+                sslmode=settings.DB_SSLMODE,
             )
             run_migrations()
         except Exception as e:

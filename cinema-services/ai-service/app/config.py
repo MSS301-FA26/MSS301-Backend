@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     DB_NAME: str = Field(..., description="Postgres database name")
     DB_USER: str = Field(..., description="Postgres user")
     DB_PASSWORD: str = Field(..., description="Postgres password")
+    DB_SSLMODE: str = Field(default="prefer", description="Postgres SSL mode")
 
     # RabbitMQ Event Broker
     RABBITMQ_HOST: str = Field(..., description="RabbitMQ host")
@@ -53,7 +54,10 @@ class Settings(BaseSettings):
 
     # OpenAI-Compatible LLM for Chatbot
     OPENAI_API_KEY: Optional[str] = Field(default="", description="OpenAI API key")
-    OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
+    OPENAI_BASE_URL: str = Field(
+        default="https://api.openai.com/v1",
+        description="OpenAI Base URL"
+    )
     OPENAI_MODEL: str = Field(default="gpt-4o-mini", description="Model name for query rewriting and chat")
 
     # Logging Configuration
