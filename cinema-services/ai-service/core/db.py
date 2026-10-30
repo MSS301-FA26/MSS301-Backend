@@ -18,13 +18,14 @@ def init_db_pool():
         logger.info(f"Initializing connection pool to PostgreSQL at {settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}")
         try:
             _connection_pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=2,
-                maxconn=20,
+                minconn=settings.DB_POOL_MIN,
+                maxconn=settings.DB_POOL_MAX,
                 host=settings.DB_HOST,
                 port=settings.DB_PORT,
                 dbname=settings.DB_NAME,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD,
+                sslmode=settings.DB_SSLMODE,
             )
             run_migrations()
         except Exception as e:

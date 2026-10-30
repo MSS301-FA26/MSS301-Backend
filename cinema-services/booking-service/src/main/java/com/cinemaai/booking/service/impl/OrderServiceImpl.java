@@ -200,13 +200,23 @@ public class OrderServiceImpl implements OrderService {
 
         String orderCode = "FO-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 900 + 100);
 
+        Long cinemaId = request != null && request.cinemaId() != null
+                ? request.cinemaId()
+                : (booking != null ? booking.getCinemaId() : null);
+        String cinemaName = request != null && request.cinemaName() != null && !request.cinemaName().isBlank()
+                ? request.cinemaName()
+                : (booking != null && booking.getCinemaNameSnapshot() != null ? booking.getCinemaNameSnapshot() : "CinemaAI Dragon City");
+        String cinemaAddress = request != null && request.cinemaAddress() != null && !request.cinemaAddress().isBlank()
+                ? request.cinemaAddress()
+                : "Tầng 5, Vincom Plaza Ngô Quyền, 910A Ngô Quyền, Q. Sơn Trà, Đà Nẵng";
+
         Order order = Order.builder()
                 .foodOrderCode(orderCode)
                 .userId(userId)
                 .bookingId(booking != null ? booking.getId() : null)
-                .cinemaId(request != null ? request.cinemaId() : null)
-                .cinemaName(request != null && request.cinemaName() != null ? request.cinemaName() : "CinemaAI Dragon City")
-                .cinemaAddress(request != null && request.cinemaAddress() != null ? request.cinemaAddress() : "Táº§ng 5, Vincom Plaza NgÃ´ Quyá»n, 910A NgÃ´ Quyá»n, Q. SÆ¡n TrÃ , ÄÃ  Náºµng")
+                .cinemaId(cinemaId)
+                .cinemaName(cinemaName)
+                .cinemaAddress(cinemaAddress)
                 .status("PENDING_PAYMENT")
                 .items(new ArrayList<>())
                 .subtotal(BigDecimal.ZERO)

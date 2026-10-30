@@ -461,10 +461,27 @@ public class LoyaltyServiceImpl implements LoyaltyService {
                         .status(LoyaltyStatus.ACTIVE)
                         .build()));
 
-        // Redemption is temporarily disabled. Never infer a committed redemption from Booking input.
+        // 1. If customer redeemed points for this booking, record REDEEM if not already recorded
         if (redeemedPoints > 0 && bookingId != null) {
-            log.error("Ignored unverified redeemedPoints={} for paid booking {}; no REDEEM ledger entry was created",
-                    redeemedPoints, bookingCode);
+            long existingRedeem = loyaltyPointTransactionRepository.sumDeltaByBookingIdAndType(bookingId, LoyaltyPointType.REDEEM);
+            if (existingRedeem == 0) {
+                int currentPoints = lp.getPoints();
+                int newPoints = Math.max(0, currentPoints - redeemedPoints);
+                lp.setPoints(newPoints);
+                loyaltyPointRepository.save(lp);
+
+                loyaltyPointTransactionRepository.save(LoyaltyPointTransaction.builder()
+                        .userId(userId)
+                        .bookingId(bookingId)
+                        .bookingCode(bookingCode)
+                        .type(LoyaltyPointType.REDEEM)
+                        .pointsDelta(-redeemedPoints)
+                        .balanceAfter(lp.getPoints())
+                        .note("Đổi " + redeemedPoints + " điểm giảm giá đơn đặt vé " + bookingCode)
+                        .occurredAt(LocalDateTime.now())
+                        .build());
+                log.info("Deducted {} redeemed points from userId {} for booking {}", redeemedPoints, userId, bookingCode);
+            }
         }
 
         // 2. Check if EARN points already awarded for this booking (Idempotency)

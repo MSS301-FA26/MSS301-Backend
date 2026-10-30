@@ -260,7 +260,10 @@ public class RoomServiceImpl implements RoomService {
         Set<Integer> displayOrders = new HashSet<>();
         for (SeatRowGenerationRequest row : request.rows()) {
             SeatType rowSeatType = row.seatType() == null ? request.defaultSeatType() : row.seatType();
-            if (rowSeatType == SeatType.COUPLE && row.seatNumbers().size() % 2 != 0) {
+            long coupleSeatsCount = (row.seatTypes() != null)
+                    ? row.seatTypes().stream().filter(t -> t == SeatType.COUPLE).count()
+                    : (rowSeatType == SeatType.COUPLE ? row.seatNumbers().size() : 0);
+            if (coupleSeatsCount % 2 != 0) {
                 throw new BadRequestException("Couple seat row " + normalizeRowLabel(row.rowLabel()) + " must have an even number of seats");
             }
             if (row.displayOrder() > room.getRowCount()) {
@@ -331,7 +334,8 @@ public class RoomServiceImpl implements RoomService {
     private Seat findCouplePartner(Seat seat) {
         List<Seat> rowSeats = seatRepository.findByRoom(seat.getRoom())
                 .stream()
-                .filter(candidate -> candidate.getSeatRow().getId().equals(seat.getSeatRow().getId()))
+                .filter(candidate -> candidate.getSeatRow().getId().equals(seat.getSeatRow().getId())
+                        && candidate.getSeatType() == SeatType.COUPLE)
                 .sorted(Comparator.comparingInt(Seat::getDisplayColumn))
                 .toList();
         if (rowSeats.size() % 2 != 0) {
@@ -379,11 +383,16 @@ public class RoomServiceImpl implements RoomService {
                 if (!seatNumbers.add(seatNumber)) {
                     throw new BadRequestException("Duplicate seat number " + seatNumber + " in row " + rowLabel);
                 }
-                int displayColumn = rowRequest.startColumn() + index;
+                int displayColumn = (rowRequest.displayColumns() != null && index < rowRequest.displayColumns().size() && rowRequest.displayColumns().get(index) != null)
+                        ? rowRequest.displayColumns().get(index)
+                        : rowRequest.startColumn() + index;
                 if (displayColumn > room.getColumnCount()) {
                     throw new BadRequestException("Seat layout exceeds room column count in row " + rowLabel);
                 }
-                seatRepository.save(new Seat(room, seatRow, seatNumber, displayColumn, rowSeatType));
+                SeatType seatType = (rowRequest.seatTypes() != null && index < rowRequest.seatTypes().size() && rowRequest.seatTypes().get(index) != null)
+                        ? rowRequest.seatTypes().get(index)
+                        : rowSeatType;
+                seatRepository.save(new Seat(room, seatRow, seatNumber, displayColumn, seatType));
             }
         }
     }
