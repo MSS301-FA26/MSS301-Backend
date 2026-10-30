@@ -121,4 +121,16 @@ public record BookingResponse(
                 subtotal, discountAmount, loyaltyPointsRedeemed, totalAmount, status, holdExpiresAt, paidAt, checkedInAt,
                 cancelledAt, refundedAt, qrCode, seats, tickets, foods, createdAt, null, null, null, null, null);
     }
+
+    public BookingResponse withFoods(List<BookingProductResponse> newFoods) {
+        return new BookingResponse(
+                id, bookingCode, userId, showtimeId, movieId, movieTitle, movieTitleSnapshot,
+                posterUrl, moviePosterSnapshot, cinemaName, cinemaNameSnapshot, cinemaId,
+                roomName, roomNameSnapshot, showtimeStart, showtimeStartSnapshot,
+                subtotal, discountAmount, loyaltyPointsRedeemed, totalAmount, status,
+                holdExpiresAt, paidAt, checkedInAt, cancelledAt, refundedAt, qrCode,
+                seats, tickets, newFoods, createdAt, customerName, customerPhone,
+                userEmail, showtimeEnd, refundReason
+        );
+    }
 }

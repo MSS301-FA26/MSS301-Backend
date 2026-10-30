@@ -17,6 +17,15 @@ public interface TicketAuditLogRepository extends JpaRepository<TicketAuditLog, 
     Page<TicketAuditLog> findByCinemaIdOrderByCreatedAtDesc(Long cinemaId, Pageable pageable);
 
     @org.springframework.data.jpa.repository.Query("""
+            SELECT t FROM TicketAuditLog t
+            WHERE (:cinemaId IS NULL OR t.cinemaId = :cinemaId)
+            ORDER BY t.createdAt DESC, t.id DESC
+            """)
+    Page<TicketAuditLog> findAuditLogs(
+            @org.springframework.data.repository.query.Param("cinemaId") Long cinemaId,
+            Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("""
             SELECT COALESCE(SUM(t.amount), 0)
             FROM TicketAuditLog t
             WHERE (:cinemaId IS NULL OR t.cinemaId = :cinemaId)

@@ -408,6 +408,15 @@ public class ReportServiceImpl implements ReportService {
                             users.size(), amt, users
                     );
                 })
+                .sorted((i1, i2) -> {
+                    if (i1.cancelledAt() != null && i2.cancelledAt() != null) {
+                        return i2.cancelledAt().compareTo(i1.cancelledAt());
+                    }
+                    if (i1.showtimeStart() != null && i2.showtimeStart() != null) {
+                        return i2.showtimeStart().compareTo(i1.showtimeStart());
+                    }
+                    return Long.compare(i2.showtimeId(), i1.showtimeId());
+                })
                 .toList();
 
         return new ShowtimeIncidentReportResponse(

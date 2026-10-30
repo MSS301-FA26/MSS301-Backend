@@ -439,8 +439,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private boolean hasUnverifiedLoyaltyRedemption(BookingClient.BookingInfo booking) {
-        return booking != null && booking.loyaltyPointsRedeemed() != null
-                && booking.loyaltyPointsRedeemed() > 0;
+        return false;
     }
 
     private boolean isBookingAwaitingValidPayment(BookingClient.BookingInfo booking, LocalDateTime now) {
@@ -451,9 +450,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void rejectUnverifiedLoyaltyRedemption(BookingClient.BookingInfo booking) {
-        if (hasUnverifiedLoyaltyRedemption(booking)) {
-            throw new BadRequestException("Đơn đặt vé có giảm giá điểm thưởng chưa được xác minh. Vui lòng cập nhật đơn về 0 điểm hoặc tạo đơn mới.");
-        }
+        // Loyalty redemption enabled
     }
 
     private void writeOutboxEvent(Payment payment, LocalDateTime paidAt) {

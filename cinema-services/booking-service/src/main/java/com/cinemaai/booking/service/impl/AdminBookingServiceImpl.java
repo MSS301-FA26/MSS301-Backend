@@ -6,6 +6,13 @@ import com.cinemaai.booking.client.PaymentClient;
 import com.cinemaai.booking.client.dto.UserAccessScopeDto;
 import com.cinemaai.booking.dto.request.AdminCancelTicketRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
+import com.cinemaai.booking.dto.response.BookingProductResponse;
+import com.cinemaai.booking.entity.Order;
+import com.cinemaai.booking.entity.OrderItem;
+import com.cinemaai.booking.repository.OrderRepository;
+import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 import com.cinemaai.booking.dto.response.CinemaDashboardResponse;
 import com.cinemaai.booking.dto.response.ShowtimeBookingSummaryDto;
 import com.cinemaai.booking.dto.response.ShowtimeCancelRefundResultDto;
@@ -54,6 +61,42 @@ public class AdminBookingServiceImpl implements AdminBookingService {
     private final BookingSeatRepository bookingSeatRepository;
     private final IdentityClient identityClient;
     private final CatalogClient catalogClient;
+    private final OrderRepository orderRepository;
+
+    
+    private BookingResponse enrichBookingResponseWithOrders(Booking booking) {
+        BookingResponse res = bookingMapper.toResponse(booking);
+        if (booking == null || booking.getId() == null) {
+            return res;
+        }
+        try {
+            List<Order> addOnOrders = orderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+            if (addOnOrders != null && !addOnOrders.isEmpty()) {
+                List<BookingProductResponse> allFoods = new ArrayList<>(res.foods() != null ? res.foods() : Collections.emptyList());
+                for (Order o : addOnOrders) {
+                    if ("PAID".equalsIgnoreCase(o.getStatus()) || "PICKED_UP".equalsIgnoreCase(o.getStatus()) || "PARTIALLY_PICKED_UP".equalsIgnoreCase(o.getStatus())) {
+                        if (o.getItems() != null) {
+                            for (OrderItem item : o.getItems()) {
+                                allFoods.add(new BookingProductResponse(
+                                        item.getId(),
+                                        item.getProductId(),
+                                        item.isCombo(),
+                                        item.getProductNameSnapshot(),
+                                        item.getQuantity(),
+                                        item.getUnitPrice(),
+                                        item.getLineTotal()
+                                ));
+                            }
+                        }
+                    }
+                }
+                return res.withFoods(allFoods);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to attach add-on food orders to booking #{}: {}", booking.getId(), e.getMessage());
+        }
+        return res;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -61,10 +104,10 @@ public class AdminBookingServiceImpl implements AdminBookingService {
         Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(actor, requestedCinemaId, false);
         if (search == null || search.trim().isEmpty()) {
             return bookingRepository.findBookingsByCinemaAndStatus(enforcedCinemaId, status, pageable)
-                    .map(bookingMapper::toResponse);
+                    .map(this::enrichBookingResponseWithOrders);
         }
         return bookingRepository.findBookingsForAdmin(enforcedCinemaId, status, search.trim(), pageable)
-                .map(bookingMapper::toResponse);
+                .map(this::enrichBookingResponseWithOrders);
     }
 
     @Override
@@ -74,7 +117,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
 
         cinemaSecurityService.validateCinemaAccess(actor, booking.getCinemaId(), false);
-        return bookingMapper.toResponse(booking);
+        return enrichBookingResponseWithOrders(booking);
     }
 
     @Override
@@ -133,11 +176,7 @@ public class AdminBookingServiceImpl implements AdminBookingService {
     @Transactional(readOnly = true)
     public Page<TicketAuditLogResponse> getAuditLogs(AuthenticatedUser actor, Long requestedCinemaId, Pageable pageable) {
         Long enforcedCinemaId = cinemaSecurityService.resolveEnforcedCinemaId(actor, requestedCinemaId, false);
-        if (enforcedCinemaId != null) {
-            return ticketAuditLogRepository.findByCinemaIdOrderByCreatedAtDesc(enforcedCinemaId, pageable)
-                    .map(TicketAuditLogResponse::fromEntity);
-        }
-        return ticketAuditLogRepository.findAllByOrderByCreatedAtDesc(pageable)
+        return ticketAuditLogRepository.findAuditLogs(enforcedCinemaId, pageable)
                 .map(TicketAuditLogResponse::fromEntity);
     }
 
