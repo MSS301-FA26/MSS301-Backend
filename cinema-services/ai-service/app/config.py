@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     DB_USER: str = Field(..., description="Postgres user")
     DB_PASSWORD: str = Field(..., description="Postgres password")
     DB_SSLMODE: str = Field(default="prefer", description="Postgres SSL mode")
+    DB_POOL_MIN: int = Field(default=1, description="Database pool min connections")
+    DB_POOL_MAX: int = Field(default=2, description="Database pool max connections")
 
     # RabbitMQ Event Broker
     RABBITMQ_HOST: str = Field(..., description="RabbitMQ host")

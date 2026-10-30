@@ -8,6 +8,10 @@ import com.cinemaai.booking.dto.request.CheckoutBookingRequest;
 import com.cinemaai.booking.dto.request.HoldSeatsRequest;
 import com.cinemaai.booking.dto.request.UpdateHoldingBookingRequest;
 import com.cinemaai.booking.dto.response.BookingResponse;
+import com.cinemaai.booking.dto.response.BookingProductResponse;
+import com.cinemaai.booking.entity.Order;
+import com.cinemaai.booking.entity.OrderItem;
+import com.cinemaai.booking.repository.OrderRepository;
 import com.cinemaai.booking.entity.Booking;
 import com.cinemaai.booking.entity.BookingProductItem;
 import com.cinemaai.booking.entity.BookingSeat;
@@ -81,6 +85,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingSeatRepository bookingSeatRepository;
     private final BookingTicketRepository bookingTicketRepository;
     private final BookingProductItemRepository bookingProductItemRepository;
+    private final OrderRepository orderRepository;
     private final CatalogClient catalogClient;
     private final com.cinemaai.booking.client.PaymentClient paymentClient;
     private final BookingMapper bookingMapper;
@@ -138,8 +143,8 @@ public class BookingServiceImpl implements BookingService {
         String bookingCode = "BK" + now.format(DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", new Random().nextInt(10000));
 
-        int holdPoints = 0;
-        BigDecimal holdDiscount = BigDecimal.ZERO;
+        int holdPoints = request.loyaltyPointsToRedeem() != null && request.loyaltyPointsToRedeem() > 0 ? request.loyaltyPointsToRedeem() : 0;
+        BigDecimal holdDiscount = calculateLoyaltyDiscount(holdPoints, quote.showtime().cinemaId(), quote.subtotal());
 
         Booking booking = Booking.builder()
                 .bookingCode(bookingCode)
@@ -290,9 +295,6 @@ public class BookingServiceImpl implements BookingService {
         }
 
         boolean legacyLoyaltyDiscount = booking.getLoyaltyPointsRedeemed() > 0;
-        if (legacyLoyaltyDiscount && loyaltyPointsToRedeem == null) {
-            throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
-        }
         if (legacyLoyaltyDiscount && Integer.valueOf(0).equals(loyaltyPointsToRedeem)
                 && paymentClient.hasActiveBookingPayment(bookingId)) {
             throw new BadRequestException("Đơn đặt vé đã có giao dịch thanh toán đang xử lý. Không thể tự động cập nhật lại giá; vui lòng tạo đơn mới.");
@@ -339,8 +341,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setSubtotal(quote.subtotal());
 
         // Calculate discount if loyalty points redeemed according to branch-specific configuration
-        int points = 0;
-        BigDecimal discount = BigDecimal.ZERO;
+        int points = loyaltyPointsToRedeem != null && loyaltyPointsToRedeem > 0 ? loyaltyPointsToRedeem : 0;
+        BigDecimal discount = calculateLoyaltyDiscount(points, booking.getCinemaId(), quote.subtotal());
         booking.setDiscountAmount(discount);
         booking.setLoyaltyPointsRedeemed(points);
         booking.setTotalAmount(quote.subtotal().subtract(discount).max(BigDecimal.ZERO));
@@ -399,7 +401,6 @@ public class BookingServiceImpl implements BookingService {
         if (seatIds.stream().anyMatch(id -> id == null || id <= 0)) throw new BadRequestException("Seat IDs must be positive");
         if (new HashSet<>(seatIds).size() != seatIds.size()) throw new BadRequestException("Duplicate seat IDs");
         if (loyaltyPoints != null && loyaltyPoints < 0) throw new BadRequestException("Loyalty points cannot be negative");
-        if (loyaltyPoints != null && loyaltyPoints > 0) throw new BadRequestException(LOYALTY_REDEMPTION_DISABLED);
 
         if (tickets != null && !tickets.isEmpty()) {
             long total = 0;
@@ -557,11 +558,46 @@ public class BookingServiceImpl implements BookingService {
         return bookingMapper.toResponse(booking);
     }
 
+    
+    private BookingResponse enrichBookingResponseWithOrders(Booking booking) {
+        BookingResponse res = bookingMapper.toResponse(booking);
+        if (booking == null || booking.getId() == null) {
+            return res;
+        }
+        try {
+            List<Order> addOnOrders = orderRepository.findByBookingIdOrderByCreatedAtDesc(booking.getId());
+            if (addOnOrders != null && !addOnOrders.isEmpty()) {
+                List<BookingProductResponse> allFoods = new ArrayList<>(res.foods() != null ? res.foods() : Collections.emptyList());
+                for (Order o : addOnOrders) {
+                    if ("PAID".equalsIgnoreCase(o.getStatus()) || "PICKED_UP".equalsIgnoreCase(o.getStatus()) || "PARTIALLY_PICKED_UP".equalsIgnoreCase(o.getStatus())) {
+                        if (o.getItems() != null) {
+                            for (OrderItem item : o.getItems()) {
+                                allFoods.add(new BookingProductResponse(
+                                        item.getId(),
+                                        item.getProductId(),
+                                        item.isCombo(),
+                                        item.getProductNameSnapshot(),
+                                        item.getQuantity(),
+                                        item.getUnitPrice(),
+                                        item.getLineTotal()
+                                ));
+                            }
+                        }
+                    }
+                }
+                return res.withFoods(allFoods);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to attach add-on food orders to booking #{}: {}", booking.getId(), e.getMessage());
+        }
+        return res;
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Page<BookingResponse> getMyBookings(Long userId, Pageable pageable) {
         return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                .map(bookingMapper::toResponse);
+                .map(this::enrichBookingResponseWithOrders);
     }
 
     @Override
@@ -569,7 +605,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getBookingById(Long userId, Long bookingId) {
         Booking booking = bookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé."));
-        return bookingMapper.toResponse(booking);
+        return enrichBookingResponseWithOrders(booking);
     }
 
     @Override
@@ -643,7 +679,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse getAdminBooking(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn đặt vé #" + bookingId));
-        return bookingMapper.toResponse(booking);
+        return enrichBookingResponseWithOrders(booking);
     }
 
     @Override
@@ -726,9 +762,7 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("Booking is not awaiting payment");
         }
 
-        if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
-            throw new BadRequestException("Booking contains unverified loyalty redemption and requires manual payment reconciliation");
-        }
+        // Loyalty redemption enabled
 
         booking.setStatus(BookingStatus.PAID);
         if (booking.getPaidAt() == null) {
