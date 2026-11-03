@@ -106,6 +106,10 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://identity-db:5432/identity_db
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+      INTERNAL_GATEWAY_SECRET: cineai-gateway-secret-token-change-in-production
+      INTERNAL_SERVICE_SECRET: cineai-internal-service-secret-token-change-in-production
+      JWT_SECRET: your-secure-jwt-secret-key-at-least-32-chars
       DB_USERNAME: identity_user
       DB_PASSWORD: identity_pass_123
       CATALOG_SERVICE_URL: http://catalog-service:8082
@@ -131,6 +135,9 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://catalog-db:5432/catalog_db
+      INTERNAL_GATEWAY_SECRET: cineai-gateway-secret-token-change-in-production
+      INTERNAL_SERVICE_SECRET: cineai-internal-service-secret-token-change-in-production
+      JWT_SECRET: your-secure-jwt-secret-key-at-least-32-chars
       DB_USERNAME: catalog_user
       DB_PASSWORD: catalog_pass_123
       BOOKING_SERVICE_URL: http://booking-service:8083
@@ -158,6 +165,9 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://booking-db:5432/booking_db
+      INTERNAL_GATEWAY_SECRET: cineai-gateway-secret-token-change-in-production
+      INTERNAL_SERVICE_SECRET: cineai-internal-service-secret-token-change-in-production
+      JWT_SECRET: your-secure-jwt-secret-key-at-least-32-chars
       DB_USERNAME: booking_user
       DB_PASSWORD: booking_pass_123
       RABBITMQ_HOST: rabbitmq
@@ -193,6 +203,9 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://payment-db:5432/payment_db
+      INTERNAL_GATEWAY_SECRET: cineai-gateway-secret-token-change-in-production
+      INTERNAL_SERVICE_SECRET: cineai-internal-service-secret-token-change-in-production
+      JWT_SECRET: your-secure-jwt-secret-key-at-least-32-chars
       DB_USERNAME: payment_user
       DB_PASSWORD: payment_pass_123
       RABBITMQ_HOST: rabbitmq
@@ -225,6 +238,9 @@ services:
         required: false
     environment:
       IDENTITY_SERVICE_URI: http://identity-service:8081
+      INTERNAL_GATEWAY_SECRET: cineai-gateway-secret-token-change-in-production
+      INTERNAL_SERVICE_SECRET: cineai-internal-service-secret-token-change-in-production
+      JWT_SECRET: your-secure-jwt-secret-key-at-least-32-chars
       CATALOG_SERVICE_URI: http://catalog-service:8082
       BOOKING_SERVICE_URI: http://booking-service:8083
       PAYMENT_SERVICE_URI: http://payment-service:8084
