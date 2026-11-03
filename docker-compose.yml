@@ -80,6 +80,11 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
     volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -129,6 +134,7 @@ services:
       DB_USERNAME: catalog_user
       DB_PASSWORD: catalog_pass_123
       BOOKING_SERVICE_URL: http://booking-service:8083
+      IDENTITY_SERVICE_URL: http://identity-service:8081
       RECOMMENDATION_SERVICE_URL: http://recommendation-service:8000
     depends_on:
       catalog-db: { condition: service_healthy }
@@ -161,6 +167,7 @@ services:
       CATALOG_SERVICE_URL: http://catalog-service:8082
       IDENTITY_SERVICE_URL: http://identity-service:8081
       GATEWAY_URL: http://api-gateway:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8084
     depends_on:
       booking-db: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -194,6 +201,7 @@ services:
       RABBITMQ_PASSWORD: guest
       BOOKING_SERVICE_URL: http://booking-service:8083
       GATEWAY_URL: http://api-gateway:8080
+      IDENTITY_SERVICE_URL: http://identity-service:8081
     depends_on:
       payment-db: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

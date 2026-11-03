@@ -18,4 +18,7 @@ public interface LoyaltyPointTransactionRepository extends JpaRepository<Loyalty
 
     @Query("SELECT COALESCE(SUM(t.pointsDelta), 0) FROM LoyaltyPointTransaction t WHERE t.bookingId = :bookingId AND t.type = :type")
     long sumDeltaByBookingIdAndType(@Param("bookingId") Long bookingId, @Param("type") LoyaltyPointType type);
+
+    boolean existsByBookingCodeAndType(String bookingCode, LoyaltyPointType type);
+    boolean existsByBookingIdAndType(Long bookingId, LoyaltyPointType type);
 }

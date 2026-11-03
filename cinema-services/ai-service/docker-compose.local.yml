@@ -1,0 +1,41 @@
+services:
+  ai-db:
+    image: pgvector/pgvector:pg16
+    container_name: cinema-ai-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: recommendation_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+
+    volumes:
+      - cinema_ai_db_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recommendation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - cinema-ai-internal
+
+  ai-service:
+    depends_on:
+      ai-db:
+        condition: service_healthy
+
+    networks:
+      - cinema-ai-internal
+      - mss301-backend_cinema-network
+
+volumes:
+  cinema_ai_db_data:
+
+networks:
+  cinema-ai-internal:
+    driver: bridge
+
+  mss301-backend_cinema-network:
+    external: true

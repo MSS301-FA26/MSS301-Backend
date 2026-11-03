@@ -17,6 +17,7 @@ public interface OrderMapper {
     @Mapping(target = "isCombo", expression = "java(item.isCombo())")
     @Mapping(target = "name", source = "item.productNameSnapshot")
     @Mapping(target = "productName", source = "item.productNameSnapshot")
+    @Mapping(target = "pickedUp", source = "item.pickedUp")
     OrderItemResponse toItemResponse(OrderItem item);
 
     List<OrderItemResponse> toItemResponseList(List<OrderItem> items);
@@ -24,6 +25,7 @@ public interface OrderMapper {
     @Mapping(target = "id", source = "order.id")
     @Mapping(target = "orderCode", source = "order.foodOrderCode")
     @Mapping(target = "foodOrderCode", source = "order.foodOrderCode")
+    @Mapping(target = "userId", source = "order.userId")
     @Mapping(target = "bookingId", source = "order.bookingId")
     @Mapping(target = "bookingCode", source = "bookingCode")
     @Mapping(target = "status", source = "order.status")

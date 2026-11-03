@@ -127,7 +127,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                     SELECT b FROM Booking b
                     WHERE (:cinemaId IS NULL OR b.cinemaId = :cinemaId)
                       AND (:status IS NULL OR b.status = :status)
-                    ORDER BY b.createdAt DESC
+                    ORDER BY b.createdAt DESC, b.id DESC
                     """,
             countQuery = """
                     SELECT COUNT(b) FROM Booking b
@@ -148,7 +148,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                       AND (cast(:search as string) IS NULL OR LOWER(b.bookingCode) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
                            OR LOWER(b.movieTitleSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))
                            OR LOWER(b.cinemaNameSnapshot) LIKE LOWER(CONCAT('%', cast(:search as string), '%')))
-                    ORDER BY b.createdAt DESC
+                    ORDER BY b.createdAt DESC, b.id DESC
                     """,
             countQuery = """
                     SELECT COUNT(b) FROM Booking b

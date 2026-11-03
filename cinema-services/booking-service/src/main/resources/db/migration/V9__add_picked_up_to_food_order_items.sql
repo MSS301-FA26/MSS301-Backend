@@ -1,0 +1,1 @@
+ALTER TABLE food_order_items ADD COLUMN IF NOT EXISTS picked_up BOOLEAN NOT NULL DEFAULT false;

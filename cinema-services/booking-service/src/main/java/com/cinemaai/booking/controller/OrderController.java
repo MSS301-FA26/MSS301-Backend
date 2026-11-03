@@ -12,6 +12,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,11 +61,15 @@ public class OrderController {
 
     @GetMapping("/api/v1/food-orders/{foodOrderId}")
     @Operation(summary = "Lấy chi tiết đơn sản phẩm tại quầy theo ID")
+    @PreAuthorize("hasRole('ADMIN') or @orderSecurity.isOwner(#foodOrderId, principal.id())")
     public ApiResponse<OrderResponse> getFoodOrderDetail(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable Long foodOrderId
     ) {
-        return ApiResponse.success(orderService.getByIdAndUser(user.id(), foodOrderId));
+        OrderResponse order = user.isAdmin()
+                ? orderService.getById(foodOrderId)
+                : orderService.getByIdAndUser(user.id(), foodOrderId);
+        return ApiResponse.success(order);
     }
 
     @PostMapping("/api/v1/food-orders/{foodOrderId}/sync")

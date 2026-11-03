@@ -42,4 +42,8 @@ public class OrderItem extends BaseEntity {
     @Builder.Default
     @Column(name = "line_total", nullable = false, precision = 12, scale = 2)
     private BigDecimal lineTotal = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "picked_up", nullable = false)
+    private boolean pickedUp = false;
 }

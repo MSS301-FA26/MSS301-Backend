@@ -158,6 +158,34 @@ public class PaymentClient {
         }
     }
 
+    public void awardFoodOrderLoyaltyPoints(Long userId, Long foodOrderId, String orderCode, BigDecimal amount, Long cinemaId) {
+        if (userId == null) {
+            return;
+        }
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("userId", userId);
+            body.put("bookingId", foodOrderId != null ? foodOrderId : 0L);
+            body.put("bookingCode", orderCode != null ? orderCode : "");
+            body.put("amount", amount != null ? amount : BigDecimal.ZERO);
+            body.put("redeemedPoints", 0);
+            if (cinemaId != null && cinemaId > 0) {
+                body.put("cinemaId", cinemaId);
+            }
+
+            restClient.post()
+                    .uri("/internal/v1/loyalty/award-food")
+                    .header("X-Internal-Service-Secret", internalSecret)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("Successfully requested food order loyalty points award for userId {} order {}", userId, orderCode);
+        } catch (Exception ex) {
+            log.warn("Failed to award loyalty points for userId {} food order {}: {}", userId, orderCode, ex.getMessage());
+        }
+    }
+
     public void refundLoyaltyPoints(Long userId, Long bookingId, String bookingCode, BigDecimal amount, Integer redeemedPoints, String reason) {
         if (userId == null) {
             return;
