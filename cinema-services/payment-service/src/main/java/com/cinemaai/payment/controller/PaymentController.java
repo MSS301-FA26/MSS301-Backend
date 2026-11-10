@@ -81,6 +81,8 @@ public class PaymentController {
         } catch (Exception ex) {
             // Log warning and proceed with redirect so client can render failure view
         }
+        String queryString = request.getQueryString();
+        String redirectUrl = successRedirectUrl + (queryString != null && !queryString.isBlank() ? "?" + queryString : "");
         String targetRedirect = allParams.getOrDefault("redirectUrl", allParams.getOrDefault("redirect_url", successRedirectUrl));
         if (targetRedirect == null || targetRedirect.isBlank()) {
             targetRedirect = successRedirectUrl;
