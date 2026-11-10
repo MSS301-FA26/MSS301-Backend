@@ -170,6 +170,12 @@ public class PaymentServiceImpl implements PaymentService {
             String vnpExpireDate = formatter.format(cld.getTime());
             vnpParams.put("vnp_ExpireDate", vnpExpireDate);
         }
+        java.time.ZonedDateTime nowVn = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        java.time.format.DateTimeFormatter vnpFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+        String vnpCreateDate = nowVn.format(vnpFmt);
+        vnpParams.put("vnp_CreateDate", vnpCreateDate);
+        String vnpExpireDate = nowVn.plusMinutes(15).format(vnpFmt);
+        vnpParams.put("vnp_ExpireDate", vnpExpireDate);
 
         List<String> fieldNames = new ArrayList<>(vnpParams.keySet());
         Collections.sort(fieldNames);

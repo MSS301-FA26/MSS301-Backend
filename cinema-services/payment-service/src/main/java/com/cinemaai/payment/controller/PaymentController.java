@@ -83,6 +83,12 @@ public class PaymentController {
         }
         String queryString = request.getQueryString();
         String redirectUrl = successRedirectUrl + (queryString != null && !queryString.isBlank() ? "?" + queryString : "");
+        String targetRedirect = allParams.getOrDefault("redirectUrl", allParams.getOrDefault("redirect_url", successRedirectUrl));
+        if (targetRedirect == null || targetRedirect.isBlank()) {
+            targetRedirect = successRedirectUrl;
+        }
+        String queryString = request.getQueryString();
+        String redirectUrl = targetRedirect + (queryString != null && !queryString.isBlank() ? "?" + queryString : "");
         return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.FOUND)
                 .header(org.springframework.http.HttpHeaders.LOCATION, redirectUrl)
                 .build();
