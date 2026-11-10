@@ -28,9 +28,34 @@ public class InternalLoyaltyController {
     @Operation(summary = "Tích điểm thưởng sau khi đơn đặt vé thanh toán thành công (Internal)")
     @PostMapping("/award")
     public ApiResponse<LoyaltyResponse> awardPoints(@RequestBody AwardBookingPointsRequest request) {
+        if (request != null && request.bookingCode() != null && request.bookingCode().startsWith("FO-")) {
+            return ApiResponse.success(
+                    loyaltyService.awardPointsForFoodOrder(
+                            request.userId(),
+                            request.bookingId(),
+                            request.bookingCode(),
+                            request.amount()
+                    ),
+                    "Tích điểm thưởng cho đơn bắp nước thành công"
+            );
+        }
         return ApiResponse.success(
                 loyaltyService.awardPointsForBooking(request),
                 "Tích điểm thưởng cho đơn đặt vé thành công"
+        );
+    }
+
+    @Operation(summary = "Tích điểm thưởng sau khi đơn bắp nước thanh toán thành công (Internal)")
+    @PostMapping("/award-food")
+    public ApiResponse<LoyaltyResponse> awardFoodPoints(@RequestBody AwardBookingPointsRequest request) {
+        return ApiResponse.success(
+                loyaltyService.awardPointsForFoodOrder(
+                        request.userId(),
+                        request.bookingId(),
+                        request.bookingCode(),
+                        request.amount()
+                ),
+                "Tích điểm thưởng cho đơn bắp nước thành công"
         );
     }
 

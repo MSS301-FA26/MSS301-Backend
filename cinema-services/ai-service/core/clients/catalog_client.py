@@ -80,12 +80,17 @@ class CatalogClientImpl(ICatalogClient):
 
                     body = resp.json()
                     data = body.get("data", {})
-                    # Spring Boot PageResponse envelope: data.content
-                    content = data.get("content", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                    if not content:
+
+                    # Catalog API pagination envelope: data.items
+                    items = data.get("items", []) if isinstance(data, dict) else (
+                        data if isinstance(data, list) else []
+                    )
+
+                    if not items:
                         break
 
-                    all_movies.extend(content)
+                    all_movies.extend(items)
+
                     total_pages = data.get("totalPages", 1) if isinstance(data, dict) else 1
                     is_last = data.get("last", True) if isinstance(data, dict) else True
 

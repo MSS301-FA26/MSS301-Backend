@@ -80,6 +80,11 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+
     volumes: [rabbitmq_data:/var/lib/rabbitmq]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -101,6 +106,11 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://identity-db:5432/identity_db
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:-8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}
+      AI_GATEWAY_SECRET: ${AI_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-cineai-development-secret-key-please-change-123456}
       DB_USERNAME: identity_user
       DB_PASSWORD: identity_pass_123
       CATALOG_SERVICE_URL: http://catalog-service:8082
@@ -126,10 +136,16 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://catalog-db:5432/catalog_db
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:-8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}
+      AI_GATEWAY_SECRET: ${AI_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-cineai-development-secret-key-please-change-123456}
       DB_USERNAME: catalog_user
       DB_PASSWORD: catalog_pass_123
       BOOKING_SERVICE_URL: http://booking-service:8083
+      IDENTITY_SERVICE_URL: http://identity-service:8081
       RECOMMENDATION_SERVICE_URL: http://recommendation-service:8000
+      RECOMMENDATION_SERVICE_URL: ${RECOMMENDATION_SERVICE_URL:-https://drum-valid-randomly.ngrok-free.app}
     depends_on:
       catalog-db: { condition: service_healthy }
     healthcheck:
@@ -152,6 +168,10 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://booking-db:5432/booking_db
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:-8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}
+      AI_GATEWAY_SECRET: ${AI_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-cineai-development-secret-key-please-change-123456}
       DB_USERNAME: booking_user
       DB_PASSWORD: booking_pass_123
       RABBITMQ_HOST: rabbitmq
@@ -161,6 +181,7 @@ services:
       CATALOG_SERVICE_URL: http://catalog-service:8082
       IDENTITY_SERVICE_URL: http://identity-service:8081
       GATEWAY_URL: http://api-gateway:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8084
     depends_on:
       booking-db: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -186,6 +207,10 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://payment-db:5432/payment_db
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:-8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}
+      AI_GATEWAY_SECRET: ${AI_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-cineai-development-secret-key-please-change-123456}
       DB_USERNAME: payment_user
       DB_PASSWORD: payment_pass_123
       RABBITMQ_HOST: rabbitmq
@@ -194,6 +219,7 @@ services:
       RABBITMQ_PASSWORD: guest
       BOOKING_SERVICE_URL: http://booking-service:8083
       GATEWAY_URL: http://api-gateway:8080
+      IDENTITY_SERVICE_URL: http://identity-service:8081
     depends_on:
       payment-db: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -220,6 +246,14 @@ services:
       CATALOG_SERVICE_URI: http://catalog-service:8082
       BOOKING_SERVICE_URI: http://booking-service:8083
       PAYMENT_SERVICE_URI: http://payment-service:8084
+      INTERNAL_GATEWAY_SECRET: ${INTERNAL_GATEWAY_SECRET:-8F78D52690EED1A48867F89272F07391B8FBC8968F187BB5C53C60E20243D7AD}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-CF419427F61EE9D8880297E0309BDFB4504B8917C10B7019A56B1562344DDA03}
+      AI_GATEWAY_SECRET: ${AI_GATEWAY_SECRET:-cinema-gateway-secret-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-cineai-development-secret-key-please-change-123456}
+      CATALOG_SERVICE_URI: http://catalog-service:8082
+      BOOKING_SERVICE_URI: http://booking-service:8083
+      PAYMENT_SERVICE_URI: http://payment-service:8084
+      RECOMMENDATION_SERVICE_URI: ${RECOMMENDATION_SERVICE_URI:-https://drum-valid-randomly.ngrok-free.app}
 
     ports: ["${GATEWAY_PORT:-8080}:8080"]
     depends_on:

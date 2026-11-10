@@ -24,20 +24,24 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/admin/loyalty")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
 @Tag(name = "Admin - Loyalty", description = "Quản lý điểm thưởng loyalty cho Admin và Manager")
 public class AdminLoyaltyController {
 
     private final LoyaltyService loyaltyService;
 
     @GetMapping("/config")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @Operation(summary = "Xem cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
     public ApiResponse<LoyaltyConfigurationResponse> getConfiguration(
-            @RequestParam(required = false) Long cinemaId
+            @RequestParam(required = false) Long cinemaId,
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return ApiResponse.success(loyaltyService.getConfiguration(cinemaId));
+        return ApiResponse.success(loyaltyService.getAdminConfiguration(cinemaId, user));
     }
 
     @PutMapping("/config")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Cập nhật cấu hình tích điểm và quy đổi theo chi nhánh hoặc toàn hệ thống")
     public ApiResponse<LoyaltyConfigurationResponse> updateConfiguration(
             @Valid @RequestBody LoyaltyConfigurationRequest request,
@@ -47,6 +51,7 @@ public class AdminLoyaltyController {
     }
 
     @GetMapping("/transactions")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @Operation(summary = "Tìm kiếm lịch sử giao dịch điểm thưởng")
     public ApiResponse<PageResponse<LoyaltyTransactionResponse>> searchTransactions(
             @RequestParam(required = false) String keyword,
@@ -59,6 +64,7 @@ public class AdminLoyaltyController {
     }
 
     @GetMapping("/report")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Xem báo cáo tổng quan điểm thưởng")
     public ApiResponse<LoyaltyReportResponse> getReport(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
@@ -80,12 +86,14 @@ public class AdminLoyaltyController {
     }
 
     @PostMapping("/add")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Cộng điểm thưởng thủ công cho người dùng")
     public ApiResponse<LoyaltyResponse> addPoints(@Valid @RequestBody LoyaltyAddRequest request) {
         return ApiResponse.success(loyaltyService.addPoints(request), "Cộng điểm thưởng thành công");
     }
 
     @PostMapping("/{userId}/redeem")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Trừ điểm thưởng thủ công cho người dùng")
     public ApiResponse<LoyaltyResponse> redeemPoints(
             @PathVariable Long userId,

@@ -55,11 +55,7 @@ public class PaymentEventListener {
                 return;
             }
 
-            if (booking.getStatus() != BookingStatus.PAID && booking.getLoyaltyPointsRedeemed() > 0) {
-                log.error("Payment event {} for booking {} requires manual reconciliation because the booking contains unverified loyalty redemption",
-                        event.eventId(), booking.getId());
-                return;
-            }
+            // Loyalty redemption supported
 
             LocalDateTime now = LocalDateTime.now();
             if (booking.getStatus() == BookingStatus.PAID) {
@@ -129,6 +125,7 @@ public class PaymentEventListener {
                 order.setPaidAt(event.paidAt() != null ? event.paidAt() : LocalDateTime.now());
                 orderRepository.save(order);
                 log.info("Successfully marked Order {} as PAID.", order.getFoodOrderCode());
+                awardFoodOrderLoyalty(order);
             });
         }
 
@@ -145,6 +142,14 @@ public class PaymentEventListener {
             paymentClient.awardLoyaltyPoints(
                     booking.getUserId(), booking.getId(), booking.getBookingCode(),
                     booking.getTotalAmount(), booking.getLoyaltyPointsRedeemed(), booking.getCinemaId());
+        }
+    }
+
+    private void awardFoodOrderLoyalty(com.cinemaai.booking.entity.Order order) {
+        if (order.getUserId() != null && order.getTotalAmount() != null && order.getTotalAmount().signum() > 0) {
+            paymentClient.awardFoodOrderLoyaltyPoints(
+                    order.getUserId(), order.getId(), order.getFoodOrderCode(),
+                    order.getTotalAmount(), order.getCinemaId());
         }
     }
 }

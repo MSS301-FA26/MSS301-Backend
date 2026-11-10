@@ -37,7 +37,7 @@ public class AdminBookingController {
             @RequestParam(required = false) Long cinemaId,
             @RequestParam(required = false) BookingStatus status,
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20) Pageable pageable
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable
     ) {
         Page<BookingResponse> page = adminBookingService.getBookings(user, cinemaId, status, search, pageable);
         return ApiResponse.success(page, "Lấy danh sách đơn đặt vé thành công");
@@ -69,7 +69,7 @@ public class AdminBookingController {
     public ApiResponse<Page<TicketAuditLogResponse>> getAuditLogs(
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestParam(required = false) Long cinemaId,
-            @PageableDefault(size = 20) Pageable pageable
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable
     ) {
         Page<TicketAuditLogResponse> logs = adminBookingService.getAuditLogs(user, cinemaId, pageable);
         return ApiResponse.success(logs, "Lấy lịch sử hủy/hoàn vé thành công");
