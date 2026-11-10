@@ -157,19 +157,12 @@ public class PaymentServiceImpl implements PaymentService {
         vnpParams.put("vnp_ReturnUrl", vnpReturnUrl);
         vnpParams.put("vnp_IpAddr", clientIp != null && !clientIp.isBlank() ? clientIp : "127.0.0.1");
 
-        Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
-        String vnpCreateDate = formatter.format(cld.getTime());
+        java.time.ZonedDateTime nowVn = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
+        java.time.format.DateTimeFormatter vnpFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+        String vnpCreateDate = nowVn.format(vnpFmt);
         vnpParams.put("vnp_CreateDate", vnpCreateDate);
-
-        if (activeBooking != null && activeBooking.holdExpiresAt() != null) {
-            java.time.format.DateTimeFormatter vnpFmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-            vnpParams.put("vnp_ExpireDate", activeBooking.holdExpiresAt().format(vnpFmt));
-        } else {
-            cld.add(Calendar.MINUTE, 5);
-            String vnpExpireDate = formatter.format(cld.getTime());
-            vnpParams.put("vnp_ExpireDate", vnpExpireDate);
-        }
+        String vnpExpireDate = nowVn.plusMinutes(15).format(vnpFmt);
+        vnpParams.put("vnp_ExpireDate", vnpExpireDate);
 
         List<String> fieldNames = new ArrayList<>(vnpParams.keySet());
         Collections.sort(fieldNames);
